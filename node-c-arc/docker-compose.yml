@@ -1,0 +1,67 @@
+version: "3.9"
+
+services:
+  # Intel Arc inference runtime (IPEX-LLM + Ollama)
+  ollama-arc:
+    image: intelanalytics/ipex-llm-inference-cpp-xpu:latest
+    container_name: ollama_arc
+    restart: unless-stopped
+
+    # Exposes Ollama on the host network at :11434
+    network_mode: host
+
+    # Kept because your blueprint describes Level Zero permission issues without privileged DRM access.
+    # Try removing later + use group_add/video/render if your host allows it.
+    privileged: true
+
+    devices:
+      - /dev/dri:/dev/dri
+
+    volumes:
+      - ${OLLAMA_MODELS_DIR:-/opt/ollama}:/root/.ollama
+      - /dev/shm:/dev/shm
+
+    environment:
+      OLLAMA_HOST: "0.0.0.0"
+
+      # Intel OneAPI / Level Zero + Arc hints
+      ZES_ENABLE_SYSMAN: "1"
+      ONEAPI_DEVICE_SELECTOR: "level_zero:0"
+      DEVICE: "Arc"
+      OLLAMA_INTEL_GPU: "true"
+      SYCL_CACHE_PERSISTENT: "1"
+
+      no_proxy: "localhost,127.0.0.1"
+      PATH: "/llm/ollama:${PATH}"
+
+    shm_size: "32gb"
+
+    # Healthcheck uses the Ollama CLI (avoids needing curl inside the image)
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
+  # Optional: Open WebUI for local management on Node C
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    environment:
+      # IMPORTANT: if Ollama is on the host network, localhost inside the container is wrong.
+      # Use host.docker.internal with host-gateway mapping.
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+    volumes:
+      - open-webui-data:/app/backend/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      ollama-arc:
+        condition: service_healthy
+
+volumes:
+  open-webui-data:
+    name: open-webui

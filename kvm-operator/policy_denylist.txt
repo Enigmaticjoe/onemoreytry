@@ -1,0 +1,11 @@
+# Case-insensitive substrings. Refuse typing these unless ALLOW_DANGEROUS=true.
+mkfs
+dd if=
+rm -rf
+:(){ :|:& };:
+shutdown -h now
+reboot -f
+wipefs
+fdisk
+parted
+cryptsetup

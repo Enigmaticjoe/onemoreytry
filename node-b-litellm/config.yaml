@@ -1,0 +1,35 @@
+# LiteLLM Proxy configuration (revised)
+#
+# Canonical LiteLLM vision reference:
+# https://docs.litellm.ai/docs/vision
+#
+# Vision route sets model_info.supports_vision: True so capability metadata is correct.
+
+model_list:
+  - model_name: brawn-fast
+    litellm_params:
+      model: ollama/llama3
+      api_base: http://node-c-arc:11434
+      rpm: 100
+      timeout: 120
+
+  - model_name: brain-heavy
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: kvm-vision
+    litellm_params:
+      model: ollama/llava:v1.6
+      api_base: http://node-c-arc:11434
+      timeout: 180
+    model_info:
+      supports_vision: True
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  proxy_batch_write_at: 60
+  database_connection_pool_limit: 10
+
+router_settings:
+  routing_strategy: usage-based-routing

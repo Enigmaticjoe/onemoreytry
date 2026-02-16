@@ -1,0 +1,22 @@
+[Unit]
+Description=AI KVM Operator (NanoKVM + LiteLLM Vision)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/kvm-operator
+EnvironmentFile=/opt/kvm-operator/.env
+ExecStart=/opt/kvm-operator/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 5000
+Restart=on-failure
+RestartSec=3
+
+# Hardening (adjust if you need more access)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/kvm-operator
+
+[Install]
+WantedBy=multi-user.target

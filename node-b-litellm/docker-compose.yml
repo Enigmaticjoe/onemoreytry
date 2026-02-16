@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: litellm_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: litellm_proxy
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm -d litellm_proxy"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: litellm_proxy
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
+      DATABASE_URL: postgresql://litellm:${DB_PASSWORD}@db:5432/litellm_proxy
+      LITELLM_LOG: INFO
+      JSON_LOGS: "true"
+      WORKERS: "4"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+
+volumes:
+  db-data:
+    name: litellm-db-data

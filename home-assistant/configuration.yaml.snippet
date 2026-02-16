@@ -1,0 +1,21 @@
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 192.168.1.0/24
+
+extended_openai_conversation:
+  api_key: !secret litellm_master_key
+  base_url: "http://node-b-litellm:4000/v1"
+  model: "brawn-fast"
+  prompt: >
+    You are the Voice of the Grand Unified Home Lab.
+    Current Time: {{ now() }}
+    Be concise, technical, and precise.
+
+shell_command:
+  trigger_kvm_task_node_c: >-
+    curl -sS -X POST
+    -H "Authorization: Bearer {{ states('input_text.kvm_operator_token') }}"
+    -H "Content-Type: application/json"
+    http://node-brain:5000/kvm/task/node-c
+    -d '{"instruction":"Check if the server is at a login prompt. If yes, type username then password and press Enter. If already logged in, respond success.","max_steps":8}'
