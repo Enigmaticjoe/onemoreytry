@@ -1,33 +1,46 @@
-# LiteLLM Proxy configuration (revised)
+# LiteLLM Proxy configuration for Grand Unified AI Home Lab
 #
-# Canonical LiteLLM vision reference:
-# https://docs.litellm.ai/docs/vision
+# This configuration routes requests to the correct physical nodes:
+# - Brain (Node A): RX 7900 XT running Llama-3.1-70B-AWQ at 192.168.1.9:8000
+# - Brawn (Node B): RTX 4070 running vLLM at 192.168.1.222:8002
+# - Command Center (Node C): Intel Arc A770 running Ollama at 192.168.1.X:11434
 #
-# Vision route sets model_info.supports_vision: True so capability metadata is correct.
+# API Key for Home Assistant and other clients: sk-master-key
 
 model_list:
+  # Brain (Node A) - Heavy Logic/Reasoning
+  # Hardware: Core Ultra 7 265KF, 128GB DDR5, RX 7900 XT (20GB)
+  # Running: vLLM with Llama-3.1-70B-AWQ
+  - model_name: brain-heavy
+    litellm_params:
+      model: openai/chat
+      api_base: http://192.168.1.9:8000/v1
+      rpm: 60
+      timeout: 180
+
+  # Brawn (Node B) - Fast Chat (local vLLM)
+  # Hardware: i5-13600K, 96GB DDR5, RTX 4070 (12GB)
+  # Running: vLLM on port 8002 (mapped from internal 8000)
   - model_name: brawn-fast
     litellm_params:
-      model: ollama/llama3
-      api_base: http://node-c-arc:11434
+      model: openai/chat
+      api_base: http://192.168.1.222:8002/v1
       rpm: 100
       timeout: 120
 
-  - model_name: brain-heavy
+  # Command Center (Node C) - Vision AI
+  # Hardware: Ryzen 7 7700X, 32GB RAM, Intel Arc A770 (16GB)
+  # Running: Ollama with Llava for vision tasks
+  - model_name: intel-vision
     litellm_params:
-      model: openai/gpt-4o
-      api_key: os.environ/OPENAI_API_KEY
-
-  - model_name: kvm-vision
-    litellm_params:
-      model: ollama/llava:v1.6
-      api_base: http://node-c-arc:11434
+      model: ollama/llava
+      api_base: http://192.168.1.X:11434
       timeout: 180
     model_info:
       supports_vision: True
 
 general_settings:
-  master_key: os.environ/LITELLM_MASTER_KEY
+  master_key: sk-master-key
   proxy_batch_write_at: 60
   database_connection_pool_limit: 10
 

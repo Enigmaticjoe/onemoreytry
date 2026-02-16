@@ -1,21 +1,40 @@
+# Grand Unified AI Home Lab - Home Assistant Configuration
+# Node D: Home Assistant (The Voice)
+# Hardware: Ryzen 7 7430U, 32GB DDR4
+#
+# This configuration connects Home Assistant to the LiteLLM Gateway on Node B
+# to access all AI models in the unified ecosystem.
+
+# Allow Home Assistant to communicate with the LiteLLM proxy
 http:
   use_x_forwarded_for: true
   trusted_proxies:
     - 192.168.1.0/24
 
-extended_openai_conversation:
-  api_key: !secret litellm_master_key
-  base_url: "http://node-b-litellm:4000/v1"
-  model: "brawn-fast"
-  prompt: >
-    You are the Voice of the Grand Unified Home Lab.
-    Current Time: {{ now() }}
-    Be concise, technical, and precise.
+# OpenAI Conversation integration (Generic provider for LiteLLM)
+# This connects to the LiteLLM Gateway running on Node B (192.168.1.222:4000)
+openai_conversation:
+  - api_key: sk-master-key
+    base_url: http://192.168.1.222:4000/v1
+    model: brawn-fast
+    max_tokens: 2000
+    temperature: 0.7
+    
+# Alternative configuration using extended_openai_conversation for more control
+# (Comment out the above and uncomment this if you prefer extended features)
+#
+# extended_openai_conversation:
+#   api_key: sk-master-key
+#   base_url: http://192.168.1.222:4000/v1
+#   model: brawn-fast
+#   prompt: >
+#     You are the Voice of the Grand Unified Home Lab.
+#     Current Time: {{ now() }}
+#     Be concise, technical, and precise.
+#   max_tokens: 2000
+#   temperature: 0.7
 
-shell_command:
-  trigger_kvm_task_node_c: >-
-    curl -sS -X POST
-    -H "Authorization: Bearer {{ states('input_text.kvm_operator_token') }}"
-    -H "Content-Type: application/json"
-    http://node-brain:5000/kvm/task/node-c
-    -d '{"instruction":"Check if the server is at a login prompt. If yes, type username then password and press Enter. If already logged in, respond success.","max_steps":8}'
+# Example conversation agent configuration
+conversation:
+  intents:
+    # Use the LiteLLM-connected AI for conversations

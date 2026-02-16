@@ -1,67 +1,80 @@
+# Grand Unified AI Home Lab - Command Center (Node C)
+# Deploy on Fedora 43 with Intel Arc A770 (16GB)
+#
+# Hardware: Ryzen 7 7700X, 32GB RAM, Intel Arc A770 (16GB)
+# Role: Vision AI (Llava) & Whisper Audio
+#
+# FIXED: Now uses standard Ollama image with Intel Compute Runtime
+# (No ROCm - Intel Arc uses /dev/dri and Intel OneAPI/Level Zero)
+
 version: "3.9"
 
 services:
-  # Intel Arc inference runtime (IPEX-LLM + Ollama)
-  ollama-arc:
-    image: intelanalytics/ipex-llm-inference-cpp-xpu:latest
-    container_name: ollama_arc
+  # Ollama service for Intel Arc A770
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama_intel_arc
     restart: unless-stopped
-
-    # Exposes Ollama on the host network at :11434
+    
+    # Host network for easy access from other nodes
     network_mode: host
-
-    # Kept because your blueprint describes Level Zero permission issues without privileged DRM access.
-    # Try removing later + use group_add/video/render if your host allows it.
-    privileged: true
-
+    
+    # Intel Arc GPU access via /dev/dri
     devices:
       - /dev/dri:/dev/dri
-
+    
     volumes:
-      - ${OLLAMA_MODELS_DIR:-/opt/ollama}:/root/.ollama
+      - ollama-models:/root/.ollama
       - /dev/shm:/dev/shm
-
+    
     environment:
-      OLLAMA_HOST: "0.0.0.0"
-
-      # Intel OneAPI / Level Zero + Arc hints
+      OLLAMA_HOST: "0.0.0.0:11434"
+      
+      # Intel Arc A770 specific settings
+      # ZES_ENABLE_SYSMAN is REQUIRED for Intel Arc GPU support
       ZES_ENABLE_SYSMAN: "1"
+      
+      # Enable all available GPUs
+      OLLAMA_NUM_GPU: "999"
+      
+      # Additional Intel GPU optimizations
       ONEAPI_DEVICE_SELECTOR: "level_zero:0"
-      DEVICE: "Arc"
-      OLLAMA_INTEL_GPU: "true"
       SYCL_CACHE_PERSISTENT: "1"
-
-      no_proxy: "localhost,127.0.0.1"
-      PATH: "/llm/ollama:${PATH}"
-
-    shm_size: "32gb"
-
-    # Healthcheck uses the Ollama CLI (avoids needing curl inside the image)
+    
+    shm_size: "16gb"
+    
     healthcheck:
-      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 10
+      retries: 5
 
-  # Optional: Open WebUI for local management on Node C
-  open-webui:
+  # Chimera Face (Open WebUI) for local management
+  chimera_face:
     image: ghcr.io/open-webui/open-webui:main
-    container_name: open-webui
+    container_name: chimera_face
     restart: unless-stopped
+    
     ports:
       - "3000:8080"
+    
     environment:
-      # IMPORTANT: if Ollama is on the host network, localhost inside the container is wrong.
-      # Use host.docker.internal with host-gateway mapping.
+      # Connect to Ollama on host network
       OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      WEBUI_NAME: "Chimera Face - Command Center"
+    
     volumes:
       - open-webui-data:/app/backend/data
+    
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    
     depends_on:
-      ollama-arc:
+      ollama:
         condition: service_healthy
 
 volumes:
+  ollama-models:
+    name: command-center-ollama-models
   open-webui-data:
-    name: open-webui
+    name: command-center-webui-data
