@@ -33,13 +33,13 @@ The intent of this guide is to turn **Node A into the central brain** while stil
 
 ### 2.1 Source files reviewed
 
-- `/home/runner/work/onemoreytry/onemoreytry/DEPLOYMENT_GUIDE.md`
-- `/home/runner/work/onemoreytry/onemoreytry/QUICK_REFERENCE.md`
-- `/home/runner/work/onemoreytry/onemoreytry/node-b-litellm/config.yaml`
-- `/home/runner/work/onemoreytry/onemoreytry/node-b-litellm/litellm-stack.yml`
-- `/home/runner/work/onemoreytry/onemoreytry/node-c-arc/docker-compose.yml`
-- `/home/runner/work/onemoreytry/onemoreytry/home-assistant/configuration.yaml.snippet`
-- `/home/runner/work/onemoreytry/onemoreytry/kvm-operator/app.py`
+- `DEPLOYMENT_GUIDE.md`
+- `QUICK_REFERENCE.md`
+- `node-b-litellm/config.yaml`
+- `node-b-litellm/litellm-stack.yml`
+- `node-c-arc/docker-compose.yml`
+- `home-assistant/configuration.yaml.snippet`
+- `kvm-operator/app.py`
 
 ### 2.2 Confirmed architecture behaviors
 
@@ -150,7 +150,7 @@ This split preserves performance and allows minimal churn to existing compose de
 
 The new file:
 
-- `/home/runner/work/onemoreytry/onemoreytry/node-a-command-center.js`
+- `node-a-command-center.js`
 
 Capabilities added:
 
@@ -172,6 +172,7 @@ Capabilities added:
 |---|---|---|
 | `COMMAND_CENTER_PORT` | `3099` | Dashboard listener port |
 | `LITELLM_BASE_URL` | `http://192.168.1.222:4000` | Unified gateway URL |
+| `NODE_C_BASE_URL` | `http://192.168.1.X` | Node C base URL for UI + Ollama status checks |
 | `LITELLM_API_KEY` | `sk-master-key` | Gateway auth key |
 | `DEFAULT_MODEL` | `brain-heavy` | Chat model alias |
 | `REQUEST_TIMEOUT_MS` | `7000` | Upstream request timeout |
@@ -183,7 +184,7 @@ Capabilities added:
 ### 7.1 Start the command center
 
 ```bash
-cd /home/runner/work/onemoreytry/onemoreytry
+cd <repository-root>
 node node-a-command-center.js
 ```
 
@@ -202,7 +203,7 @@ curl -s -X POST http://127.0.0.1:3099/api/chat \
 ### 7.3 Existing repository validation
 
 ```bash
-cd /home/runner/work/onemoreytry/onemoreytry
+cd <repository-root>
 ./validate.sh
 ```
 
@@ -314,8 +315,8 @@ User report -> Open Node A dashboard -> Refresh status
 
 ## Appendix A — Exact file changes introduced by this update
 
-- Added: `/home/runner/work/onemoreytry/onemoreytry/node-a-command-center.js`
-- Added: `/home/runner/work/onemoreytry/onemoreytry/docs/09_NODE_A_COMMAND_CENTER_GUIDEBOOK.md`
+- Added: `node-a-command-center.js`
+- Added: `docs/09_NODE_A_COMMAND_CENTER_GUIDEBOOK.md`
 - Updated references to include this guidebook and script.
 
 ## Appendix B — Reality checks before declaring completion

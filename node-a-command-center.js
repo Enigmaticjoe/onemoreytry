@@ -5,6 +5,7 @@ const { URL } = require('url');
 
 const PORT = Number(process.env.COMMAND_CENTER_PORT || 3099);
 const LITELLM_BASE_URL = process.env.LITELLM_BASE_URL || 'http://192.168.1.222:4000';
+const NODE_C_BASE_URL = process.env.NODE_C_BASE_URL || 'http://192.168.1.X';
 const LITELLM_API_KEY = process.env.LITELLM_API_KEY || 'sk-master-key';
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'brain-heavy';
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 7000);
@@ -14,13 +15,13 @@ const MAX_CHAT_MESSAGE_CHARS = 5000;
 const serviceChecks = [
   { key: 'gateway', label: 'Node B LiteLLM Gateway', url: `${LITELLM_BASE_URL}/health` },
   { key: 'brain', label: 'Node A Brain vLLM', url: 'http://192.168.1.9:8000/health' },
-  { key: 'vision', label: 'Node C Vision (Ollama)', url: 'http://192.168.1.X:11434/api/version' },
-  { key: 'commandCenterUi', label: 'Node C Chimera Face UI', url: 'http://192.168.1.X:3000' },
+  { key: 'vision', label: 'Node C Vision (Ollama)', url: `${NODE_C_BASE_URL}:11434/api/version` },
+  { key: 'nodeCUi', label: 'Node C Chimera Face UI', url: `${NODE_C_BASE_URL}:3000` },
 ];
 
 const dashboardLinks = [
   { name: 'LiteLLM Gateway Health', href: `${LITELLM_BASE_URL}/health` },
-  { name: 'Node C Chimera Face UI', href: 'http://192.168.1.X:3000' },
+  { name: 'Node C Chimera Face UI', href: `${NODE_C_BASE_URL}:3000` },
   { name: 'Deployment Guide', href: '/docs/DEPLOYMENT_GUIDE' },
   { name: 'Quick Reference', href: '/docs/QUICK_REFERENCE' },
   { name: 'Node A Guidebook', href: '/docs/NODE_A_GUIDEBOOK' },
@@ -60,7 +61,7 @@ async function checkService(service) {
     return {
       ...service,
       ok: false,
-      status: 'offline',
+      status: 0,
       latencyMs: Date.now() - start,
       error: error.name === 'AbortError' ? 'timeout' : 'unreachable',
     };
@@ -84,9 +85,20 @@ function getDocRedirectPath(pathname) {
   return null;
 }
 
+function safeHref(href) {
+  if (typeof href !== 'string') return '#';
+  if (href.startsWith('/') && !href.startsWith('//')) return href;
+  try {
+    const parsed = new URL(href);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? href : '#';
+  } catch {
+    return '#';
+  }
+}
+
 function renderDashboard() {
   const linksHtml = dashboardLinks
-    .map((item) => `<li><a href="${escapeHtml(item.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.name)}</a></li>`)
+    .map((item) => `<li><a href="${escapeHtml(safeHref(item.href))}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.name)}</a></li>`)
     .join('');
 
   return `<!doctype html>
@@ -148,6 +160,12 @@ function renderDashboard() {
   <script>
     const rows = document.getElementById('statusRows');
     const reply = document.getElementById('reply');
+    const esc = (value) => String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
 
     async function loadStatus() {
       rows.innerHTML = '<tr><td colspan="4">Loading...</td></tr>';
@@ -158,10 +176,10 @@ function renderDashboard() {
           const cls = item.ok ? 'ok' : 'bad';
           const statusText = item.ok ? 'online' : (item.error || 'offline');
           return '<tr>' +
-            '<td>' + item.label + '</td>' +
-            '<td class=\"' + cls + '\">' + statusText + '</td>' +
-            '<td>' + item.status + '</td>' +
-            '<td>' + item.latencyMs + ' ms</td>' +
+            '<td>' + esc(item.label) + '</td>' +
+            '<td class=\"' + esc(cls) + '\">' + esc(statusText) + '</td>' +
+            '<td>' + esc(item.status) + '</td>' +
+            '<td>' + esc(item.latencyMs) + ' ms</td>' +
           '</tr>';
         }).join('');
       } catch (error) {
@@ -301,5 +319,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  process.stdout.write(`Node A command center is running at http://0.0.0.0:${PORT}\n`);
+  if (NODE_C_BASE_URL.includes('192.168.1.X')) {
+    process.stdout.write('Warning: NODE_C_BASE_URL still uses placeholder IP (192.168.1.X). Update it before production.\n');
+  }
+  process.stdout.write(`Node A command center is running at http://localhost:${PORT}\n`);
 });
