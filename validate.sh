@@ -183,6 +183,18 @@ test_result $? "DEPLOYMENT_GUIDE.md exists"
 [ -f "QUICK_REFERENCE.md" ]
 test_result $? "QUICK_REFERENCE.md exists"
 
+[ -f "node-a-command-center.js" ]
+test_result $? "node-a-command-center.js exists"
+
+[ -f "docs/09_NODE_A_COMMAND_CENTER_GUIDEBOOK.md" ]
+test_result $? "Node A command center guidebook exists"
+
+grep -q "api/status" node-a-command-center.js
+test_result $? "Node A dashboard status endpoint configured"
+
+grep -q "api/chat" node-a-command-center.js
+test_result $? "Node A dashboard chat endpoint configured"
+
 echo ""
 echo "================================================================================"
 echo "  TEST RESULTS"
