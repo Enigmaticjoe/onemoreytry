@@ -22,7 +22,7 @@ LiteLLM:
 - node-c-arc/         Intel Arc (Fedora) Ollama via IPEX-LLM + optional Open WebUI
 - node-b-litellm/     LiteLLM proxy + Postgres
 - kvm-operator/       FastAPI “AI KVM Operator” + systemd unit + denylist policy
-- node-a-command-center.js  Node A dashboard + status checks + chatbot proxy
+- node-a-command-center/  Node A dashboard + status checks + chatbot proxy
 - home-assistant/     example snippet for extended_openai_conversation + webhook trigger
 - docs/               step-by-step deploy, troubleshooting, security, Claude Code runbook
 
@@ -30,5 +30,5 @@ LiteLLM:
 - Node C:  cd node-c-arc && cp .env.example .env && docker compose up -d
 - Node B:  cd node-b-litellm && cp .env.example .env && docker compose up -d
 - Operator: cd kvm-operator && cp .env.example .env && ./run_dev.sh
-- Node A command center: node node-a-command-center.js (opens dashboard on port 3099)
+- Node A:  cd node-a-command-center && node node-a-command-center.js (opens dashboard on port 3099)
 - Extended guidebook: docs/09_NODE_A_COMMAND_CENTER_GUIDEBOOK.md
