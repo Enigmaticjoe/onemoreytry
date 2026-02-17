@@ -150,7 +150,7 @@ This split preserves performance and allows minimal churn to existing compose de
 
 The new file:
 
-- `node-a-command-center.js`
+- `node-a-command-center/node-a-command-center.js`
 
 Capabilities added:
 
@@ -184,7 +184,7 @@ Capabilities added:
 ### 7.1 Start the command center
 
 ```bash
-cd <repository-root>
+cd <repository-root>/node-a-command-center
 node node-a-command-center.js
 ```
 
@@ -315,7 +315,7 @@ User report -> Open Node A dashboard -> Refresh status
 
 ## Appendix A — Exact file changes introduced by this update
 
-- Added: `node-a-command-center.js`
+- Added: `node-a-command-center/node-a-command-center.js`
 - Added: `docs/09_NODE_A_COMMAND_CENTER_GUIDEBOOK.md`
 - Updated references to include this guidebook and script.
 
