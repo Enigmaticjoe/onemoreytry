@@ -27,8 +27,8 @@ LiteLLM:
 - docs/               step-by-step deploy, troubleshooting, security, Claude Code runbook
 
 ## Quick start
-- Node A:  cd node-a-command-center && node node-a-command-center.js (opens dashboard on port 3099)
-- Node B:  cd node-b-litellm && cp .env.example .env && docker compose up -d
 - Node C:  cd node-c-arc && cp .env.example .env && docker compose up -d
+- Node B:  cd node-b-litellm && cp .env.example .env && docker compose up -d
 - Operator: cd kvm-operator && cp .env.example .env && ./run_dev.sh
+- Node A:  cd node-a-command-center && node node-a-command-center.js (opens dashboard on port 3099)
 - Extended guidebook: docs/09_NODE_A_COMMAND_CENTER_GUIDEBOOK.md
