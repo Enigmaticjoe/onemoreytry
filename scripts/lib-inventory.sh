@@ -14,7 +14,8 @@ load_inventory() {
   NODE_B_IP="${NODE_B_IP:-192.168.1.222}"
   NODE_C_IP="${NODE_C_IP:-192.168.1.6}"
   NODE_D_IP="${NODE_D_IP:-192.168.1.149}"
-  NODE_E_IP="${NODE_E_IP:-}"
+  NODE_E_IP="${NODE_E_IP:-192.168.1.116}"
+  KVM_IP="${KVM_IP:-192.168.1.130}"
 
   NODE_A_SSH_USER="${NODE_A_SSH_USER:-root}"
   NODE_B_SSH_USER="${NODE_B_SSH_USER:-root}"

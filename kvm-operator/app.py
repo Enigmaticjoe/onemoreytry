@@ -58,7 +58,7 @@ REQUIRE_APPROVAL = os.getenv("REQUIRE_APPROVAL", "true").lower() in ("1", "true"
 ALLOW_DANGEROUS = os.getenv("ALLOW_DANGEROUS", "false").lower() in ("1", "true", "yes", "y")
 MAX_STEPS_DEFAULT = int(os.getenv("MAX_STEPS_DEFAULT", "10"))
 
-KVM_TARGETS_JSON = os.getenv("KVM_TARGETS_JSON", '{"node-c":"192.168.1.100"}')
+KVM_TARGETS_JSON = os.getenv("KVM_TARGETS_JSON", '{"kvm-d829":"192.168.1.130"}')
 try:
     KVM_TARGETS: Dict[str, str] = json.loads(KVM_TARGETS_JSON)
 except Exception as e:

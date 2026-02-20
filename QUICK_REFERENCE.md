@@ -237,4 +237,4 @@ base_url: http://node-b:4000/v1         # ❌ Wrong (unless DNS configured)
 - [ ] **Node D (Home Assistant)**: Add `configuration.yaml.snippet` content
 - [ ] **Test**: Run all test commands above
 - [ ] **Verify**: Check logs on all nodes
-- [ ] **Verify**: IP addresses are correct (Node C=192.168.1.6, HA=192.168.1.149, Proxmox=192.168.1.174, update Node E when known)
+- [x] **Network**: Node C=192.168.1.6, HA=192.168.1.149, Proxmox=192.168.1.174, Brawn=192.168.1.222, Blue Iris=192.168.1.116, KVM=192.168.1.130 (kvm-d829.local)

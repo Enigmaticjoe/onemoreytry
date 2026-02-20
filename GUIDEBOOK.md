@@ -50,9 +50,10 @@ NODE_A_IP=192.168.1.9        # Brain / vLLM
 NODE_B_IP=192.168.1.222      # Unraid / LiteLLM gateway
 NODE_C_IP=192.168.1.6        # Intel Arc / Ollama
 NODE_D_IP=192.168.1.149      # Home Assistant
-NODE_E_IP=192.168.1.Z        # Sentinel NVR        ← replace Z
+NODE_E_IP=192.168.1.116      # Blue Iris / Sentinel (Windows VM on Proxmox)
 PROXMOX_IP=192.168.1.174     # Proxmox server
-KVM_IP=192.168.1.K           # NanoKVM Cube IP     ← replace K
+KVM_IP=192.168.1.130         # NanoKVM kvm-d829.local
+KVM_HOSTNAME=kvm-d829.local  # NanoKVM hostname
 CLOUDFLARE_DOMAIN=happystrugglebus.us
 ```
 
@@ -272,7 +273,7 @@ cd ~/homelab/node-a-command-center
 export LITELLM_BASE_URL=http://192.168.1.222:4000
 export BRAIN_BASE_URL=http://192.168.1.9:8000
 export NODE_C_BASE_URL=http://192.168.1.6
-export NODE_E_BASE_URL=http://192.168.1.Z:3005  # ← replace with Node E IP
+export NODE_E_BASE_URL=http://192.168.1.116:3005
 
 node node-a-command-center.js
 ```
@@ -351,7 +352,7 @@ KVM_OPERATOR_TOKEN=<generate with: openssl rand -hex 24>
 NANOKVM_USERNAME=admin
 NANOKVM_PASSWORD=admin           # change to your NanoKVM password
 NANOKVM_AUTH_MODE=auto
-KVM_TARGETS_JSON={"node-c":"192.168.1.6","node-b":"192.168.1.222"}
+KVM_TARGETS_JSON={"kvm-d829":"192.168.1.130"}
 LITELLM_URL=http://192.168.1.222:4000/v1/chat/completions
 LITELLM_KEY=sk-master-key
 VISION_MODEL=intel-vision
@@ -709,9 +710,11 @@ If you set `HOME_ASSISTANT_URL` and `HOME_ASSISTANT_TOKEN` in OpenClaw, you can 
 
 ## Chapter 9 — Node E — Sentinel / NVR
 
+**Node E: Blue Iris NVR at `192.168.1.116` (Windows VM on Proxmox `192.168.1.174`)**
+
 ### 9.1 Webhook Integration
 
-Node E is a vision/NVR node. Connect its motion-detection webhooks to the AI stack:
+Node E runs Blue Iris NVR. Connect its motion-detection webhooks to the AI stack:
 
 ```bash
 # In your NVR software, set a webhook for motion events:
@@ -1091,7 +1094,9 @@ OpenClaw UI      | B     | http://192.168.1.222:18789       | 18789
 Deploy GUI       | A     | http://localhost:9999            | 9999
 Portainer        | B     | http://192.168.1.222:9000        | 9000
 Home Assistant   | D     | http://192.168.1.149:8123        | 8123
-Proxmox          | -     | http://192.168.1.174             | 8006
+Blue Iris NVR    | E     | http://192.168.1.116             | 80
+Proxmox          | -     | http://192.168.1.174:8006        | 8006
+NanoKVM          | -     | http://192.168.1.130 (kvm-d829)  | 80
 ```
 
 ## Appendix B — Install Order Cheat Sheet
