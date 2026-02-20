@@ -186,6 +186,17 @@ services:
       ZAI_API_KEY: ${ZAI_API_KEY:-}
 
       # ══════════════════════════════════════════════════════════════════════
+      # KVM OPERATOR — NanoKVM Cube control via AI KVM Operator service
+      # Deploy kvm-operator first (kvm-operator/run_dev.sh or systemd unit).
+      # Set KVM_OPERATOR_URL to the operator's LAN address and port.
+      # Set KVM_OPERATOR_TOKEN to match the operator's KVM_OPERATOR_TOKEN.
+      # Skill file: openclaw/skill-kvm.md  (place in agent workspace AGENTS.md
+      # or install via: node dist/index.js skills install kvm)
+      # ══════════════════════════════════════════════════════════════════════
+      KVM_OPERATOR_URL: ${KVM_OPERATOR_URL:-}
+      KVM_OPERATOR_TOKEN: ${KVM_OPERATOR_TOKEN:-}
+
+      # ══════════════════════════════════════════════════════════════════════
       # MESSAGING CHANNELS
       # Can also be configured after install via the Control UI.
       # ══════════════════════════════════════════════════════════════════════

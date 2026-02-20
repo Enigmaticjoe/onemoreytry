@@ -181,6 +181,8 @@
   // TIP: First skill installs that need Go tools may timeout.
   //      Simply click Install again — Go is cached after first download.
   //
+  // KVM skill: loaded from the local file (openclaw/skill-kvm.md).
+  // The skill uses KVM_OPERATOR_URL + KVM_OPERATOR_TOKEN env vars.
   // skills: {
   //   entries: {
   //     "some-skill": { enabled: true }
