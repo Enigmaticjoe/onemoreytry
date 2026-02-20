@@ -1,0 +1,216 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# OpenClaw AI Gateway — Portainer Stack for Unraid
+# https://github.com/openclaw/openclaw
+#
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  STEP 1 — Build the image (SSH into Unraid once before deploying)       │
+# │                                                                         │
+# │  git clone https://github.com/openclaw/openclaw.git /tmp/openclaw-src  │
+# │  docker build -t openclaw:local -f /tmp/openclaw-src/Dockerfile \       │
+# │               /tmp/openclaw-src                                         │
+# │                                                                         │
+# │  STEP 2 — Create data directories                                       │
+# │                                                                         │
+# │  mkdir -p /mnt/user/appdata/openclaw/{config,workspace}                 │
+# │                                                                         │
+# │  STEP 3 — Generate a gateway token (paste into OPENCLAW_GATEWAY_TOKEN)  │
+# │                                                                         │
+# │  openssl rand -hex 32                                                   │
+# │                                                                         │
+# │  STEP 4 — Paste this file into Portainer → Stacks → Add Stack          │
+# │           Set environment variables in the "Environment variables" tab  │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
+# YOUR EXISTING SERVICES THIS STACK CAN LEVERAGE:
+#   • hf-vllm      → http://host.docker.internal:8880/v1   (local LLM)
+#   • hf-searxng   → http://host.docker.internal:8082       (local search)
+#   • browserless  → http://host.docker.internal:3005       (browser automation)
+#   • hf-qdrant    → http://host.docker.internal:6333       (vector store)
+#
+# HOST PORTS USED (not already in your stack):
+#   18789  — Gateway WebSocket (agents and CLI connect here)
+#   18790  — Bridge HTTP (health checks, webhooks from channels)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+version: "3.9"
+
+services:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # openclaw-gateway
+  # The core AI assistant control plane. Manages sessions, channels, tools,
+  # and routes tasks to agents. Connects to your messaging platforms
+  # (Telegram, Discord, Slack, etc.) and AI model providers.
+  # ─────────────────────────────────────────────────────────────────────────
+  openclaw-gateway:
+    image: openclaw:local
+    container_name: openclaw-gateway
+    hostname: openclaw-gateway
+    restart: unless-stopped
+    init: true
+
+    command:
+      - node
+      - dist/index.js
+      - gateway
+      - --bind
+      - lan          # binds to all interfaces; OPENCLAW_GATEWAY_TOKEN is required
+      - --port
+      - "18789"
+
+    ports:
+      - "18789:18789"  # WebSocket gateway — agents/CLI connect here
+      - "18790:18790"  # HTTP bridge — health checks & incoming webhooks
+
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+
+      # ── Gateway Auth (REQUIRED) ──────────────────────────────────────────
+      # Must be set when binding to LAN. Generate with: openssl rand -hex 32
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+
+      # ── State Paths ──────────────────────────────────────────────────────
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+
+      # ── AI Provider Keys (add whichever you use) ─────────────────────────
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+
+      # ── Local vLLM via your existing hf-vllm container ───────────────────
+      # Uncomment these two lines to use your local vLLM (port 8880) as the
+      # OpenAI-compatible backend. Set the model name in openclaw.json after
+      # first boot: ~/.openclaw/openclaw.json → agents.defaults.model
+      #
+      # OPENAI_BASE_URL: http://host.docker.internal:8880/v1
+      # OPENAI_API_KEY: EMPTY
+
+      # ── Claude Web Session (optional — only for claude.ai scraping) ──────
+      # Not needed if you use the ANTHROPIC_API_KEY above.
+      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY:-}
+      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY:-}
+      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE:-}
+
+      # ── Messaging Channels ───────────────────────────────────────────────
+      # Add tokens for whichever platforms you want OpenClaw to respond on.
+      # After the gateway starts, you can also run: openclaw channels login
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}  # Socket Mode app-level token
+      MATTERMOST_BOT_TOKEN: ${MATTERMOST_BOT_TOKEN:-}
+      MATTERMOST_URL: ${MATTERMOST_URL:-}
+
+      # ── Search & Tool APIs ───────────────────────────────────────────────
+      # Your existing hf-searxng is usable at http://host.docker.internal:8082
+      # (configure in openclaw.json under tools.searxng.baseUrl)
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+
+      # ── Voice ────────────────────────────────────────────────────────────
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+
+    volumes:
+      # Unraid appdata — persists config, sessions, channel credentials, keys
+      - /mnt/user/appdata/openclaw/config:/home/node/.openclaw
+      # Workspace — agent file outputs, canvas, downloads
+      - /mnt/user/appdata/openclaw/workspace:/home/node/.openclaw/workspace
+
+    extra_hosts:
+      # Allows OpenClaw to reach other Unraid containers by host IP:
+      #   hf-vllm      → http://host.docker.internal:8880/v1
+      #   hf-searxng   → http://host.docker.internal:8082
+      #   browserless  → http://host.docker.internal:3005
+      #   hf-qdrant    → http://host.docker.internal:6333
+      #   hf-openwebui → http://host.docker.internal:3002
+      - "host.docker.internal:host-gateway"
+
+    networks:
+      - openclaw
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          wget -qO- http://localhost:18790/health 2>/dev/null ||
+          wget -qO- http://localhost:18789/ 2>/dev/null ||
+          exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+
+    labels:
+      net.unraid.docker.managed: "portainer"
+      net.unraid.docker.icon: "https://avatars.githubusercontent.com/u/187832716"
+      net.unraid.docker.webui: "http://[IP]:[PORT:18790]"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # openclaw-sandbox-browser  (OPTIONAL)
+  # A dedicated Chromium sandbox for agent browser automation.
+  # Uses a fresh browserless instance isolated to OpenClaw.
+  # Remove this service if you want to reuse your existing browserless
+  # container at host port 3005 (configure in openclaw.json instead).
+  # ─────────────────────────────────────────────────────────────────────────
+  openclaw-browser:
+    image: browserless/chrome:latest
+    container_name: openclaw-browser
+    restart: unless-stopped
+    # No host port needed — gateway talks to it over the openclaw network
+    expose:
+      - "3000"
+    environment:
+      # Restrict to localhost/internal only for security
+      DISABLE_AUTO_SET_DOWNLOAD_BEHAVIOR: "true"
+      MAX_CONCURRENT_SESSIONS: "5"
+      CONNECTION_TIMEOUT: "120000"
+      MAX_QUEUE_LENGTH: "10"
+      DEFAULT_IGNORE_HTTPS_ERRORS: "true"
+    networks:
+      - openclaw
+    labels:
+      net.unraid.docker.managed: "portainer"
+
+# ───────────────────────────────────────────────────────────────────────────
+# AFTER FIRST DEPLOY — one-time onboarding via Portainer Console:
+#
+#   1. Open Portainer → Containers → openclaw-gateway → Console
+#   2. Run: node dist/index.js onboard --no-install-daemon
+#      When prompted:
+#        Gateway bind:  lan
+#        Gateway auth:  token
+#        Gateway token: <your OPENCLAW_GATEWAY_TOKEN value>
+#        Tailscale:     Off
+#        Install daemon: No
+#
+#   3. Add messaging channels (pick any):
+#      node dist/index.js channels add --channel telegram --token <BOT_TOKEN>
+#      node dist/index.js channels add --channel discord  --token <BOT_TOKEN>
+#
+#   4. Check gateway health:
+#      node dist/index.js health --token <your OPENCLAW_GATEWAY_TOKEN>
+#
+#   5. Point agents/clients at:
+#      ws://<UNRAID_IP>:18789  (token auth header: X-Gateway-Token: <token>)
+#
+# CONNECTING TO YOUR LOCAL VLLM:
+#   In Portainer, set these env vars on openclaw-gateway:
+#     OPENAI_BASE_URL=http://host.docker.internal:8880/v1
+#     OPENAI_API_KEY=EMPTY
+#   Then in openclaw.json set:
+#     { "agents": { "defaults": { "model": "openai:<your-model-name>" } } }
+#
+# USING YOUR EXISTING SEARXNG FOR SEARCH:
+#   In /mnt/user/appdata/openclaw/config/openclaw.json add:
+#     { "tools": { "searxng": { "baseUrl": "http://host.docker.internal:8082" } } }
+# ───────────────────────────────────────────────────────────────────────────
+
+networks:
+  openclaw:
+    name: openclaw
+    driver: bridge
