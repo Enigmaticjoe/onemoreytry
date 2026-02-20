@@ -227,13 +227,21 @@ services:
       # Config, sessions, credentials — maps to /root/.openclaw (runs as root)
       - /mnt/user/appdata/openclaw/config:/root/.openclaw
 
-      # Agent workspace: files, memory, AGENTS.md, projects
+      # Agent workspace: files, memory, AGENTS.md, projects, skill files
       - /mnt/user/appdata/openclaw/workspace:/home/node/clawd
 
       # Optional: Homebrew (skills that need brew/go tools persist across restarts)
       # Install Homebrew once via console if you need it:
       #   NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
       - /mnt/user/appdata/openclaw/homebrew:/home/linuxbrew/.linuxbrew
+
+      # Docker socket — grants OpenClaw the ability to manage containers/stacks
+      # on this machine (Node B / Unraid) directly via Docker API.
+      # Required for deployment assistant role.
+      # SECURITY: This grants root-equivalent access to the Docker daemon.
+      # Only enable if you trust your OpenClaw configuration and keep the
+      # OPENCLAW_GATEWAY_TOKEN secret.
+      - /var/run/docker.sock:/var/run/docker.sock
 
     extra_hosts:
       # Reach all your Unraid containers and the Unraid API from inside OpenClaw:

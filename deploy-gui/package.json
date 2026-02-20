@@ -1,0 +1,15 @@
+{
+  "name": "homelab-deploy-gui",
+  "version": "1.0.0",
+  "description": "Visual GUI for deploying and administering the Grand Unified AI Home Lab",
+  "main": "deploy-gui.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node deploy-gui.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
