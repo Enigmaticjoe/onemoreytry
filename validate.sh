@@ -202,6 +202,72 @@ grep -q "install-wizard" node-a-command-center/node-a-command-center.js
 test_result $? "Node A install wizard route configured"
 
 echo ""
+
+# Test 7: Validate NanoKVM / OpenClaw integration
+echo "7. Validating NanoKVM + OpenClaw integration..."
+echo "-----------------------------------------------"
+
+[ -f "kvm-operator/.env.example" ]
+test_result $? "kvm-operator/.env.example exists"
+
+[ -f "openclaw/skill-kvm.md" ]
+test_result $? "openclaw/skill-kvm.md (OpenClaw KVM skill) exists"
+
+# AES key fix: SECRET_KEY must be a valid 32-byte AES-256 key
+grep -q "SECRET_KEY = (_KEY_RAW" kvm-operator/app.py
+test_result $? "AES-256-CBC key padding applied (32-byte key)"
+
+# Dual-path read endpoints
+grep -q '"/kvm/snapshot/{target}"' kvm-operator/app.py
+test_result $? "Read endpoint GET /kvm/snapshot/{target} defined"
+
+grep -q '"/kvm/status/{target}"' kvm-operator/app.py
+test_result $? "Read endpoint GET /kvm/status/{target} defined"
+
+grep -q '"/kvm/power/{target}"' kvm-operator/app.py
+test_result $? "Read endpoint GET /kvm/power/{target} defined"
+
+# Dual-path write endpoints
+grep -q '"/kvm/power/{target}"' kvm-operator/app.py
+test_result $? "Write endpoint POST /kvm/power/{target} defined"
+
+grep -q '"/kvm/keyboard/{target}"' kvm-operator/app.py
+test_result $? "Write endpoint POST /kvm/keyboard/{target} defined"
+
+grep -q '"/kvm/mouse/{target}"' kvm-operator/app.py
+test_result $? "Write endpoint POST /kvm/mouse/{target} defined"
+
+# Approval gate on write path
+grep -q "REQUIRE_APPROVAL" kvm-operator/app.py
+test_result $? "REQUIRE_APPROVAL gate present on write endpoints"
+
+# NanoKVM complete endpoint surface
+grep -q "get_vm_info" kvm-operator/app.py
+test_result $? "NanoKVM GET /api/vm/info method defined"
+
+grep -q "get_power_status" kvm-operator/app.py
+test_result $? "NanoKVM GET /api/vm/power method defined"
+
+grep -q "power_action" kvm-operator/app.py
+test_result $? "NanoKVM POST /api/vm/power method defined"
+
+grep -q "hid_key" kvm-operator/app.py
+test_result $? "NanoKVM POST /api/hid/keyboard method defined"
+
+grep -q "hid_mouse" kvm-operator/app.py
+test_result $? "NanoKVM POST /api/hid/mouse method defined"
+
+# OpenClaw integration
+grep -q "KVM_OPERATOR_URL" openclaw/docker-compose.yml
+test_result $? "KVM_OPERATOR_URL env var in OpenClaw docker-compose"
+
+grep -q "KVM_OPERATOR_TOKEN" openclaw/docker-compose.yml
+test_result $? "KVM_OPERATOR_TOKEN env var in OpenClaw docker-compose"
+
+grep -q "skill-kvm" openclaw/skill-kvm.md
+test_result $? "skill-kvm.md references NanoKVM skill name"
+
+echo ""
 echo "================================================================================"
 echo "  TEST RESULTS"
 echo "================================================================================"
