@@ -1,47 +1,50 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # OpenClaw AI Gateway — Portainer Stack for Unraid
 # https://github.com/openclaw/openclaw
+# Unraid support thread: https://forums.unraid.net/topic/196865-support-openclaw-ai-personal-assistant
 #
 # ┌─────────────────────────────────────────────────────────────────────────┐
-# │  STEP 1 — Build the image (SSH into Unraid once)                        │
+# │  STEP 1 — Create data directories (SSH into Unraid)                     │
 # │                                                                         │
-# │  git clone https://github.com/openclaw/openclaw.git /tmp/openclaw-src  │
-# │  docker build -t openclaw:local -f /tmp/openclaw-src/Dockerfile \       │
-# │               /tmp/openclaw-src                                         │
+# │  mkdir -p /mnt/user/appdata/openclaw/{config,workspace,homebrew}        │
 # │                                                                         │
-# │  STEP 2 — Create data directories                                       │
-# │                                                                         │
-# │  mkdir -p /mnt/user/appdata/openclaw/{config,workspace}                 │
-# │                                                                         │
-# │  STEP 3 — Copy and edit openclaw.json                                   │
+# │  STEP 2 — Copy and edit openclaw.json                                   │
 # │                                                                         │
 # │  cp openclaw/openclaw.json /mnt/user/appdata/openclaw/config/           │
-# │  # Edit it: set your vLLM model ID and remove unused provider blocks    │
+# │  # Edit it: set your vLLM model ID, remove unused provider blocks       │
 # │  # Get model ID: curl http://<UNRAID_IP>:8880/v1/models | jq '.data[].id' │
 # │                                                                         │
-# │  STEP 4 — Generate a gateway token (paste into OPENCLAW_GATEWAY_TOKEN)  │
+# │  STEP 3 — Generate a gateway token                                      │
 # │                                                                         │
-# │  openssl rand -hex 32                                                   │
+# │  openssl rand -hex 24                                                   │
+# │  # Paste into OPENCLAW_GATEWAY_TOKEN below                              │
 # │                                                                         │
-# │  STEP 5 — Get your Unraid API key (for Unraid control via agents)       │
+# │  STEP 4 — Get your Unraid API key (optional, for server control)        │
 # │                                                                         │
 # │  Unraid WebGUI → Settings → Management Access → API Keys → Create       │
-# │  (paste into UNRAID_API_KEY — agents can then query containers/array)   │
+# │                                                                         │
+# │  STEP 5 — Get Home Assistant token (optional, for smart home control)   │
+# │                                                                         │
+# │  HA → Profile → Long-Lived Access Tokens → Create Token                 │
+# │  Set HOME_ASSISTANT_URL to local URL OR Nabu Casa cloud URL:            │
+# │    Local:      http://192.168.1.x:8123                                  │
+# │    Nabu Casa:  https://xxxxx.ui.nabu.casa                               │
 # │                                                                         │
 # │  STEP 6 — Paste this file into Portainer → Stacks → Add Stack           │
+# │                                                                         │
+# │  STEP 7 — Access the Control UI (same port, token in URL)               │
+# │                                                                         │
+# │  http://<UNRAID_IP>:18789/?token=<OPENCLAW_GATEWAY_TOKEN>               │
 # └─────────────────────────────────────────────────────────────────────────┘
 #
-# YOUR UNRAID SERVICES THIS STACK USES:
+# YOUR UNRAID SERVICES REFERENCED BY THIS STACK:
 #   hf-vllm      :8880/v1  ← primary AI model (local, private, free)
 #   hf-searxng   :8082     ← local web search (no API key required)
-#   browserless  :3005     ← browser automation (or use openclaw-browser below)
 #   hf-qdrant    :6333     ← vector store (agent memory)
+#   browserless  :3005     ← browser automation
 #   hf-openwebui :3002     ← point at http://<UNRAID_IP>:18789/v1 for chat UI
+#   Home Asst    :8123     ← or Nabu Casa: https://xxxxx.ui.nabu.casa
 #   Unraid API   :80/graphql ← Docker/VM/array/system control via agents
-#
-# PORTS USED (not already in your setup):
-#   18789  — Gateway WebSocket + OpenAI-compat HTTP API
-#   18790  — HTTP Bridge (health, webhook, control UI)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 version: "3.9"
@@ -49,50 +52,101 @@ version: "3.9"
 services:
 
   openclaw-gateway:
-    image: openclaw:local
+    # Official pre-built image from GitHub Container Registry.
+    # No local build needed — this is the same image used by the Unraid CA template.
+    image: ghcr.io/openclaw/openclaw:latest
     container_name: openclaw-gateway
-    hostname: openclaw-gateway
+    # REQUIRED: container must run as root (official template requirement)
+    user: root
+    hostname: OpenClaw
     restart: unless-stopped
     init: true
 
+    # Startup command (mirrors the official Unraid CA template PostArgs):
+    # 1. Creates config dir if missing
+    # 2. Writes a default openclaw.json if one doesn't already exist
+    # 3. Starts the gateway bound to LAN
+    # NOTE: If /mnt/user/appdata/openclaw/config/openclaw.json already exists
+    #       (from STEP 2 above), the default is NOT written — your config is used.
     command:
-      - node
-      - dist/index.js
-      - gateway
-      - --bind
-      - lan
-      - --port
-      - "18789"
+      - sh
+      - -c
+      - >
+        mkdir -p /root/.openclaw /home/linuxbrew &&
+        [ -s /root/.openclaw/openclaw.json ] ||
+        echo '{"gateway":{"mode":"local","bind":"lan","controlUi":{"allowInsecureAuth":true},"auth":{"mode":"token"}}}' > /root/.openclaw/openclaw.json &&
+        exec node dist/index.js gateway --bind lan
 
     ports:
-      - "18789:18789"   # WebSocket gateway + OpenAI-compat /v1/chat/completions
-      - "18790:18790"   # HTTP bridge: health, webhooks, control UI
+      # ALL traffic on ONE port: WebSocket gateway + OpenAI-compat API +
+      # Control UI (?token=...) + Webhooks (/hooks/*) + Health
+      - "18789:18789"
 
     environment:
-      HOME: /home/node
+      HOME: /root
       TERM: xterm-256color
 
+      # PATH must include Homebrew so skills that need brew/go tools work.
+      # Do not remove entries from this PATH.
+      PATH: /home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
       # ── Gateway Auth (REQUIRED) ──────────────────────────────────────────
-      # Generate with: openssl rand -hex 32
+      # Generate: openssl rand -hex 24
+      # Access UI: http://<UNRAID_IP>:18789/?token=<this value>
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
 
       # ══════════════════════════════════════════════════════════════════════
-      # LOCAL AI — vLLM
-      # Setting VLLM_API_KEY (any value) activates the vllm provider.
-      # baseUrl is set in openclaw.json (models.providers.vllm.baseUrl)
-      # so the gateway finds your hf-vllm container at :8880.
+      # HOME ASSISTANT — Smart Home Control
+      # Works with both local HA and Nabu Casa remote access.
+      #
+      # Local URL:     http://192.168.1.x:8123
+      # Nabu Casa URL: https://xxxxx.ui.nabu.casa  ← copy from HA → Settings
+      #                → System → Network → Home Assistant Cloud
+      #
+      # Token: HA → Profile → Long-Lived Access Tokens → Create Token
+      # (give it a descriptive name like "openclaw")
+      #
+      # Once set, ask your agent:
+      #   "Turn off the living room lights"
+      #   "Is the garage door closed?"
+      #   "Set thermostat to 72 degrees"
+      #   "Activate the movie mode scene"
+      #   "Run the good morning automation"
+      # ══════════════════════════════════════════════════════════════════════
+      HOME_ASSISTANT_URL: ${HOME_ASSISTANT_URL:-}
+      HOME_ASSISTANT_TOKEN: ${HOME_ASSISTANT_TOKEN:-}
+
+      # ══════════════════════════════════════════════════════════════════════
+      # UNRAID SERVER CONTROL
+      # Get key: Unraid WebGUI → Settings → Management Access → API Keys
+      # GraphQL endpoint: http://host.docker.internal/graphql
+      #
+      # Example prompts:
+      #   "List all running Docker containers"
+      #   "What's my array status and disk temperatures?"
+      #   "Restart the sonarr container"
+      #   "How much free space do I have on cache?"
+      # ══════════════════════════════════════════════════════════════════════
+      UNRAID_API_KEY: ${UNRAID_API_KEY:-}
+      UNRAID_URL: ${UNRAID_URL:-http://host.docker.internal}
+
+      # ══════════════════════════════════════════════════════════════════════
+      # LOCAL AI — vLLM (your hf-vllm container on port 8880)
+      # Setting VLLM_API_KEY activates the vllm provider (any value works).
+      # The baseUrl http://host.docker.internal:8880/v1 is set in openclaw.json.
       # ══════════════════════════════════════════════════════════════════════
       VLLM_API_KEY: ${VLLM_API_KEY:-vllm-local}
 
       # ══════════════════════════════════════════════════════════════════════
-      # CLOUD AI PROVIDERS — set keys for whichever you subscribe to.
-      # OpenClaw uses these as fallbacks when vLLM is busy/unavailable,
-      # or you can set any as primary in openclaw.json.
+      # CLOUD AI PROVIDERS
+      # Set keys for whichever you subscribe to.
+      # These are used as fallbacks when vLLM is unavailable, or can be set
+      # as primary in openclaw.json → agents.defaults.model.primary
       # ══════════════════════════════════════════════════════════════════════
 
       # Anthropic — claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      # Multiple keys (rotated automatically on rate-limit):
+      # Multiple keys rotated automatically on rate-limit:
       # ANTHROPIC_API_KEYS: ${ANTHROPIC_API_KEYS:-}
 
       # OpenAI — gpt-4o, gpt-4o-mini, o3, o4-mini
@@ -103,7 +157,7 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       # GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
 
-      # OpenRouter — 200+ models with one key (good free-tier fallback)
+      # OpenRouter — 200+ models, good free-tier fallback
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
 
       # xAI Grok
@@ -118,46 +172,27 @@ services:
       # Cerebras (fast inference)
       CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
 
-      # HuggingFace — access HF Inference API + your hf-tei-embed container
+      # Moonshot / Kimi K2 — confirmed working by forum users
+      # Get key: platform.moonshot.ai
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
+
+      # HuggingFace — access HF Inference API
       HF_TOKEN: ${HF_TOKEN:-}
-      # HUGGINGFACE_HUB_TOKEN: ${HUGGINGFACE_HUB_TOKEN:-}  # alias
 
-      # GitHub Copilot (if you have a Copilot subscription)
+      # GitHub Copilot (requires prior: node dist/index.js models auth login-github-copilot)
       COPILOT_GITHUB_TOKEN: ${COPILOT_GITHUB_TOKEN:-}
-      # GH_TOKEN: ${GH_TOKEN:-}  # alias
 
-      # Z.AI / GLM models
+      # Z.AI / GLM models — get key at z.ai/model-api
       ZAI_API_KEY: ${ZAI_API_KEY:-}
-
-      # Claude Web session (ONLY for claude.ai browser scraping — not API)
-      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY:-}
-      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY:-}
-      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE:-}
-
-      # ══════════════════════════════════════════════════════════════════════
-      # UNRAID API
-      # Get key: Unraid WebGUI → Settings → Management Access → API Keys
-      # Agents use UNRAID_API_KEY + UNRAID_URL to call your Unraid GraphQL API.
-      # GraphQL endpoint: http://<UNRAID_IP>/graphql
-      # Header: x-api-key: <UNRAID_API_KEY>
-      #
-      # Example prompts that will hit this API:
-      #   "List all running Docker containers on my server"
-      #   "What's the array status and disk temps?"
-      #   "Restart the sonarr container"
-      #   "How much free space do I have?"
-      # ══════════════════════════════════════════════════════════════════════
-      UNRAID_API_KEY: ${UNRAID_API_KEY:-}
-      # Your Unraid server LAN IP (e.g. http://192.168.1.100)
-      UNRAID_URL: ${UNRAID_URL:-http://host.docker.internal}
 
       # ══════════════════════════════════════════════════════════════════════
       # MESSAGING CHANNELS
+      # Can also be configured after install via the Control UI.
       # ══════════════════════════════════════════════════════════════════════
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
-      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}      # Socket Mode app-level token
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
       MATTERMOST_BOT_TOKEN: ${MATTERMOST_BOT_TOKEN:-}
       MATTERMOST_URL: ${MATTERMOST_URL:-}
       ZALO_BOT_TOKEN: ${ZALO_BOT_TOKEN:-}
@@ -165,9 +200,9 @@ services:
 
       # ══════════════════════════════════════════════════════════════════════
       # SEARCH & TOOL APIs
-      # (hf-searxng at :8082 is configured in openclaw.json — no key needed)
+      # hf-searxng at :8082 is configured in openclaw.json (no key needed).
       # ══════════════════════════════════════════════════════════════════════
-      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}       # 2000 free queries/month at brave.com/search/api
       PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
       FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
 
@@ -175,18 +210,26 @@ services:
       # VOICE
       # ══════════════════════════════════════════════════════════════════════
       ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
-      # XI_API_KEY: ${XI_API_KEY:-}  # alias for ElevenLabs
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
 
     volumes:
-      - /mnt/user/appdata/openclaw/config:/home/node/.openclaw
-      - /mnt/user/appdata/openclaw/workspace:/home/node/.openclaw/workspace
+      # Config, sessions, credentials — maps to /root/.openclaw (runs as root)
+      - /mnt/user/appdata/openclaw/config:/root/.openclaw
+
+      # Agent workspace: files, memory, AGENTS.md, projects
+      - /mnt/user/appdata/openclaw/workspace:/home/node/clawd
+
+      # Optional: Homebrew (skills that need brew/go tools persist across restarts)
+      # Install Homebrew once via console if you need it:
+      #   NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      - /mnt/user/appdata/openclaw/homebrew:/home/linuxbrew/.linuxbrew
 
     extra_hosts:
-      # Access all your Unraid containers by hostname:
+      # Reach all your Unraid containers and the Unraid API from inside OpenClaw:
       #   hf-vllm    → http://host.docker.internal:8880/v1
       #   hf-searxng → http://host.docker.internal:8082
       #   hf-qdrant  → http://host.docker.internal:6333
+      #   HA local   → http://host.docker.internal:8123  (if not using Nabu Casa)
       #   Unraid API → http://host.docker.internal/graphql
       - "host.docker.internal:host-gateway"
 
@@ -196,10 +239,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - >
-          wget -qO- http://localhost:18790/health 2>/dev/null ||
-          wget -qO- http://localhost:18789/ 2>/dev/null ||
-          exit 1
+        - "wget -qO- http://localhost:18789/ 2>/dev/null | grep -q . || exit 1"
       interval: 30s
       timeout: 10s
       retries: 5
@@ -207,64 +247,62 @@ services:
 
     labels:
       net.unraid.docker.managed: "portainer"
-      net.unraid.docker.icon: "https://avatars.githubusercontent.com/u/187832716"
-      net.unraid.docker.webui: "http://[IP]:[PORT:18790]"
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # openclaw-browser  (OPTIONAL dedicated Chromium sandbox)
-  # Remove this service if you want to reuse your existing browserless on
-  # port 3005. In that case update openclaw.json:
-  #   tools.browser.wsEndpoint = "ws://host.docker.internal:3005"
-  # ─────────────────────────────────────────────────────────────────────────
-  openclaw-browser:
-    image: browserless/chrome:latest
-    container_name: openclaw-browser
-    restart: unless-stopped
-    expose:
-      - "3000"
-    environment:
-      MAX_CONCURRENT_SESSIONS: "5"
-      CONNECTION_TIMEOUT: "120000"
-      MAX_QUEUE_LENGTH: "10"
-      DEFAULT_IGNORE_HTTPS_ERRORS: "true"
-      DISABLE_AUTO_SET_DOWNLOAD_BEHAVIOR: "true"
-    networks:
-      - openclaw
-    labels:
-      net.unraid.docker.managed: "portainer"
+      net.unraid.docker.icon: "https://raw.githubusercontent.com/jdhill777/openclaw-unraid/master/openclaw-icon.png"
+      # Control UI is on the same port as the gateway — token in query string
+      net.unraid.docker.webui: "http://[IP]:[PORT:18789]/?token=${OPENCLAW_GATEWAY_TOKEN}"
 
 # ───────────────────────────────────────────────────────────────────────────
 # AFTER FIRST DEPLOY
 # ───────────────────────────────────────────────────────────────────────────
 #
-# 1. ONBOARDING (Portainer → openclaw-gateway → Console):
-#    node dist/index.js onboard --no-install-daemon
-#    Prompts: bind=lan  auth=token  token=<OPENCLAW_GATEWAY_TOKEN>
-#             tailscale=Off  daemon=No
+# NOTE: Use "node dist/index.js" instead of "openclaw" for all CLI commands
+#       inside this container (e.g. node dist/index.js models list)
 #
-# 2. VERIFY LOCAL vLLM IS DETECTED:
+# 1. ACCESS CONTROL UI:
+#    http://<UNRAID_IP>:18789/?token=<OPENCLAW_GATEWAY_TOKEN>
+#
+# 2. VERIFY vLLM IS DETECTED (Portainer → openclaw-gateway → Console):
 #    node dist/index.js models list
 #    → "vllm/your-model-id" should appear
-#    Switch live (no restart): /model vllm/your-model-id
+#    Switch live: /model vllm/your-model-id  (in chat)
 #
-# 3. ADD MESSAGING CHANNELS:
-#    node dist/index.js channels add --channel telegram --token <TOKEN>
-#    node dist/index.js channels add --channel discord  --token <TOKEN>
+# 3. VERIFY HOME ASSISTANT CONNECTION (in chat or console):
+#    "List my Home Assistant entities"
+#    "Is the front door locked?"
+#    Works with local URL or Nabu Casa — just needs HOME_ASSISTANT_URL set.
 #
-# 4. CONNECT OPEN-WEBUI TO OPENCLAW:
-#    In hf-openwebui settings → Connections → Add OpenAI-compatible API:
-#      URL:   http://<UNRAID_IP>:18789/v1
-#      Key:   <your OPENCLAW_GATEWAY_TOKEN>
-#      Model: openclaw:main  (or agent:main)
+# 4. ADD MESSAGING CHANNELS (Portainer → Console):
+#    node dist/index.js channels add --channel telegram --token <BOT_TOKEN>
+#    node dist/index.js channels add --channel discord  --token <BOT_TOKEN>
+#    (or add tokens as env vars and restart — both methods work)
 #
-# 5. AUTOMATE UNRAID VIA WEBHOOK (from User Scripts plugin):
-#    curl -s -X POST http://localhost:18790/hooks/agent \
+# 5. PAIR TELEGRAM (after adding channel):
+#    node dist/index.js pairing approve telegram <CODE>
+#    (code is sent to your Telegram app from the bot)
+#
+# 6. CONNECT OPEN-WEBUI TO OPENCLAW (hf-openwebui on :3002):
+#    Settings → Connections → Add OpenAI-compatible API
+#    URL:   http://<UNRAID_IP>:18789/v1  (must enable in openclaw.json)
+#    Key:   <OPENCLAW_GATEWAY_TOKEN>
+#    Model: openclaw:main  (or agent:main)
+#
+# 7. AUTOMATE FROM UNRAID USER SCRIPTS PLUGIN:
+#    curl -s -X POST http://localhost:18789/hooks/agent \
 #      -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
 #      -H "Content-Type: application/json" \
 #      -d '{"message":"Check array health and summarize disk temperatures"}'
 #
-# 6. GATEWAY HEALTH CHECK:
-#    node dist/index.js health --token <OPENCLAW_GATEWAY_TOKEN>
+# 8. APPROVE CONTROL UI DEVICE PAIRING (if you see 1008 error):
+#    node dist/index.js devices list
+#    node dist/index.js devices approve <DEVICE_ID>
+#
+# 9. OPTIONAL — INSTALL HOMEBREW (for skills needing brew/go tools):
+#    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+#    (ignore "Next steps" output — PATH is already configured via env var)
+#
+# SECURITY NOTE: Container runs as root (required by official template).
+# For improved security, avoid exposing port 18789 to the internet.
+# Use Tailscale or a reverse proxy with auth instead.
 # ───────────────────────────────────────────────────────────────────────────
 
 networks:

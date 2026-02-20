@@ -1,117 +1,25 @@
 // OpenClaw Configuration — Unraid Setup
-// Format: JSON5 (comments + trailing commas are allowed)
+// Format: JSON5 (comments + trailing commas allowed, strict key validation)
 // Path:   /mnt/user/appdata/openclaw/config/openclaw.json
 //
-// CRITICAL: Unknown top-level keys crash the Gateway on startup.
-//           Only use keys documented here.
+// BEFORE DEPLOYING:
+//   1. Get your vLLM model ID:
+//      curl http://<UNRAID_IP>:8880/v1/models | jq '.data[].id'
+//   2. Replace "your-model-id-here" with that ID in TWO places below
+//   3. Set contextWindow to match your vLLM --max-model-len value
+//   4. Remove any provider/tool blocks you don't use
 //
-// Before first deploy:
-//   1. Set your vLLM model ID (check: curl http://<UNRAID_IP>:8880/v1/models | jq '.data[].id')
-//   2. Set contextWindow to match your vLLM --max-model-len value
-//   3. Remove any providers/tools you don't use
+// CRITICAL: Unknown config keys crash the Gateway on startup.
+//           Only use keys present in this file — all are verified against docs.
 //
 // Hot-reload: most changes apply without restart.
-// Exception: gateway.* settings require a container restart.
+// Exception:  gateway.* keys require a container restart.
 {
-  // ── Default Model Selection ────────────────────────────────────────────
-  // Format: "providerName/model-id"
-  // Switch live (no restart): /model vllm/your-model-id
-  // List all available:       node dist/index.js models list
-  agents: {
-    defaults: {
-      model: {
-        // LOCAL FIRST — your hf-vllm on port 8880
-        // Change "your-model-id-here" to the actual model ID vLLM is serving
-        primary: "vllm/your-model-id-here",
-
-        // CLOUD FALLBACKS — used if vLLM is unavailable or rate-limited
-        // Remove any you don't have API keys for
-        fallbacks: [
-          "anthropic/claude-sonnet-4-6",
-          "openai/gpt-4o-mini",
-          "google/gemini-2.0-flash",
-          "openrouter/google/gemini-2.0-flash-exp:free",
-        ],
-      },
-
-      // Run agent code execution in isolated Docker containers
-      sandbox: {
-        mode: "non-main",
-      },
-    },
-  },
-
-  // ── Custom Model Providers ─────────────────────────────────────────────
-  // Built-in providers (anthropic, openai, google, openrouter, xai, groq,
-  // mistral, cerebras, ollama, huggingface, github-copilot) are auto-
-  // configured from their env vars — no entry needed here for those.
-  //
-  // Add an entry ONLY for local/custom inference servers with non-default URLs.
-  models: {
-    providers: {
-      // ── vLLM (your hf-vllm container on port 8880) ──────────────────
-      // VLLM_API_KEY env var must be set (any value) for this to activate.
-      // Because we use a non-default baseUrl, we define it explicitly here
-      // (auto-discovery only works for 127.0.0.1:8000).
-      vllm: {
-        baseUrl: "http://host.docker.internal:8880/v1",
-        // ${...} resolves from environment — matches VLLM_API_KEY in compose
-        apiKey: "${VLLM_API_KEY}",
-        api: "openai-completions",
-        models: [
-          {
-            // CHANGE THIS to your actual model ID from: GET /v1/models
-            id: "your-model-id-here",
-            name: "Local vLLM",
-            reasoning: false,
-            input: ["text"],
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            // Match to your vLLM --max-model-len launch parameter
-            contextWindow: 32768,
-            maxTokens: 8192,
-          },
-          // Add more if vLLM serves multiple models:
-          // {
-          //   id: "second-model-id",
-          //   name: "Second Model",
-          //   contextWindow: 128000,
-          //   maxTokens: 16384,
-          // },
-        ],
-      },
-
-      // ── HuggingFace TEI (your hf-tei-embed on port 8881) ────────────
-      // Your hf-tei-embed container serves text embeddings. OpenClaw can
-      // use it for semantic search / memory. Configured separately from
-      // the huggingface chat provider (set HF_TOKEN env var for that).
-      // No entry needed here — configure TEI via your memory/rag settings.
-
-    },
-  },
-
-  // ── Tools ──────────────────────────────────────────────────────────────
-  tools: {
-    // ── Local Search (your hf-searxng on port 8082) ──────────────────
-    // Agents use this for web search without needing a Brave/Perplexity key.
-    searxng: {
-      baseUrl: "http://host.docker.internal:8082",
-      enabled: true,
-    },
-
-    // ── Browser Automation ────────────────────────────────────────────
-    // Option A (default): dedicated openclaw-browser container in this stack
-    browser: {
-      wsEndpoint: "ws://openclaw-browser:3000",
-    },
-    // Option B: reuse your existing browserless on port 3005
-    // Comment out Option A above and uncomment this:
-    // browser: {
-    //   wsEndpoint: "ws://host.docker.internal:3005",
-    // },
-  },
-
   // ── Gateway Settings ───────────────────────────────────────────────────
+  // These keys require a container restart when changed.
   gateway: {
+    // "local" = gateway runs on this machine (not a remote proxy)
+    mode: "local",
     bind: "lan",
     port: 18789,
 
@@ -121,58 +29,161 @@
       mode: "token",
     },
 
+    // ── Control UI ───────────────────────────────────────────────────
+    // Access at: http://<UNRAID_IP>:18789/?token=<OPENCLAW_GATEWAY_TOKEN>
+    // Same port as the gateway — token goes in the URL query string.
+    controlUi: {
+      enabled: true,
+      // allowInsecureAuth: needed when accessing over plain HTTP on LAN.
+      // Set to false only if you're behind HTTPS (reverse proxy, Tailscale).
+      allowInsecureAuth: true,
+    },
+
     // ── OpenAI-Compatible HTTP API ──────────────────────────────────
     // Enables POST /v1/chat/completions on port 18789.
-    // This lets Open WebUI (your hf-openwebui on :3002) connect to OpenClaw
-    // as a backend — point it at http://<UNRAID_IP>:18789/v1
-    // Auth: Authorization: Bearer <OPENCLAW_GATEWAY_TOKEN>
-    // Select agent: model field = "openclaw:main" or "agent:main"
+    // Use this to connect Open WebUI (hf-openwebui on :3002) to OpenClaw:
+    //   Settings → Connections → Add OpenAI-compat API
+    //   URL:   http://<UNRAID_IP>:18789/v1
+    //   Key:   <OPENCLAW_GATEWAY_TOKEN>
+    //   Model: openclaw:main  (or agent:main)
     http: {
       endpoints: {
         chatCompletions: { enabled: true },
-        // Also enable OpenResponses API (supports images, files, streaming):
+        // OpenResponses API: supports images, files, streaming
         responses: { enabled: true },
       },
     },
 
     // ── Webhook Endpoints ────────────────────────────────────────────
-    // POST /hooks/agent — trigger an agent turn programmatically
+    // POST /hooks/agent — trigger an agent turn from any HTTP client
     // POST /hooks/wake  — send a system event
     // Auth: Authorization: Bearer <OPENCLAW_GATEWAY_TOKEN>
     //
-    // Use these to automate OpenClaw from:
-    //   • Home Assistant automations
-    //   • Unraid User Scripts plugin
-    //   • n8n / any HTTP client
-    //
-    // Example — query Unraid and get AI response via User Script:
-    //   curl -s -X POST http://localhost:18790/hooks/agent \
+    // Example — automate from Unraid User Scripts plugin:
+    //   curl -s -X POST http://localhost:18789/hooks/agent \
     //     -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
     //     -H "Content-Type: application/json" \
-    //     -d '{"message":"Check my array health and summarize disk temps"}'
+    //     -d '{"message":"Check array health and summarize disk temps"}'
+    //
+    // Example — automate from Home Assistant webhook automation:
+    //   action: rest_command.ask_openclaw
+    //   (add to HA configuration.yaml):
+    //     rest_command:
+    //       ask_openclaw:
+    //         url: "http://192.168.1.x:18789/hooks/agent"
+    //         method: POST
+    //         headers:
+    //           Authorization: "Bearer {{ your_token }}"
+    //         payload: '{"message":"{{ message }}"}'
     hooks: {
       enabled: true,
-      // Matches OPENCLAW_GATEWAY_TOKEN — do not hardcode here
+      // Token is resolved from OPENCLAW_GATEWAY_TOKEN env var
       token: "${OPENCLAW_GATEWAY_TOKEN}",
       path: "/hooks",
     },
+  },
 
-    // ── Web Control UI ───────────────────────────────────────────────
-    // Enables a browser dashboard at http://<UNRAID_IP>:18790
-    controlUi: {
+  // ── Default Model Selection ────────────────────────────────────────────
+  // Format: "providerName/model-id"
+  // Switch live in chat (no restart): /model vllm/your-model-id
+  // List all available (console):     node dist/index.js models list
+  agents: {
+    defaults: {
+      model: {
+        // LOCAL FIRST — your hf-vllm on port 8880
+        // CHANGE THIS to the model ID from: curl http://<UNRAID_IP>:8880/v1/models
+        primary: "vllm/your-model-id-here",
+
+        // CLOUD FALLBACKS — used if vLLM is unavailable
+        // Remove any you don't have API keys for
+        fallbacks: [
+          "anthropic/claude-sonnet-4-6",
+          "openai/gpt-4o-mini",
+          "google/gemini-2.0-flash",
+          "openrouter/google/gemini-2.0-flash-exp:free",
+        ],
+      },
+    },
+  },
+
+  // ── Custom Model Providers ─────────────────────────────────────────────
+  // Built-in providers (anthropic, openai, google, openrouter, groq, xai,
+  // mistral, cerebras, huggingface, github-copilot, zai, moonshot, ollama)
+  // are auto-configured from their env vars — no entry needed for those.
+  //
+  // Add entries ONLY for local/custom servers with non-default URLs.
+  models: {
+    providers: {
+      // ── vLLM (your hf-vllm container on port 8880) ──────────────────
+      // Auto-discovery only works for 127.0.0.1:8000, so we define it
+      // explicitly here since yours is at host.docker.internal:8880.
+      // ${VLLM_API_KEY} is substituted from the env var at runtime.
+      vllm: {
+        baseUrl: "http://host.docker.internal:8880/v1",
+        apiKey: "${VLLM_API_KEY}",
+        api: "openai-completions",
+        models: [
+          {
+            // CHANGE THIS — must match the actual model ID vLLM is serving
+            // Get it: curl http://<UNRAID_IP>:8880/v1/models | jq '.data[].id'
+            id: "your-model-id-here",
+            name: "Local vLLM",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            // Set to your vLLM --max-model-len value (check vLLM container logs)
+            contextWindow: 32768,
+            maxTokens: 8192,
+          },
+          // Add more models if your vLLM instance serves multiple:
+          // {
+          //   id: "second-model-id",
+          //   name: "Second Model",
+          //   contextWindow: 128000,
+          //   maxTokens: 16384,
+          // },
+        ],
+      },
+
+      // ── Ollama (if you run Ollama alongside vLLM) ────────────────────
+      // Uncomment and set your Ollama host IP if you want Ollama models too.
+      // ollama: {
+      //   baseUrl: "http://host.docker.internal:11434/v1",
+      //   apiKey: "ollama",
+      //   api: "openai-responses",
+      // },
+    },
+  },
+
+  // ── Tools ──────────────────────────────────────────────────────────────
+  tools: {
+    // ── Local Search (your hf-searxng on port 8082) ──────────────────
+    // No API key needed — searxng is self-hosted.
+    // Agents use this for web searches without requiring Brave/Perplexity.
+    searxng: {
+      baseUrl: "http://host.docker.internal:8082",
       enabled: true,
+    },
+
+    // ── Browser Automation ────────────────────────────────────────────
+    // Reuse your existing browserless container on port 3005.
+    // Agents use this to browse web pages, fill forms, take screenshots.
+    browser: {
+      wsEndpoint: "ws://host.docker.internal:3005",
     },
   },
 
   // ── Skills ─────────────────────────────────────────────────────────────
   // Skills are SKILL.md files that give agents new capabilities.
-  // Browse skills at: https://clawhub.com
-  // Install with: node dist/index.js skills install <skill-name>
+  // Browse: https://clawhub.com
+  // Install (console): node dist/index.js skills install <skill-name>
   //
-  // Unraid control skill (if published to ClawHub — check the registry):
+  // TIP: First skill installs that need Go tools may timeout.
+  //      Simply click Install again — Go is cached after first download.
+  //
   // skills: {
   //   entries: {
-  //     "unraid": { enabled: true }
+  //     "some-skill": { enabled: true }
   //   }
   // },
 }
