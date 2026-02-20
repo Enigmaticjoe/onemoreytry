@@ -6,7 +6,7 @@ const { URL } = require('url');
 const PORT = Number(process.env.COMMAND_CENTER_PORT || 3099);
 const LITELLM_BASE_URL = process.env.LITELLM_BASE_URL || 'http://192.168.1.222:4000';
 const BRAIN_BASE_URL = process.env.BRAIN_BASE_URL || 'http://192.168.1.9:8000';
-const NODE_C_BASE_URL = process.env.NODE_C_BASE_URL || 'http://192.168.1.X';
+const NODE_C_BASE_URL = process.env.NODE_C_BASE_URL || 'http://192.168.1.6';
 const NODE_E_BASE_URL = process.env.NODE_E_BASE_URL || 'http://192.168.1.Z:3005';
 const LITELLM_API_KEY = process.env.LITELLM_API_KEY || 'sk-master-key';
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'brain-heavy';
@@ -456,11 +456,11 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  if (NODE_C_BASE_URL.includes('192.168.1.X')) {
-    process.stdout.write('Warning: NODE_C_BASE_URL still uses placeholder IP (192.168.1.X). Update it before production.\n');
+  if (NODE_C_BASE_URL.includes('192.168.1.X') || NODE_C_BASE_URL.includes('192.168.1.Y') || NODE_C_BASE_URL.includes('192.168.1.Z')) {
+    process.stdout.write('Warning: NODE_C_BASE_URL still uses a placeholder IP. Update it before production.\n');
   }
-  if (NODE_E_BASE_URL.includes('192.168.1.Z')) {
-    process.stdout.write('Warning: NODE_E_BASE_URL still uses placeholder IP (192.168.1.Z). Update it before production.\n');
+  if (NODE_E_BASE_URL.includes('192.168.1.X') || NODE_E_BASE_URL.includes('192.168.1.Y') || NODE_E_BASE_URL.includes('192.168.1.Z')) {
+    process.stdout.write('Warning: NODE_E_BASE_URL still uses a placeholder IP. Update it before production.\n');
   }
   process.stdout.write(`Node A command center is running at http://localhost:${PORT}\n`);
 });

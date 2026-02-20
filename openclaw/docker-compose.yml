@@ -27,7 +27,7 @@
 # │                                                                         │
 # │  HA → Profile → Long-Lived Access Tokens → Create Token                 │
 # │  Set HOME_ASSISTANT_URL to local URL OR Nabu Casa cloud URL:            │
-# │    Local:      http://192.168.1.x:8123                                  │
+# │    Local:      http://192.168.1.149:8123                                  │
 # │    Nabu Casa:  https://xxxxx.ui.nabu.casa                               │
 # │                                                                         │
 # │  STEP 6 — Paste this file into Portainer → Stacks → Add Stack           │
@@ -99,7 +99,7 @@ services:
       # HOME ASSISTANT — Smart Home Control
       # Works with both local HA and Nabu Casa remote access.
       #
-      # Local URL:     http://192.168.1.x:8123
+      # Local URL:     http://192.168.1.149:8123
       # Nabu Casa URL: https://xxxxx.ui.nabu.casa  ← copy from HA → Settings
       #                → System → Network → Home Assistant Cloud
       #

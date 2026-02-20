@@ -70,7 +70,7 @@
     //   (add to HA configuration.yaml):
     //     rest_command:
     //       ask_openclaw:
-    //         url: "http://192.168.1.x:18789/hooks/agent"
+    //         url: "http://192.168.1.222:18789/hooks/agent"
     //         method: POST
     //         headers:
     //           Authorization: "Bearer {{ your_token }}"

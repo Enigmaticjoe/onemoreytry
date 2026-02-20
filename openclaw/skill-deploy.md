@@ -36,8 +36,8 @@ Check if a service is running by hitting its health endpoint:
 
 ```
 GET http://192.168.1.222:4000/health           → LiteLLM Gateway
-GET http://192.168.1.X:11434/api/version       → Ollama (Node C)
-GET http://192.168.1.X:3000                    → Chimera Face UI
+GET http://192.168.1.6:11434/api/version       → Ollama (Node C)
+GET http://192.168.1.6:3000                    → Chimera Face UI
 GET http://192.168.1.9:3099/api/status         → Node A Dashboard
 GET http://192.168.1.9:5000/health             → KVM Operator
 GET http://192.168.1.222:18789/                → OpenClaw Gateway
@@ -91,7 +91,7 @@ Use `ssh` to run commands on remote nodes. All nodes should have key-based auth 
 
 ### Deploy Node C (Intel Arc)
 ```bash
-ssh root@192.168.1.X "cd ~/homelab/node-c-arc && docker compose pull && docker compose up -d"
+ssh root@192.168.1.6 "cd ~/homelab/node-c-arc && docker compose pull && docker compose up -d"
 ```
 
 ### Deploy Node B LiteLLM
@@ -195,7 +195,7 @@ When asked to "deploy the full lab" or "set up everything", follow this order:
 ### LiteLLM returning 503
 1. Check backend endpoints in config.yaml are reachable
 2. `curl http://192.168.1.9:8000/health` (Node A vLLM)
-3. `curl http://192.168.1.X:11434/api/version` (Node C Ollama)
+3. `curl http://192.168.1.6:11434/api/version` (Node C Ollama)
 4. Restart LiteLLM: `docker restart litellm_gateway`
 
 ### OpenClaw not connecting to vLLM

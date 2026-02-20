@@ -17,7 +17,7 @@
  *
  * Environment variables:
  *   SENTINEL_PORT         HTTP listen port              (default 3005)
- *   NODE_C_OLLAMA_URL     Ollama base URL on Node C     (default http://192.168.1.X:11434)
+ *   NODE_C_OLLAMA_URL     Ollama base URL on Node C     (default http://192.168.1.6:11434)
  *   NODE_A_BASE_URL       Node A vLLM fallback base URL (default http://192.168.1.9:8000)
  *   VISION_MODEL          Ollama model name             (default llava)
  *   SENTINEL_TOKEN        Bearer token for write routes (default — must be set in prod)
@@ -32,7 +32,7 @@ const { URL } = require('url');
 // ── Configuration ────────────────────────────────────────────────────────────
 
 const PORT               = Number(process.env.SENTINEL_PORT       || 3005);
-const NODE_C_OLLAMA_URL  = process.env.NODE_C_OLLAMA_URL          || 'http://192.168.1.X:11434';
+const NODE_C_OLLAMA_URL  = process.env.NODE_C_OLLAMA_URL          || 'http://192.168.1.6:11434';
 const NODE_A_BASE_URL    = process.env.NODE_A_BASE_URL            || 'http://192.168.1.9:8000';
 const VISION_MODEL       = process.env.VISION_MODEL               || 'llava';
 const SENTINEL_TOKEN     = process.env.SENTINEL_TOKEN             || '';
@@ -551,8 +551,8 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   const warnings = [];
-  if (NODE_C_OLLAMA_URL.includes('192.168.1.X')) {
-    warnings.push('NODE_C_OLLAMA_URL still uses placeholder IP (192.168.1.X). Set it before production.');
+  if (/192\.168\.1\.[XYZ]/.test(NODE_C_OLLAMA_URL)) {
+    warnings.push('NODE_C_OLLAMA_URL still uses a placeholder IP. Set it before production.');
   }
   if (!SENTINEL_TOKEN) {
     warnings.push('SENTINEL_TOKEN is not set. Write endpoints (analyze, webhooks) will reject all requests.');

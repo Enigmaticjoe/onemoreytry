@@ -16,7 +16,7 @@ Aggressively audit the central Gateway proxy. If the routing layer crashes, the 
 
 ### 2. Network and Security Naivety
 Attack unencrypted HTTP traffic and hardcoded static credentials. 
-* Flag any instance of `sk-master-key` or hardcoded internal IPs (`192.168.1.X`).
+* Flag any instance of `sk-master-key` or unexpected hardcoded IPs (real network: Node C=`192.168.1.6`, HA=`192.168.1.149`, Proxmox=`192.168.1.174`, Brawn=`192.168.1.222`).
 * Challenge the over-reliance on `network_mode: host`. While convenient, it exposes all container ports to the host interface. Demand network segmentation or reverse proxies with strict access controls.
 
 ### 3. Container and Path Standards

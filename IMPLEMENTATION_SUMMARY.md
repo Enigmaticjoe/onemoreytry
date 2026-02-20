@@ -26,7 +26,7 @@ Successfully implemented a unified AI home lab configuration that links five phy
 **Solution:** Corrected mappings based on actual hardware:
 - **Node A (Brain):** RX 7900 XT at 192.168.1.9 → Heavy reasoning
 - **Node B (Brawn):** RTX 4070 at 192.168.1.222 → Fast chat + Gateway
-- **Node C (Command Center):** Intel Arc A770 at 192.168.1.X → Vision AI
+- **Node C (Command Center):** Intel Arc A770 at 192.168.1.6 → Vision AI
 
 ### 3. **LiteLLM Routing Configuration**
 **Problem:** Needed unified routing to all backend models.
@@ -71,7 +71,7 @@ services:
 Routes three model types:
 1. **brain-heavy** → `http://192.168.1.9:8000/v1` (RX 7900 XT / Llama-70B)
 2. **brawn-fast** → `http://192.168.1.222:8002/v1` (RTX 4070 / Local vLLM)
-3. **intel-vision** → `http://192.168.1.X:11434` (Arc A770 / Llava) with `supports_vision: True`
+3. **intel-vision** → `http://192.168.1.6:11434` (Arc A770 / Llava) with `supports_vision: True`
 
 **API Key:** `sk-master-key`
 
@@ -155,7 +155,7 @@ Automated validation script with 36 tests:
     │   Model Router:                      │
     │   • brain-heavy  → 192.168.1.9:8000 │
     │   • brawn-fast   → Local :8002       │
-    │   • intel-vision → 192.168.1.X:11434│
+    │   • intel-vision → 192.168.1.6:11434│
     └──────┬──────────────────────┬────────┘
            │                      │
      ┌─────▼──────┐        ┌─────▼──────┐
@@ -182,7 +182,7 @@ Before deploying, ensure:
 - [ ] **Node C:** Fedora 43 with Intel drivers installed
 - [ ] **Node C:** Run `sudo dnf install intel-level-zero-gpu intel-opencl`
 - [ ] **Network:** All nodes can communicate on 192.168.1.0/24
-- [ ] **IPs:** Update placeholder IPs (X, Y, Z) with actual values
+- [ ] **IPs:** Verify: Node C=192.168.1.6, HA=192.168.1.149, Proxmox=192.168.1.174, Node E TBD
 
 ### Deployment Steps
 
@@ -398,7 +398,7 @@ api_key: sk-master-key  # Must match config.yaml
 
 ## Next Steps
 
-1. **Update IP Placeholders:** Replace `192.168.1.X`, `Y`, `Z` with actual IPs
+1. **Verify IP Addresses:** Node C=`192.168.1.6`, HA=`192.168.1.149`, Proxmox=`192.168.1.174`, Brawn=`192.168.1.222` (set Node E when known)
 2. **Deploy Infrastructure:** Follow deployment checklist above
 3. **Test All Endpoints:** Run all validation tests
 4. **Monitor Performance:** Check logs and resource usage
