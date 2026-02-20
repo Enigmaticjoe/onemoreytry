@@ -7,6 +7,7 @@ const PORT = Number(process.env.COMMAND_CENTER_PORT || 3099);
 const LITELLM_BASE_URL = process.env.LITELLM_BASE_URL || 'http://192.168.1.222:4000';
 const BRAIN_BASE_URL = process.env.BRAIN_BASE_URL || 'http://192.168.1.9:8000';
 const NODE_C_BASE_URL = process.env.NODE_C_BASE_URL || 'http://192.168.1.X';
+const NODE_E_BASE_URL = process.env.NODE_E_BASE_URL || 'http://192.168.1.Z:3005';
 const LITELLM_API_KEY = process.env.LITELLM_API_KEY || 'sk-master-key';
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'brain-heavy';
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 7000);
@@ -18,11 +19,13 @@ const serviceChecks = [
   { key: 'brain', label: 'Node A Brain vLLM', url: `${BRAIN_BASE_URL}/health` },
   { key: 'vision', label: 'Node C Vision (Ollama)', url: `${NODE_C_BASE_URL}:11434/api/version` },
   { key: 'nodeCUi', label: 'Node C Chimera Face UI', url: `${NODE_C_BASE_URL}:3000` },
+  { key: 'nodeE', label: 'Node E Sentinel (Vision)', url: `${NODE_E_BASE_URL}/health` },
 ];
 
 const dashboardLinks = [
   { name: 'LiteLLM Gateway Health', href: `${LITELLM_BASE_URL}/health` },
   { name: 'Node C Chimera Face UI', href: `${NODE_C_BASE_URL}:3000` },
+  { name: 'Node E Sentinel Dashboard', href: `${NODE_E_BASE_URL}` },
   { name: 'Deployment Guide', href: '/docs/DEPLOYMENT_GUIDE' },
   { name: 'Quick Reference', href: '/docs/QUICK_REFERENCE' },
   { name: 'Node A Guidebook', href: '/docs/NODE_A_GUIDEBOOK' },
@@ -284,8 +287,24 @@ function renderInstallWizard() {
       {
         key: 'node-e',
         label: 'Node E (Sentinel/NVR)',
-        summary: 'Keep Node E as a consumer of AI services; do not expose KVM controls to Node E network segment.',
-        commands: ['# integrate NVR webhooks with Node C/Node A as needed', '# verify egress only to approved AI endpoints'].join(lineBreak)
+        summary: 'Node E runs its own vision service that calls Node C Ollama directly — no Unraid/LiteLLM hop in the vision path.',
+        commands: [
+          'cd node-e-sentinel',
+          '# Set required env vars before starting:',
+          'export NODE_C_OLLAMA_URL=http://<node-c-ip>:11434',
+          'export VISION_MODEL=llava',
+          'export SENTINEL_TOKEN=<your-secret-token>',
+          'export SENTINEL_PORT=3005',
+          '# Start the service:',
+          'node node-e-sentinel.js',
+          '# Verify health (no auth):',
+          'curl http://localhost:3005/health',
+          '# Check upstream vision node reachability:',
+          'curl http://localhost:3005/api/status',
+          '# Point Frigate (or other NVR) webhooks to:',
+          '#   POST http://<node-e-ip>:3005/api/webhook/frigate',
+          '#   Authorization: Bearer <SENTINEL_TOKEN>',
+        ].join(lineBreak)
       },
       {
         key: 'kvm',
@@ -439,6 +458,9 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   if (NODE_C_BASE_URL.includes('192.168.1.X')) {
     process.stdout.write('Warning: NODE_C_BASE_URL still uses placeholder IP (192.168.1.X). Update it before production.\n');
+  }
+  if (NODE_E_BASE_URL.includes('192.168.1.Z')) {
+    process.stdout.write('Warning: NODE_E_BASE_URL still uses placeholder IP (192.168.1.Z). Update it before production.\n');
   }
   process.stdout.write(`Node A command center is running at http://localhost:${PORT}\n`);
 });
