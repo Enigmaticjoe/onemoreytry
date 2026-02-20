@@ -26,3 +26,8 @@ Smoke test:
     -H "Authorization: Bearer $KVM_OPERATOR_TOKEN" \
     -H "Content-Type: application/json" \
     -d '{"instruction":"Describe the screen. If it is a login prompt, type username then password and press Enter. If logged in, respond success.","max_steps":3}'
+
+Safety reality check:
+  - denylist checks are helpful but incomplete against prompt-driven command generation
+  - keep REQUIRE_APPROVAL=true for routine operation
+  - only set ALLOW_DANGEROUS=true as a temporary break-glass action

@@ -32,3 +32,5 @@ LiteLLM:
 - Operator: cd kvm-operator && cp .env.example .env && ./run_dev.sh
 - Node A:  cd node-a-command-center && node node-a-command-center.js (opens dashboard on port 3099)
 - Extended guidebook: docs/09_NODE_A_COMMAND_CENTER_GUIDEBOOK.md
+- Unified install guidebook: docs/10_UNIFIED_INSTALL_GUIDEBOOK.md
+- GUI install wizard (per-node): http://<node-a-ip>:3099/install-wizard

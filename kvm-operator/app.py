@@ -94,8 +94,9 @@ def is_payload_allowed(payload: str) -> tuple[bool, str]:
     if ALLOW_DANGEROUS:
         return True, "ALLOW_DANGEROUS=true"
     low = payload.lower()
+    low_compact = re.sub(r"\s+", " ", low)
     for bad in DENYLIST:
-        if bad in low:
+        if bad in low or bad in low_compact:
             return False, f"Denied by policy (matched: {bad})"
     return True, "OK"
 

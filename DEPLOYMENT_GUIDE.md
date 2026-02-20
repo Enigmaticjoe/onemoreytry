@@ -6,7 +6,7 @@ This guide provides step-by-step instructions for deploying the unified AI home 
 
 | Node | Role | IP | Hardware | GPU | Purpose |
 |------|------|----|---------|----|---------|
-| **Node A** | Brain (Deep Thought) | `192.168.1.9` | Core Ultra 7 265KF, 128GB DDR5 | **RX 7900 XT (20GB)** | Heavy Logic/Reasoning (Llama-3.1-70B-AWQ) |
+| **Node A** | Brain (Deep Thought) | `192.168.1.9` | Core Ultra 7 265KF, 128GB DDR5 | **RX 7900 XT (20GB)** | Heavy Logic/Reasoning (start with feasible 8B/14B profile) |
 | **Node B** | Brawn (The Gateway) | `192.168.1.222` | i5-13600K, 96GB DDR5 | **RTX 4070 (12GB)** | Fast Chat & **Central AI Gateway** |
 | **Node C** | Command Center (The Eyes) | `192.168.1.X` | Ryzen 7 7700X, 32GB RAM | **Intel Arc A770 (16GB)** | Vision AI (Llava) & Whisper Audio |
 | **Node D** | Home Assistant (The Voice) | `192.168.1.Y` | Ryzen 7 7430U, 32GB DDR4 | N/A | Voice Client (connects to Gateway) |
@@ -14,18 +14,20 @@ This guide provides step-by-step instructions for deploying the unified AI home 
 
 ## Unified API Endpoint
 
-All AI services are accessed through the **LiteLLM Gateway** on Node B at:
+Primary AI access is through the **LiteLLM Gateway** on Node B at:
 ```
 http://192.168.1.222:4000
 ```
 
 API Key: `sk-master-key`
 
+**Resiliency reality check:** if Node B is unavailable, clients needing continuity should use emergency direct endpoints (`Node A: :8000`, `Node C: :11434`) until gateway service is restored.
+
 ### Available Models
 
 | Model Name | Routes to | Hardware | Use Case |
 |-----------|-----------|----------|----------|
-| `brain-heavy` | Node A vLLM (192.168.1.9:8000) | RX 7900 XT | Heavy reasoning, complex tasks |
+| `brain-heavy` | Node A vLLM (192.168.1.9:8000) | RX 7900 XT | Heavy reasoning, complex tasks (after model-size feasibility validation) |
 | `brawn-fast` | Node B vLLM (192.168.1.222:8002) | RTX 4070 | Fast chat, quick responses |
 | `intel-vision` | Node C Ollama (192.168.1.X:11434) | Intel Arc A770 | Vision AI, image analysis |
 
@@ -312,7 +314,12 @@ curl -X POST http://192.168.1.222:4000/v1/chat/completions \
 3. **Firewall Rules**: Limit access to required ports:
    - Node B: 4000 (LiteLLM), 8002 (vLLM)
    - Node A: 8000 (vLLM)
-   - Node C: 11434 (Ollama), 3000 (WebUI)
+    - Node C: 11434 (Ollama), 3000 (WebUI)
+
+4. **KVM Safety Controls**: denylist matching is useful but incomplete:
+   - Keep `REQUIRE_APPROVAL=true`
+   - Keep `ALLOW_DANGEROUS=false` outside break-glass maintenance
+   - Continue network segmentation for KVM traffic
 
 ---
 

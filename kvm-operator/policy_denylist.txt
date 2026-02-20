@@ -5,6 +5,9 @@ rm -rf
 :(){ :|:& };:
 shutdown -h now
 reboot -f
+poweroff
+halt
+init 0
 wipefs
 fdisk
 parted
