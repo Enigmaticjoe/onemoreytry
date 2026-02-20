@@ -189,11 +189,17 @@ test_result $? "node-a-command-center/node-a-command-center.js exists"
 [ -f "docs/09_NODE_A_COMMAND_CENTER_GUIDEBOOK.md" ]
 test_result $? "Node A command center guidebook exists"
 
+[ -f "docs/10_UNIFIED_INSTALL_GUIDEBOOK.md" ]
+test_result $? "Unified install guidebook exists"
+
 grep -q "api/status" node-a-command-center/node-a-command-center.js
 test_result $? "Node A dashboard status endpoint configured"
 
 grep -q "api/chat" node-a-command-center/node-a-command-center.js
 test_result $? "Node A dashboard chat endpoint configured"
+
+grep -q "install-wizard" node-a-command-center/node-a-command-center.js
+test_result $? "Node A install wizard route configured"
 
 echo ""
 echo "================================================================================"

@@ -1,7 +1,7 @@
 # LiteLLM Proxy configuration for Grand Unified AI Home Lab
 #
 # This configuration routes requests to the correct physical nodes:
-# - Brain (Node A): RX 7900 XT running Llama-3.1-70B-AWQ at 192.168.1.9:8000
+# - Brain (Node A): RX 7900 XT at 192.168.1.9:8000
 # - Brawn (Node B): RTX 4070 running vLLM at 192.168.1.222:8002
 # - Command Center (Node C): Intel Arc A770 running Ollama at 192.168.1.X:11434
 #
@@ -10,7 +10,8 @@
 model_list:
   # Brain (Node A) - Heavy Logic/Reasoning
   # Hardware: Core Ultra 7 265KF, 128GB DDR5, RX 7900 XT (20GB)
-  # Running: vLLM with Llama-3.1-70B-AWQ
+  # Reality check: do not assume practical 70B throughput on 20GB VRAM without proven quantization/offload.
+  # Start with a feasible profile (8B/14B class), then promote only after measured latency + stability testing.
   - model_name: brain-heavy
     litellm_params:
       model: openai/chat

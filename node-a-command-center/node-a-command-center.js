@@ -25,6 +25,8 @@ const dashboardLinks = [
   { name: 'Deployment Guide', href: '/docs/DEPLOYMENT_GUIDE' },
   { name: 'Quick Reference', href: '/docs/QUICK_REFERENCE' },
   { name: 'Node A Guidebook', href: '/docs/NODE_A_GUIDEBOOK' },
+  { name: 'Unified Install Guidebook', href: '/docs/UNIFIED_INSTALL_GUIDEBOOK' },
+  { name: 'Install Wizard', href: '/install-wizard' },
 ];
 
 function escapeHtml(value) {
@@ -82,6 +84,7 @@ function getDocRedirectPath(pathname) {
   if (pathname === '/docs/DEPLOYMENT_GUIDE') return '/DEPLOYMENT_GUIDE.md';
   if (pathname === '/docs/QUICK_REFERENCE') return '/QUICK_REFERENCE.md';
   if (pathname === '/docs/NODE_A_GUIDEBOOK') return '/docs/09_NODE_A_COMMAND_CENTER_GUIDEBOOK.md';
+  if (pathname === '/docs/UNIFIED_INSTALL_GUIDEBOOK') return '/docs/10_UNIFIED_INSTALL_GUIDEBOOK.md';
   return null;
 }
 
@@ -215,6 +218,107 @@ function renderDashboard() {
 </html>`;
 }
 
+function renderInstallWizard() {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Install Wizard - Multi-Node Lab</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, Arial, sans-serif; }
+    body { margin: 0; background: #0f172a; color: #e2e8f0; }
+    header { padding: 16px 20px; border-bottom: 1px solid #1e293b; }
+    main { max-width: 980px; margin: 0 auto; padding: 16px; }
+    h1, h2 { margin: 0 0 8px; }
+    .small { font-size: 0.9rem; color: #94a3b8; margin-bottom: 12px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    button { background: #1e40af; color: #fff; border: 0; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+    button:hover { background: #1d4ed8; }
+    pre { background: #0b1220; border: 1px solid #334155; border-radius: 8px; padding: 10px; overflow: auto; white-space: pre-wrap; }
+    .card { border: 1px solid #1e293b; border-radius: 10px; background: #111827; padding: 14px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Installation Wizard</h1>
+    <div class="small">Per-node GUI runbook with copy/paste install commands. Use this with docs/10_UNIFIED_INSTALL_GUIDEBOOK.md.</div>
+  </header>
+  <main>
+    <div class="tabs" id="tabs"></div>
+    <section class="card">
+      <h2 id="nodeTitle"></h2>
+      <div class="small" id="nodeSummary"></div>
+      <pre id="nodeCommands"></pre>
+    </section>
+  </main>
+  <script>
+    const steps = [
+      {
+        key: 'node-a',
+        label: 'Node A (Brain)',
+        summary: 'Run a feasible local model profile first (8B/14B). Promote to larger models only after measured VRAM/latency validation.',
+        commands: 'cd node-a-command-center\\nnode node-a-command-center.js\\n# optional direct fallback test (bypass gateway)\\ncurl http://192.168.1.9:8000/health'
+      },
+      {
+        key: 'node-b',
+        label: 'Node B (LiteLLM Gateway)',
+        summary: 'Gateway is convenience, not a hard dependency. Keep direct endpoint fallbacks documented for Node A/C.',
+        commands: 'cd node-b-litellm\\ncp .env.example .env\\ndocker compose -f litellm-stack.yml up -d\\ncurl http://localhost:4000/health'
+      },
+      {
+        key: 'node-c',
+        label: 'Node C (Intel Arc Vision)',
+        summary: 'Install Intel runtime, then deploy Ollama + Chimera Face and validate /dev/dri exposure.',
+        commands: 'sudo dnf install intel-level-zero-gpu intel-opencl -y\\ncd node-c-arc\\ndocker compose up -d\\ndocker exec ollama_intel_arc ollama pull llava'
+      },
+      {
+        key: 'node-d',
+        label: 'Node D (Home Assistant)',
+        summary: 'Point HA to Node B first; keep emergency direct targets for Node A and Node C in secure notes.',
+        commands: 'cp home-assistant/configuration.yaml.snippet /path/to/ha/configuration.yaml\\n# restart Home Assistant and verify OpenAI Conversation provider'
+      },
+      {
+        key: 'node-e',
+        label: 'Node E (Sentinel/NVR)',
+        summary: 'Keep Node E as a consumer of AI services; do not expose KVM controls to Node E network segment.',
+        commands: '# integrate NVR webhooks with Node C/Node A as needed\\n# verify egress only to approved AI endpoints'
+      },
+      {
+        key: 'kvm',
+        label: 'KVM Operator',
+        summary: 'Denylist is guardrail-only. Keep REQUIRE_APPROVAL=true and treat ALLOW_DANGEROUS=true as break-glass.',
+        commands: 'cd kvm-operator\\ncp .env.example .env\\npython3 -m venv .venv && source .venv/bin/activate\\npip install -r requirements.txt\\nuvicorn app:app --host 0.0.0.0 --port 5000'
+      },
+    ];
+
+    const tabs = document.getElementById('tabs');
+    const title = document.getElementById('nodeTitle');
+    const summary = document.getElementById('nodeSummary');
+    const commands = document.getElementById('nodeCommands');
+
+    function selectStep(index) {
+      const item = steps[index];
+      title.textContent = item.label;
+      summary.textContent = item.summary;
+      commands.textContent = item.commands;
+      tabs.querySelectorAll('button').forEach((btn, i) => {
+        btn.style.background = i === index ? '#2563eb' : '#1e40af';
+      });
+    }
+
+    steps.forEach((item, index) => {
+      const btn = document.createElement('button');
+      btn.textContent = item.label;
+      btn.addEventListener('click', () => selectStep(index));
+      tabs.appendChild(btn);
+    });
+    selectStep(0);
+  </script>
+</body>
+</html>`;
+}
+
 function readRequestBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -288,6 +392,17 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && parsedUrl.pathname === '/') {
     const html = renderDashboard();
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Length': Buffer.byteLength(html),
+      'Cache-Control': 'no-store',
+    });
+    res.end(html);
+    return;
+  }
+
+  if (req.method === 'GET' && parsedUrl.pathname === '/install-wizard') {
+    const html = renderInstallWizard();
     res.writeHead(200, {
       'Content-Type': 'text/html; charset=utf-8',
       'Content-Length': Buffer.byteLength(html),

@@ -37,6 +37,10 @@ Key routing rules:
 - `intel-vision` → `http://192.168.1.X:11434` (Intel Arc A770)
 - API Key: `sk-master-key`
 
+Resiliency note:
+- Treat Node B gateway as primary ingress, not sole survivability path.
+- Keep direct fallback checks documented: Node A `http://192.168.1.9:8000/health`, Node C `http://192.168.1.X:11434/api/version`.
+
 **Deploy:**
 ```bash
 cd node-b-litellm
@@ -164,7 +168,14 @@ curl http://192.168.1.222:4000/v1/models \
 | B | Brawn (Gateway) | **RTX 4070 (12GB)** | 192.168.1.222 | Fast chat + Gateway |
 | C | Command Center (Eyes) | **Intel Arc A770 (16GB)** | 192.168.1.X | Vision AI |
 
-**Trust the hardware in the problem statement, not old repo file names!**
+**Feasibility note:** do not assume sustained Llama-70B performance on 20GB VRAM without validated quantization/offload results.
+
+---
+
+## Unified Install Guidebook + GUI Wizard
+
+- Single-document runbook: `docs/10_UNIFIED_INSTALL_GUIDEBOOK.md`
+- GUI installer tabs for each node: `http://<node-a-ip>:3099/install-wizard`
 
 ---
 
