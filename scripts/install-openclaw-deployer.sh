@@ -17,6 +17,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
+source "${REPO_ROOT}/scripts/lib-inventory.sh"
+load_inventory "$REPO_ROOT"
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 ok()   { echo -e "${GREEN}✓${NC} $1"; }
@@ -28,9 +30,6 @@ info() { echo -e "${CYAN}→${NC} $1"; }
 KVM_TOKEN_PLACEHOLDER="change-me-use-openssl-rand-hex-24"
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-NODE_B_IP="${NODE_B_IP:-192.168.1.222}"
-NODE_B_SSH_USER="${NODE_B_SSH_USER:-root}"
-NODE_A_IP="${NODE_A_IP:-192.168.1.9}"
 APPDATA_DIR="${APPDATA_DIR:-/mnt/user/appdata}"
 
 echo ""
@@ -85,15 +84,15 @@ ok "Skill files uploaded"
 # ── Step 6: Create AGENTS.md ──────────────────────────────────────────────────
 info "Creating AGENTS.md in workspace…"
 ssh -o StrictHostKeyChecking=no "${NODE_B_SSH_USER}@${NODE_B_IP}" \
-  "cat > ${APPDATA_DIR}/openclaw/workspace/AGENTS.md" <<'AGENTEOF'
+  "cat > ${APPDATA_DIR}/openclaw/workspace/AGENTS.md" <<AGENTEOF
 # OpenClaw Agent Context — Homelab Deployment Assistant
 
 You are an AI assistant managing a multi-node home AI lab. Your primary job is to help
 deploy, administer, and troubleshoot the following nodes:
 
-- **Node A** (192.168.1.9): Brain / vLLM model host, Dashboard (port 3099), KVM Operator (port 5000)
-- **Node B** (192.168.1.222): Unraid / LiteLLM gateway (port 4000), OpenClaw (port 18789), Portainer (port 9000)
-- **Node C** (192.168.1.X): Fedora 43 / Intel Arc A770, Ollama (port 11434), Chimera Face UI (port 3000)
+- **Node A** (${NODE_A_IP}): Brain / vLLM model host, Dashboard (port 3099), KVM Operator (port 5000)
+- **Node B** (${NODE_B_IP}): Unraid / LiteLLM gateway (port 4000), OpenClaw (port 18789), Portainer (port 9000)
+- **Node C** (${NODE_C_IP:-set-in-inventory}): Fedora 43 / Intel Arc A770, Ollama (port 11434), Chimera Face UI (port 3000)
 - **Node D**: Home Assistant
 - **Node E**: Sentinel NVR
 

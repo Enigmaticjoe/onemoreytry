@@ -11,6 +11,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
+source "${REPO_ROOT}/scripts/lib-inventory.sh"
+load_inventory "$REPO_ROOT"
 
 ACTION="${1:-deploy}"
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
@@ -22,11 +24,6 @@ warn() { echo -e "${YELLOW}  ! $1${NC}"; }
 info() { echo -e "    $1"; }
 
 # ── Load node IPs ─────────────────────────────────────────────────────────────
-NODE_A_IP="${NODE_A_IP:-192.168.1.9}"
-NODE_B_IP="${NODE_B_IP:-192.168.1.222}"
-NODE_C_IP="${NODE_C_IP:-192.168.1.X}"
-NODE_B_SSH_USER="${NODE_B_SSH_USER:-root}"
-NODE_C_SSH_USER="${NODE_C_SSH_USER:-root}"
 
 # Try to read from deploy-gui settings if present
 if [ -f "deploy-gui/data/settings.json" ] && command -v python3 &>/dev/null; then
@@ -135,7 +132,7 @@ ok "Node C ready"
 
 # ── Step 2: Node B — LiteLLM Gateway ─────────────────────────────────────────
 step "Step 2 — Node B LiteLLM Gateway (Unraid)"
-if [[ "$NODE_B_IP" == *"."* ]] && ! [[ "$NODE_B_IP" == *"X"* ]]; then
+if ! is_missing_or_placeholder_ip "$NODE_B_IP"; then
   info "Deploying LiteLLM stack on Node B (${NODE_B_IP})…"
   ssh_cmd "$NODE_B_IP" "$NODE_B_SSH_USER" \
     "cd /mnt/user/appdata/homelab/node-b-litellm 2>/dev/null || cd ~/homelab/node-b-litellm && docker compose -f litellm-stack.yml pull && docker compose -f litellm-stack.yml up -d"
@@ -179,7 +176,7 @@ fi
 
 # ── Step 5: OpenClaw (Node B) ─────────────────────────────────────────────────
 step "Step 5 — OpenClaw AI Gateway (Node B)"
-if [[ "$NODE_B_IP" == *"."* ]] && ! [[ "$NODE_B_IP" == *"X"* ]]; then
+if ! is_missing_or_placeholder_ip "$NODE_B_IP"; then
   info "Deploying OpenClaw on Node B (${NODE_B_IP})…"
   ssh_cmd "$NODE_B_IP" "$NODE_B_SSH_USER" \
     "cd /mnt/user/appdata/homelab/openclaw 2>/dev/null || cd ~/homelab/openclaw && docker compose pull && docker compose up -d"
@@ -207,7 +204,7 @@ echo -e "  ${GREEN}✓${NC} Chimera Face UI      → http://localhost:3000"
 echo -e "  ${GREEN}✓${NC} Node A Dashboard     → http://localhost:3099"
 echo -e "  ${GREEN}✓${NC} KVM Operator         → http://localhost:5000"
 echo -e "  ${GREEN}✓${NC} Deploy GUI           → http://localhost:9999"
-if [[ "$NODE_B_IP" != *"X"* ]]; then
+if ! is_missing_or_placeholder_ip "$NODE_B_IP"; then
   echo -e "  ${GREEN}✓${NC} LiteLLM Gateway      → http://${NODE_B_IP}:4000"
   echo -e "  ${GREEN}✓${NC} OpenClaw             → http://${NODE_B_IP}:18789"
 fi

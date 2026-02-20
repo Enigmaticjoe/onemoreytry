@@ -10,6 +10,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
+source "${REPO_ROOT}/scripts/lib-inventory.sh"
+load_inventory "$REPO_ROOT"
 
 HEALTH_ONLY=false
 for arg in "$@"; do
@@ -29,10 +31,7 @@ echo "   Homelab Pre-Flight Check"
 echo "═══════════════════════════════════════════════════"
 echo ""
 
-# ── Load node IPs from settings if available ─────────────────────────────────
-NODE_A_IP="${NODE_A_IP:-192.168.1.9}"
-NODE_B_IP="${NODE_B_IP:-192.168.1.222}"
-NODE_C_IP="${NODE_C_IP:-192.168.1.X}"
+# ── Load node IPs from inventory/settings ─────────────────────────────────────
 LITELLM_KEY="${LITELLM_KEY:-sk-master-key}"
 
 # Try to read from deploy-gui settings
@@ -149,7 +148,7 @@ fi  # end !HEALTH_ONLY for sections 1-4
 
 if [ "$HEALTH_ONLY" = false ]; then
   for ip in "$NODE_B_IP" "$NODE_C_IP"; do
-    if [[ "$ip" == *"X"* ]] || [[ "$ip" == *"Y"* ]] || [[ "$ip" == *"Z"* ]]; then
+    if is_missing_or_placeholder_ip "$ip"; then
       warn "Placeholder IP not set: ${ip} — update in GUIDEBOOK.md §0.2 and deploy-gui Settings"
       continue
     fi
