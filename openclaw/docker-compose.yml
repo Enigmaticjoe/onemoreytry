@@ -13,44 +13,41 @@
 # │                                                                         │
 # │  mkdir -p /mnt/user/appdata/openclaw/{config,workspace}                 │
 # │                                                                         │
-# │  STEP 3 — Copy openclaw.json (the example is in this repo)              │
+# │  STEP 3 — Copy and edit openclaw.json                                   │
 # │                                                                         │
 # │  cp openclaw/openclaw.json /mnt/user/appdata/openclaw/config/           │
-# │  nano /mnt/user/appdata/openclaw/config/openclaw.json                   │
-# │  (set your vLLM model name + any API keys you want)                     │
+# │  # Edit it: set your vLLM model ID and remove unused provider blocks    │
+# │  # Get model ID: curl http://<UNRAID_IP>:8880/v1/models | jq '.data[].id' │
 # │                                                                         │
-# │  STEP 4 — Generate a gateway token                                      │
+# │  STEP 4 — Generate a gateway token (paste into OPENCLAW_GATEWAY_TOKEN)  │
 # │                                                                         │
-# │  openssl rand -hex 32   ← paste into OPENCLAW_GATEWAY_TOKEN below       │
+# │  openssl rand -hex 32                                                   │
 # │                                                                         │
-# │  STEP 5 — Get your Unraid API key                                       │
+# │  STEP 5 — Get your Unraid API key (for Unraid control via agents)       │
 # │                                                                         │
-# │  Unraid WebGUI → Settings → Management Access → API Keys → Create Key   │
-# │  (paste into UNRAID_API_KEY below)                                      │
+# │  Unraid WebGUI → Settings → Management Access → API Keys → Create       │
+# │  (paste into UNRAID_API_KEY — agents can then query containers/array)   │
 # │                                                                         │
 # │  STEP 6 — Paste this file into Portainer → Stacks → Add Stack           │
 # └─────────────────────────────────────────────────────────────────────────┘
 #
-# YOUR UNRAID SERVICES THIS STACK INTEGRATES WITH:
-#   • hf-vllm      :8880   OpenAI-compatible local LLM (primary model)
-#   • hf-searxng   :8082   Local search engine (replaces Brave/Perplexity)
-#   • browserless  :3005   Browser automation (reused; no new container needed)
-#   • hf-qdrant    :6333   Vector store (for long-term agent memory)
-#   • hf-openwebui :3002   Chat UI (connects to same gateway)
-#   • Unraid API   :80/graphql   Docker/VM/array/system control
+# YOUR UNRAID SERVICES THIS STACK USES:
+#   hf-vllm      :8880/v1  ← primary AI model (local, private, free)
+#   hf-searxng   :8082     ← local web search (no API key required)
+#   browserless  :3005     ← browser automation (or use openclaw-browser below)
+#   hf-qdrant    :6333     ← vector store (agent memory)
+#   hf-openwebui :3002     ← point at http://<UNRAID_IP>:18789/v1 for chat UI
+#   Unraid API   :80/graphql ← Docker/VM/array/system control via agents
 #
-# PORTS USED BY THIS STACK (not already in your setup):
-#   18789  — Gateway WebSocket
-#   18790  — HTTP Bridge (health, webhooks)
+# PORTS USED (not already in your setup):
+#   18789  — Gateway WebSocket + OpenAI-compat HTTP API
+#   18790  — HTTP Bridge (health, webhook, control UI)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 version: "3.9"
 
 services:
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # openclaw-gateway
-  # ─────────────────────────────────────────────────────────────────────────
   openclaw-gateway:
     image: openclaw:local
     container_name: openclaw-gateway
@@ -68,62 +65,90 @@ services:
       - "18789"
 
     ports:
-      - "18789:18789"   # WebSocket gateway — agents & CLI connect here
-      - "18790:18790"   # HTTP bridge — health checks & channel webhooks
+      - "18789:18789"   # WebSocket gateway + OpenAI-compat /v1/chat/completions
+      - "18790:18790"   # HTTP bridge: health, webhooks, control UI
 
     environment:
       HOME: /home/node
       TERM: xterm-256color
 
       # ── Gateway Auth (REQUIRED) ──────────────────────────────────────────
+      # Generate with: openssl rand -hex 32
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
 
       # ══════════════════════════════════════════════════════════════════════
-      # LOCAL AI — vLLM (your existing hf-vllm on port 8880)
+      # LOCAL AI — vLLM
+      # Setting VLLM_API_KEY (any value) activates the vllm provider.
+      # baseUrl is set in openclaw.json (models.providers.vllm.baseUrl)
+      # so the gateway finds your hf-vllm container at :8880.
       # ══════════════════════════════════════════════════════════════════════
-      # OpenClaw discovers vLLM via these two vars. The provider name in
-      # openclaw.json will be "vllm" and model refs are "vllm/<model-id>".
-      # VLLM_API_KEY is arbitrary for local — any non-empty string works.
       VLLM_API_KEY: ${VLLM_API_KEY:-vllm-local}
-      VLLM_BASE_URL: http://host.docker.internal:8880/v1
 
       # ══════════════════════════════════════════════════════════════════════
-      # CLOUD AI PROVIDERS — add the keys for whichever you subscribe to.
-      # OpenClaw will use these alongside (or as fallbacks from) local vLLM.
+      # CLOUD AI PROVIDERS — set keys for whichever you subscribe to.
+      # OpenClaw uses these as fallbacks when vLLM is busy/unavailable,
+      # or you can set any as primary in openclaw.json.
       # ══════════════════════════════════════════════════════════════════════
 
       # Anthropic — claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Multiple keys (rotated automatically on rate-limit):
+      # ANTHROPIC_API_KEYS: ${ANTHROPIC_API_KEYS:-}
 
       # OpenAI — gpt-4o, gpt-4o-mini, o3, o4-mini
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # OPENAI_API_KEYS: ${OPENAI_API_KEYS:-}
 
       # Google Gemini — gemini-2.0-flash, gemini-2.5-pro
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
 
-      # OpenRouter — routes to 200+ models with one key
+      # OpenRouter — 200+ models with one key (good free-tier fallback)
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
 
-      # xAI Grok, Groq (fast inference), Mistral, Cerebras
+      # xAI Grok
       XAI_API_KEY: ${XAI_API_KEY:-}
+
+      # Groq (very fast inference, free tier available)
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+
+      # Mistral
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+
+      # Cerebras (fast inference)
       CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
 
-      # Claude Web session (ONLY if using claude.ai browser scraping, not API)
+      # HuggingFace — access HF Inference API + your hf-tei-embed container
+      HF_TOKEN: ${HF_TOKEN:-}
+      # HUGGINGFACE_HUB_TOKEN: ${HUGGINGFACE_HUB_TOKEN:-}  # alias
+
+      # GitHub Copilot (if you have a Copilot subscription)
+      COPILOT_GITHUB_TOKEN: ${COPILOT_GITHUB_TOKEN:-}
+      # GH_TOKEN: ${GH_TOKEN:-}  # alias
+
+      # Z.AI / GLM models
+      ZAI_API_KEY: ${ZAI_API_KEY:-}
+
+      # Claude Web session (ONLY for claude.ai browser scraping — not API)
       CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY:-}
       CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY:-}
       CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE:-}
 
       # ══════════════════════════════════════════════════════════════════════
-      # UNRAID API INTEGRATION
+      # UNRAID API
+      # Get key: Unraid WebGUI → Settings → Management Access → API Keys
+      # Agents use UNRAID_API_KEY + UNRAID_URL to call your Unraid GraphQL API.
+      # GraphQL endpoint: http://<UNRAID_IP>/graphql
+      # Header: x-api-key: <UNRAID_API_KEY>
+      #
+      # Example prompts that will hit this API:
+      #   "List all running Docker containers on my server"
+      #   "What's the array status and disk temps?"
+      #   "Restart the sonarr container"
+      #   "How much free space do I have?"
       # ══════════════════════════════════════════════════════════════════════
-      # Get your key: Unraid WebGUI → Settings → Management Access → API Keys
-      # The GraphQL endpoint is: http://<UNRAID_IP>/graphql
-      # Agents can query this to start/stop containers, check array health,
-      # monitor CPU/RAM/disks, list VMs, etc.
       UNRAID_API_KEY: ${UNRAID_API_KEY:-}
-      # Set this to your Unraid server's LAN IP
+      # Your Unraid server LAN IP (e.g. http://192.168.1.100)
       UNRAID_URL: ${UNRAID_URL:-http://host.docker.internal}
 
       # ══════════════════════════════════════════════════════════════════════
@@ -132,14 +157,16 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
-      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}      # Socket Mode app-level token
       MATTERMOST_BOT_TOKEN: ${MATTERMOST_BOT_TOKEN:-}
       MATTERMOST_URL: ${MATTERMOST_URL:-}
+      ZALO_BOT_TOKEN: ${ZALO_BOT_TOKEN:-}
+      OPENCLAW_TWITCH_ACCESS_TOKEN: ${OPENCLAW_TWITCH_ACCESS_TOKEN:-}
 
       # ══════════════════════════════════════════════════════════════════════
       # SEARCH & TOOL APIs
+      # (hf-searxng at :8082 is configured in openclaw.json — no key needed)
       # ══════════════════════════════════════════════════════════════════════
-      # Your hf-searxng at :8082 is configured in openclaw.json (no key needed)
       BRAVE_API_KEY: ${BRAVE_API_KEY:-}
       PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
       FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
@@ -148,6 +175,7 @@ services:
       # VOICE
       # ══════════════════════════════════════════════════════════════════════
       ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      # XI_API_KEY: ${XI_API_KEY:-}  # alias for ElevenLabs
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
 
     volumes:
@@ -155,7 +183,11 @@ services:
       - /mnt/user/appdata/openclaw/workspace:/home/node/.openclaw/workspace
 
     extra_hosts:
-      # Reach all your existing Unraid containers by name:
+      # Access all your Unraid containers by hostname:
+      #   hf-vllm    → http://host.docker.internal:8880/v1
+      #   hf-searxng → http://host.docker.internal:8082
+      #   hf-qdrant  → http://host.docker.internal:6333
+      #   Unraid API → http://host.docker.internal/graphql
       - "host.docker.internal:host-gateway"
 
     networks:
@@ -179,11 +211,10 @@ services:
       net.unraid.docker.webui: "http://[IP]:[PORT:18790]"
 
   # ─────────────────────────────────────────────────────────────────────────
-  # openclaw-browser  (OPTIONAL — dedicated Chromium for OpenClaw)
-  # Remove this service entirely if you prefer to reuse your existing
-  # browserless container at host port 3005. Configure that in
-  # openclaw.json under tools.browser.wsEndpoint:
-  #   "ws://host.docker.internal:3005"
+  # openclaw-browser  (OPTIONAL dedicated Chromium sandbox)
+  # Remove this service if you want to reuse your existing browserless on
+  # port 3005. In that case update openclaw.json:
+  #   tools.browser.wsEndpoint = "ws://host.docker.internal:3005"
   # ─────────────────────────────────────────────────────────────────────────
   openclaw-browser:
     image: browserless/chrome:latest
@@ -211,25 +242,29 @@ services:
 #    Prompts: bind=lan  auth=token  token=<OPENCLAW_GATEWAY_TOKEN>
 #             tailscale=Off  daemon=No
 #
-# 2. VERIFY vLLM IS DETECTED:
+# 2. VERIFY LOCAL vLLM IS DETECTED:
 #    node dist/index.js models list
-#    You should see "vllm/<your-model>" in the list
-#    Switch model live: /model vllm/<model-id>
+#    → "vllm/your-model-id" should appear
+#    Switch live (no restart): /model vllm/your-model-id
 #
 # 3. ADD MESSAGING CHANNELS:
 #    node dist/index.js channels add --channel telegram --token <TOKEN>
 #    node dist/index.js channels add --channel discord  --token <TOKEN>
 #
-# 4. TEST UNRAID CONTROL (example — paste into any connected channel):
-#    "List my running Docker containers"   ← uses Unraid GraphQL API
-#    "What's the CPU temp on my server?"
-#    "How full is my array?"
+# 4. CONNECT OPEN-WEBUI TO OPENCLAW:
+#    In hf-openwebui settings → Connections → Add OpenAI-compatible API:
+#      URL:   http://<UNRAID_IP>:18789/v1
+#      Key:   <your OPENCLAW_GATEWAY_TOKEN>
+#      Model: openclaw:main  (or agent:main)
 #
-# 5. GATEWAY HEALTH:
+# 5. AUTOMATE UNRAID VIA WEBHOOK (from User Scripts plugin):
+#    curl -s -X POST http://localhost:18790/hooks/agent \
+#      -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
+#      -H "Content-Type: application/json" \
+#      -d '{"message":"Check array health and summarize disk temperatures"}'
+#
+# 6. GATEWAY HEALTH CHECK:
 #    node dist/index.js health --token <OPENCLAW_GATEWAY_TOKEN>
-#
-# 6. CONNECT A CLIENT:
-#    ws://<UNRAID_IP>:18789   header → X-Gateway-Token: <token>
 # ───────────────────────────────────────────────────────────────────────────
 
 networks:
