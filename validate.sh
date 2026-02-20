@@ -70,8 +70,8 @@ test_result $? "Brain IP (192.168.1.9:8000) configured"
 grep -q "192.168.1.222:8002" node-b-litellm/config.yaml
 test_result $? "Brawn IP (192.168.1.222:8002) configured"
 
-grep -q "192.168.1.X:11434" node-b-litellm/config.yaml
-test_result $? "Command Center IP (192.168.1.X:11434) configured"
+grep -q "192.168.1.6:11434" node-b-litellm/config.yaml
+test_result $? "Command Center IP (192.168.1.6:11434) configured"
 
 # Check for API key
 grep -q "sk-master-key" node-b-litellm/config.yaml

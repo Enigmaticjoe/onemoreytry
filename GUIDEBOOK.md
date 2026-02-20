@@ -48,10 +48,12 @@ Fill this table before starting. All configuration files reference these values:
 ```
 NODE_A_IP=192.168.1.9        # Brain / vLLM
 NODE_B_IP=192.168.1.222      # Unraid / LiteLLM gateway
-NODE_C_IP=192.168.1.X        # Intel Arc / Ollama  ← replace X
-NODE_D_IP=192.168.1.Y        # Home Assistant      ← replace Y
+NODE_C_IP=192.168.1.6        # Intel Arc / Ollama
+NODE_D_IP=192.168.1.149      # Home Assistant
 NODE_E_IP=192.168.1.Z        # Sentinel NVR        ← replace Z
+PROXMOX_IP=192.168.1.174     # Proxmox server
 KVM_IP=192.168.1.K           # NanoKVM Cube IP     ← replace K
+CLOUDFLARE_DOMAIN=happystrugglebus.us
 ```
 
 ### 0.3 Required Software on Fedora 43 (Command Center)
@@ -102,7 +104,7 @@ Host node-b
   IdentityFile ~/.ssh/homelab
 
 Host node-c
-  HostName 192.168.1.X
+  HostName 192.168.1.6
   User YOUR_USERNAME
   IdentityFile ~/.ssh/homelab
 EOF
@@ -152,7 +154,7 @@ clinfo | grep -A2 "Device Name"
 cd ~/homelab/node-c-arc
 
 # Review and edit docker-compose.yml if needed
-# (replace 192.168.1.X with your actual Node C IP)
+# Node C IP: 192.168.1.6
 
 docker compose up -d
 
@@ -219,9 +221,9 @@ cd homelab/node-b-litellm
 ```
 
 Edit `config.yaml` and replace placeholder IPs:
-- `192.168.1.9` → your Node A IP (vLLM endpoint)
-- `192.168.1.X` → your Node C IP (Ollama endpoint)
-- `192.168.1.222` → your Node B IP (this machine)
+- Node A (Brain/vLLM): `192.168.1.9`
+- Node C (Ollama): `192.168.1.6`
+- Node B (Gateway): `192.168.1.222`
 
 ### 2.3 Deploy via Portainer
 
@@ -269,8 +271,8 @@ cd ~/homelab/node-a-command-center
 # Set environment variables (or export them in ~/.bashrc)
 export LITELLM_BASE_URL=http://192.168.1.222:4000
 export BRAIN_BASE_URL=http://192.168.1.9:8000
-export NODE_C_BASE_URL=http://192.168.1.X    # ← replace
-export NODE_E_BASE_URL=http://192.168.1.Z:3005  # ← replace
+export NODE_C_BASE_URL=http://192.168.1.6
+export NODE_E_BASE_URL=http://192.168.1.Z:3005  # ← replace with Node E IP
 
 node node-a-command-center.js
 ```
@@ -349,7 +351,7 @@ KVM_OPERATOR_TOKEN=<generate with: openssl rand -hex 24>
 NANOKVM_USERNAME=admin
 NANOKVM_PASSWORD=admin           # change to your NanoKVM password
 NANOKVM_AUTH_MODE=auto
-KVM_TARGETS_JSON={"node-c":"192.168.1.X","node-b":"192.168.1.222"}
+KVM_TARGETS_JSON={"node-c":"192.168.1.6","node-b":"192.168.1.222"}
 LITELLM_URL=http://192.168.1.222:4000/v1/chat/completions
 LITELLM_KEY=sk-master-key
 VISION_MODEL=intel-vision
@@ -449,7 +451,7 @@ VLLM_API_KEY=vllm-local
 # GEMINI_API_KEY=...
 
 # Home Assistant (optional)
-# HOME_ASSISTANT_URL=http://192.168.1.Y:8123
+# HOME_ASSISTANT_URL=http://192.168.1.149:8123
 # HOME_ASSISTANT_TOKEN=<HA long-lived token>
 
 # Unraid control (optional)
@@ -684,7 +686,7 @@ openai_conversation:
 
 ```bash
 # Via HA API
-curl -X POST http://192.168.1.Y:8123/api/config/core/check_config \
+curl -X POST http://192.168.1.149:8123/api/config/core/check_config \
   -H "Authorization: Bearer <HA_TOKEN>"
 # Then: Developer Tools → YAML → Reload All YAML
 ```
@@ -1081,14 +1083,15 @@ done
 Service          | Node  | URL                              | Port
 -----------------|-------|----------------------------------|------
 LiteLLM Gateway  | B     | http://192.168.1.222:4000        | 4000
-Ollama API       | C     | http://192.168.1.X:11434         | 11434
-Chimera Face UI  | C     | http://192.168.1.X:3000          | 3000
+Ollama API       | C     | http://192.168.1.6:11434         | 11434
+Chimera Face UI  | C     | http://192.168.1.6:3000          | 3000
 Node A Dashboard | A     | http://192.168.1.9:3099          | 3099
 KVM Operator     | A     | http://192.168.1.9:5000          | 5000
 OpenClaw UI      | B     | http://192.168.1.222:18789       | 18789
 Deploy GUI       | A     | http://localhost:9999            | 9999
 Portainer        | B     | http://192.168.1.222:9000        | 9000
-Home Assistant   | D     | http://192.168.1.Y:8123          | 8123
+Home Assistant   | D     | http://192.168.1.149:8123        | 8123
+Proxmox          | -     | http://192.168.1.174             | 8006
 ```
 
 ## Appendix B — Install Order Cheat Sheet

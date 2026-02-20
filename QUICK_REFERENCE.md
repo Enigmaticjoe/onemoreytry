@@ -34,12 +34,12 @@ services:
 Key routing rules:
 - `brain-heavy` → `http://192.168.1.9:8000/v1` (RX 7900 XT)
 - `brawn-fast` → `http://192.168.1.222:8002/v1` (RTX 4070)
-- `intel-vision` → `http://192.168.1.X:11434` (Intel Arc A770)
+- `intel-vision` → `http://192.168.1.6:11434` (Intel Arc A770)
 - API Key: `sk-master-key`
 
 Resiliency note:
 - Treat Node B gateway as primary ingress, not sole survivability path.
-- Keep direct fallback checks documented: Node A `http://192.168.1.9:8000/health`, Node C `http://192.168.1.X:11434/api/version`.
+- Keep direct fallback checks documented: Node A `http://192.168.1.9:8000/health`, Node C `http://192.168.1.6:11434/api/version`.
 
 **Deploy:**
 ```bash
@@ -166,7 +166,7 @@ curl http://192.168.1.222:4000/v1/models \
 |------|------|-----|----|--------------------|
 | A | Brain (Deep Thought) | **RX 7900 XT (20GB)** | 192.168.1.9 | Heavy reasoning |
 | B | Brawn (Gateway) | **RTX 4070 (12GB)** | 192.168.1.222 | Fast chat + Gateway |
-| C | Command Center (Eyes) | **Intel Arc A770 (16GB)** | 192.168.1.X | Vision AI |
+| C | Command Center (Eyes) | **Intel Arc A770 (16GB)** | 192.168.1.6 | Vision AI |
 
 **Feasibility note:** do not assume sustained Llama-70B performance on 20GB VRAM without validated quantization/offload results.
 
@@ -198,7 +198,7 @@ curl http://192.168.1.9:8000/health
 curl http://localhost:8002/health
 
 # From Node B, test Node C
-curl http://192.168.1.X:11434/api/tags
+curl http://192.168.1.6:11434/api/tags
 ```
 
 ### Issue: Home Assistant can't connect
@@ -237,4 +237,4 @@ base_url: http://node-b:4000/v1         # ❌ Wrong (unless DNS configured)
 - [ ] **Node D (Home Assistant)**: Add `configuration.yaml.snippet` content
 - [ ] **Test**: Run all test commands above
 - [ ] **Verify**: Check logs on all nodes
-- [ ] **Update**: Replace IP placeholders (192.168.1.X/Y/Z) with actual IPs
+- [ ] **Verify**: IP addresses are correct (Node C=192.168.1.6, HA=192.168.1.149, Proxmox=192.168.1.174, update Node E when known)

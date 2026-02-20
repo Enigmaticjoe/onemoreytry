@@ -36,14 +36,14 @@ const DEFAULT_SETTINGS = {
   nodes: {
     nodeA: { label: 'Node A (Brain)', ip: '192.168.1.9', sshUser: 'root', enabled: true },
     nodeB: { label: 'Node B (Unraid/LiteLLM)', ip: '192.168.1.222', sshUser: 'root', enabled: true },
-    nodeC: { label: 'Node C (Intel Arc)', ip: '192.168.1.X', sshUser: 'root', enabled: true },
-    nodeD: { label: 'Node D (Home Assistant)', ip: '192.168.1.Y', sshUser: 'root', enabled: false },
+    nodeC: { label: 'Node C (Intel Arc)', ip: '192.168.1.6', sshUser: 'root', enabled: true },
+    nodeD: { label: 'Node D (Home Assistant)', ip: '192.168.1.149', sshUser: 'root', enabled: false },
     nodeE: { label: 'Node E (Sentinel)', ip: '192.168.1.Z', sshUser: 'root', enabled: false },
   },
   services: {
     litellm: { label: 'LiteLLM Gateway', url: 'http://192.168.1.222:4000/health' },
-    ollama: { label: 'Ollama (Node C)', url: 'http://192.168.1.X:11434/api/version' },
-    openwebui: { label: 'Chimera Face UI', url: 'http://192.168.1.X:3000' },
+    ollama: { label: 'Ollama (Node C)', url: 'http://192.168.1.6:11434/api/version' },
+    openwebui: { label: 'Chimera Face UI', url: 'http://192.168.1.6:3000' },
     nodeaDash: { label: 'Node A Dashboard', url: 'http://192.168.1.9:3099/api/status' },
     kvmOperator: { label: 'KVM Operator', url: 'http://192.168.1.9:5000/health' },
     openclaw: { label: 'OpenClaw Gateway', url: 'http://192.168.1.222:18789/' },

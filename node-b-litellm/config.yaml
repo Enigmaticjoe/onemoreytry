@@ -3,7 +3,7 @@
 # This configuration routes requests to the correct physical nodes:
 # - Brain (Node A): RX 7900 XT at 192.168.1.9:8000
 # - Brawn (Node B): RTX 4070 running vLLM at 192.168.1.222:8002
-# - Command Center (Node C): Intel Arc A770 running Ollama at 192.168.1.X:11434
+# - Command Center (Node C): Intel Arc A770 running Ollama at 192.168.1.6:11434
 #
 # API Key for Home Assistant and other clients: sk-master-key
 
@@ -35,7 +35,7 @@ model_list:
   - model_name: intel-vision
     litellm_params:
       model: ollama/llava
-      api_base: http://192.168.1.X:11434
+      api_base: http://192.168.1.6:11434
       timeout: 180
     model_info:
       supports_vision: True

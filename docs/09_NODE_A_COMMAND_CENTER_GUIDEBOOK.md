@@ -2,7 +2,7 @@
 
 > **Scope and evidence policy**
 >
-> This guidebook is based on the current repository state (compose files, config files, and docs) and is designed to avoid guessing. Where values are placeholders (for example `192.168.1.X`), they are explicitly labeled and should be replaced with your real network values before production.
+> This guidebook is based on the current repository state (compose files, config files, and docs) and is designed to avoid guessing. Real network values: Node C=`192.168.1.6`, Home Assistant=`192.168.1.149`, Proxmox=`192.168.1.174`, Brawn/Unraid=`192.168.1.222`, domain=`happystrugglebus.us`.
 
 ---
 
@@ -47,7 +47,7 @@ The intent of this guide is to turn **Node A into the central brain** while stil
 - LiteLLM model aliases include:
   - `brain-heavy` → Node A `192.168.1.9:8000`
   - `brawn-fast` → Node B local fast model `192.168.1.222:8002`
-  - `intel-vision` → Node C Ollama `192.168.1.X:11434`
+  - `intel-vision` → Node C Ollama `192.168.1.6:11434`
 - Node C Compose includes:
   - `ollama` service with Intel Arc-enabling variables
   - `chimera_face` Open WebUI service
@@ -60,7 +60,7 @@ The intent of this guide is to turn **Node A into the central brain** while stil
 | Central observability | Distributed checks, no single control pane | Slow incident triage | Add Node A command-center dashboard with status polling |
 | Brain access path | Routed via Node B | Good, but no dedicated operator console | Add built-in chat panel on Node A dashboard |
 | Documentation distribution | Multiple docs, no dedicated Node A guidebook | Onboarding complexity | Add one deep guidebook + links from root docs |
-| Placeholder IP management | `192.168.1.X/Y/Z` in docs/config | Misconfiguration risk | Add pre-deploy checklist and replacement procedure |
+| IP address management | Node C=`192.168.1.6`, HA=`192.168.1.149`, Node E TBD | Node E not yet configured | Set NODE_E_IP once Sentinel is deployed |
 | Security defaults | Shared static key in examples | Acceptable for lab, weak for production | Add key rotation and network segmentation guidance |
 
 ---
@@ -122,7 +122,7 @@ This split preserves performance and allows minimal churn to existing compose de
                    │                           │
         ┌──────────▼─────────┐       ┌────────▼──────────┐
         │ Node A (Brain)      │       │ Node C (Eyes/UI)  │
-        │ 192.168.1.9:8000    │       │ 192.168.1.X       │
+        │ 192.168.1.9:8000    │       │ 192.168.1.6       │
         │ Central Reasoning    │       │ Ollama :11434     │
         │ + New Dashboard      │       │ Chimera Face :3000│
         └──────────┬───────────┘       └────────┬──────────┘
@@ -130,7 +130,7 @@ This split preserves performance and allows minimal churn to existing compose de
              ┌─────▼─────┐                 ┌─────▼─────┐
              │ Node D     │                 │ Node E     │
              │ Home Asst  │                 │ Sentinel   │
-             │ 192.168.1.Y│                 │ 192.168.1.Z│
+             │ 192.168.1.149│               │ 192.168.1.Z│
              └────────────┘                 └────────────┘
 ```
 
@@ -172,7 +172,7 @@ Capabilities added:
 |---|---|---|
 | `COMMAND_CENTER_PORT` | `3099` | Dashboard listener port |
 | `LITELLM_BASE_URL` | `http://192.168.1.222:4000` | Unified gateway URL |
-| `NODE_C_BASE_URL` | `http://192.168.1.X` | Node C base URL for UI + Ollama status checks |
+| `NODE_C_BASE_URL` | `http://192.168.1.6` | Node C base URL for UI + Ollama status checks |
 | `LITELLM_API_KEY` | `sk-master-key` | Gateway auth key |
 | `DEFAULT_MODEL` | `brain-heavy` | Chat model alias |
 | `REQUEST_TIMEOUT_MS` | `7000` | Upstream request timeout |
@@ -321,7 +321,7 @@ User report -> Open Node A dashboard -> Refresh status
 
 ## Appendix B — Reality checks before declaring completion
 
-- [ ] Replace placeholder addresses `192.168.1.X/Y/Z`
+- [x] Network IPs configured: Node C=`192.168.1.6`, HA=`192.168.1.149`, Proxmox=`192.168.1.174`, Brawn=`192.168.1.222` (Node E TBD)
 - [ ] Confirm Node A model server is available at configured endpoint
 - [ ] Confirm LiteLLM key and model aliases are valid
 - [ ] Confirm operator access controls for dashboard exposure

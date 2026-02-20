@@ -8,8 +8,8 @@ This guide provides step-by-step instructions for deploying the unified AI home 
 |------|------|----|---------|----|---------|
 | **Node A** | Brain (Deep Thought) | `192.168.1.9` | Core Ultra 7 265KF, 128GB DDR5 | **RX 7900 XT (20GB)** | Heavy Logic/Reasoning (start with feasible 8B/14B profile) |
 | **Node B** | Brawn (The Gateway) | `192.168.1.222` | i5-13600K, 96GB DDR5 | **RTX 4070 (12GB)** | Fast Chat & **Central AI Gateway** |
-| **Node C** | Command Center (The Eyes) | `192.168.1.X` | Ryzen 7 7700X, 32GB RAM | **Intel Arc A770 (16GB)** | Vision AI (Llava) & Whisper Audio |
-| **Node D** | Home Assistant (The Voice) | `192.168.1.Y` | Ryzen 7 7430U, 32GB DDR4 | N/A | Voice Client (connects to Gateway) |
+| **Node C** | Command Center (The Eyes) | `192.168.1.6` | Ryzen 7 7700X, 32GB RAM | **Intel Arc A770 (16GB)** | Vision AI (Llava) & Whisper Audio |
+| **Node D** | Home Assistant (The Voice) | `192.168.1.149` | Ryzen 7 7430U, 32GB DDR4 | N/A | Voice Client (connects to Gateway) |
 | **Node E** | Sentinel (The Watcher) | `192.168.1.Z` | i5-13500, 32GB RAM | N/A | NVR (Blue Iris) |
 
 ## Unified API Endpoint
@@ -29,7 +29,7 @@ API Key: `sk-master-key`
 |-----------|-----------|----------|----------|
 | `brain-heavy` | Node A vLLM (192.168.1.9:8000) | RX 7900 XT | Heavy reasoning, complex tasks (after model-size feasibility validation) |
 | `brawn-fast` | Node B vLLM (192.168.1.222:8002) | RTX 4070 | Fast chat, quick responses |
-| `intel-vision` | Node C Ollama (192.168.1.X:11434) | Intel Arc A770 | Vision AI, image analysis |
+| `intel-vision` | Node C Ollama (192.168.1.6:11434) | Intel Arc A770 | Vision AI, image analysis |
 
 ---
 
@@ -114,7 +114,7 @@ API Key: `sk-master-key`
      -d '{"model": "llava", "prompt": "What is in this image?", "images": ["base64_encoded_image"]}'
    ```
 
-7. Access Chimera Face (Open WebUI) at `http://192.168.1.X:3000`
+7. Access Chimera Face (Open WebUI) at `http://192.168.1.6:3000`
 
 **Environment Variables Explained:**
 - `ZES_ENABLE_SYSMAN=1` - **REQUIRED** for Intel Arc GPU support
@@ -325,7 +325,7 @@ curl -X POST http://192.168.1.222:4000/v1/chat/completions \
 
 ## Next Steps
 
-1. **Update IP Placeholders**: Replace `192.168.1.X`, `192.168.1.Y`, `192.168.1.Z` with actual IPs
+1. **Verify IP Addresses**: Node C=`192.168.1.6`, Home Assistant=`192.168.1.149`, Proxmox=`192.168.1.174` (update Node E when known)
 2. **Deploy Node A**: Ensure vLLM is running on port 8000
 3. **Test Full Pipeline**: Execute all test commands above
 4. **Monitor Performance**: Add metrics/logging as needed
