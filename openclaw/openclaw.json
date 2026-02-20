@@ -1,0 +1,155 @@
+{
+  // ═══════════════════════════════════════════════════════════════════════
+  // OpenClaw Configuration — Unraid Setup
+  // Copy to: /mnt/user/appdata/openclaw/config/openclaw.json
+  //
+  // Edit BEFORE first deploy:
+  //   1. Set "primary" model to your actual vLLM model name
+  //      (check with: curl http://<UNRAID_IP>:8880/v1/models | jq)
+  //   2. Set your Unraid IP in integrations.unraid.url
+  //   3. Remove any providers/tools you don't use
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ── Default Agent Model Selection ───────────────────────────────────────
+  // OpenClaw will use models in this priority order.
+  // Format: "providerName/model-id"
+  // Run `node dist/index.js models list` to see all available models.
+  "agents": {
+    "defaults": {
+      "model": {
+        // PRIMARY: your local vLLM model (set model id from `v1/models` output)
+        "primary": "vllm/your-model-id-here",
+
+        // FALLBACKS: if vLLM is unavailable or rate-limited, try these in order
+        "fallbacks": [
+          "anthropic/claude-sonnet-4-6",
+          "openai/gpt-4o-mini",
+          "openrouter/google/gemini-2.0-flash-exp:free"
+        ]
+      },
+
+      // Sandbox mode for agent code execution
+      "sandbox": {
+        "mode": "non-main"
+      }
+    }
+  },
+
+  // ── Custom Model Providers ───────────────────────────────────────────────
+  // Built-in providers (Anthropic, OpenAI, Gemini, OpenRouter, xAI, Groq,
+  // Mistral, Cerebras) are auto-configured from env vars — no entry needed.
+  // Add entries here ONLY for local/custom inference servers.
+  "models": {
+    "providers": {
+
+      // ── Local vLLM (your hf-vllm container on port 8880) ────────────────
+      // The VLLM_BASE_URL env var in docker-compose.yml points here.
+      // Update the models[] array with the exact model IDs served by your
+      // vLLM instance. Get them with:
+      //   curl http://<UNRAID_IP>:8880/v1/models | jq '.data[].id'
+      "vllm": {
+        "baseUrl": "http://host.docker.internal:8880/v1",
+        "apiKey": "VLLM_API_KEY",
+        "api": "openai-completions",
+        "models": [
+          {
+            // IMPORTANT: Change this to your actual loaded model id
+            "id": "your-model-id-here",
+            "name": "Local vLLM Model",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            // Match these to your vLLM --max-model-len setting
+            "contextWindow": 32768,
+            "maxTokens": 8192
+          }
+          // Add more models here if vLLM is serving multiple:
+          // {
+          //   "id": "second-model-id",
+          //   "name": "Second Local Model",
+          //   "contextWindow": 128000,
+          //   "maxTokens": 16384
+          // }
+        ]
+      }
+
+      // ── Ollama (if you ever run it alongside vLLM) ───────────────────────
+      // Uncomment if needed. Auto-detected at 127.0.0.1:11434 by default.
+      // "ollama": {
+      //   "baseUrl": "http://host.docker.internal:11434/v1",
+      //   "api": "openai-completions",
+      //   "models": [
+      //     { "id": "llama3.3", "name": "Llama 3.3 70B", "contextWindow": 131072 }
+      //   ]
+      // }
+
+    }
+  },
+
+  // ── Tools & Integrations ─────────────────────────────────────────────────
+  "tools": {
+
+    // ── Local Search via your hf-searxng container ───────────────────────
+    // Agents will use this instead of Brave/Perplexity when no API key is set.
+    "searxng": {
+      "baseUrl": "http://host.docker.internal:8082",
+      "enabled": true
+    },
+
+    // ── Browser Automation ────────────────────────────────────────────────
+    // Option A: Use the dedicated openclaw-browser container in this stack
+    //   (default — the container is on the openclaw network as "openclaw-browser")
+    "browser": {
+      "wsEndpoint": "ws://openclaw-browser:3000"
+    }
+    // Option B: Reuse your existing browserless container (port 3005)
+    // Uncomment below and remove the openclaw-browser service from docker-compose.yml:
+    // "browser": {
+    //   "wsEndpoint": "ws://host.docker.internal:3005"
+    // }
+
+  },
+
+  // ── Unraid Integration ───────────────────────────────────────────────────
+  // Gives OpenClaw agents the ability to query and control your Unraid server.
+  // Get your API key: Unraid WebGUI → Settings → Management Access → API Keys
+  //
+  // Once configured, agents can:
+  //   • List and start/stop Docker containers
+  //   • Check array status, disk health, disk temps
+  //   • Query CPU, RAM, uptime
+  //   • List and control VMs
+  //
+  // Example prompts that will hit this API:
+  //   "List all my running Docker containers"
+  //   "What is my array capacity and how full is it?"
+  //   "Restart the sonarr container"
+  //   "Is my parity check running?"
+  //   "What's the temperature of disk 3?"
+  "integrations": {
+    "unraid": {
+      "url": "http://host.docker.internal/graphql",
+      "apiKey": "UNRAID_API_KEY",
+      "enabled": true,
+      // GraphQL queries agents can run against your Unraid server
+      "capabilities": [
+        "docker.list",
+        "docker.start",
+        "docker.stop",
+        "array.status",
+        "array.disks",
+        "system.info",
+        "vm.list"
+      ]
+    }
+  },
+
+  // ── Gateway Settings (matches docker-compose command flags) ─────────────
+  "gateway": {
+    "bind": "lan",
+    "port": 18789,
+    "auth": {
+      "mode": "token"
+    }
+  }
+}
