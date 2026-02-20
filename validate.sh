@@ -201,6 +201,18 @@ test_result $? "Node A dashboard chat endpoint configured"
 grep -q "install-wizard" node-a-command-center/node-a-command-center.js
 test_result $? "Node A install wizard route configured"
 
+[ -f "node-a-command-center/install-desktop-icon.sh" ]
+test_result $? "node-a-command-center/install-desktop-icon.sh exists"
+
+[ -x "node-a-command-center/install-desktop-icon.sh" ]
+test_result $? "install-desktop-icon.sh is executable"
+
+grep -q "xdg-open" node-a-command-center/install-desktop-icon.sh
+test_result $? "install-desktop-icon.sh opens browser with xdg-open"
+
+grep -q "Desktop Entry" node-a-command-center/install-desktop-icon.sh
+test_result $? "install-desktop-icon.sh creates .desktop file"
+
 echo ""
 
 # Test 7: Validate NanoKVM / OpenClaw integration
