@@ -76,6 +76,6 @@ The wizard includes per-node install tabs and copy/paste command blocks.
 ## Validation
 
 ```bash
-cd /home/runner/work/onemoreytry/onemoreytry
+cd <repo-root>
 ./validate.sh
 ```

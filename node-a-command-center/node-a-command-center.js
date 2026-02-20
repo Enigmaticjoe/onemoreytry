@@ -5,6 +5,7 @@ const { URL } = require('url');
 
 const PORT = Number(process.env.COMMAND_CENTER_PORT || 3099);
 const LITELLM_BASE_URL = process.env.LITELLM_BASE_URL || 'http://192.168.1.222:4000';
+const BRAIN_BASE_URL = process.env.BRAIN_BASE_URL || 'http://192.168.1.9:8000';
 const NODE_C_BASE_URL = process.env.NODE_C_BASE_URL || 'http://192.168.1.X';
 const LITELLM_API_KEY = process.env.LITELLM_API_KEY || 'sk-master-key';
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'brain-heavy';
@@ -14,7 +15,7 @@ const MAX_CHAT_MESSAGE_CHARS = 5000;
 
 const serviceChecks = [
   { key: 'gateway', label: 'Node B LiteLLM Gateway', url: `${LITELLM_BASE_URL}/health` },
-  { key: 'brain', label: 'Node A Brain vLLM', url: 'http://192.168.1.9:8000/health' },
+  { key: 'brain', label: 'Node A Brain vLLM', url: `${BRAIN_BASE_URL}/health` },
   { key: 'vision', label: 'Node C Vision (Ollama)', url: `${NODE_C_BASE_URL}:11434/api/version` },
   { key: 'nodeCUi', label: 'Node C Chimera Face UI', url: `${NODE_C_BASE_URL}:3000` },
 ];
@@ -253,42 +254,44 @@ function renderInstallWizard() {
     </section>
   </main>
   <script>
+    const brainBaseUrl = ${JSON.stringify(BRAIN_BASE_URL)};
+    const lineBreak = '\\n';
     const steps = [
       {
         key: 'node-a',
         label: 'Node A (Brain)',
         summary: 'Run a feasible local model profile first (8B/14B). Promote to larger models only after measured VRAM/latency validation.',
-        commands: 'cd node-a-command-center\\nnode node-a-command-center.js\\n# optional direct fallback test (bypass gateway)\\ncurl http://192.168.1.9:8000/health'
+        commands: ['cd node-a-command-center', 'node node-a-command-center.js', '# optional direct fallback test (bypass gateway)', 'curl ' + brainBaseUrl + '/health'].join(lineBreak)
       },
       {
         key: 'node-b',
         label: 'Node B (LiteLLM Gateway)',
         summary: 'Gateway is convenience, not a hard dependency. Keep direct endpoint fallbacks documented for Node A/C.',
-        commands: 'cd node-b-litellm\\ncp .env.example .env\\ndocker compose -f litellm-stack.yml up -d\\ncurl http://localhost:4000/health'
+        commands: ['cd node-b-litellm', 'cp .env.example .env', 'docker compose -f litellm-stack.yml up -d', 'curl http://localhost:4000/health'].join(lineBreak)
       },
       {
         key: 'node-c',
         label: 'Node C (Intel Arc Vision)',
         summary: 'Install Intel runtime, then deploy Ollama + Chimera Face and validate /dev/dri exposure.',
-        commands: 'sudo dnf install intel-level-zero-gpu intel-opencl -y\\ncd node-c-arc\\ndocker compose up -d\\ndocker exec ollama_intel_arc ollama pull llava'
+        commands: ['sudo dnf install intel-level-zero-gpu intel-opencl -y', 'cd node-c-arc', 'docker compose up -d', 'docker exec ollama_intel_arc ollama pull llava'].join(lineBreak)
       },
       {
         key: 'node-d',
         label: 'Node D (Home Assistant)',
         summary: 'Point HA to Node B first; keep emergency direct targets for Node A and Node C in secure notes.',
-        commands: 'cp home-assistant/configuration.yaml.snippet /path/to/ha/configuration.yaml\\n# restart Home Assistant and verify OpenAI Conversation provider'
+        commands: ['cp home-assistant/configuration.yaml.snippet /path/to/ha/configuration.yaml', '# restart Home Assistant and verify OpenAI Conversation provider'].join(lineBreak)
       },
       {
         key: 'node-e',
         label: 'Node E (Sentinel/NVR)',
         summary: 'Keep Node E as a consumer of AI services; do not expose KVM controls to Node E network segment.',
-        commands: '# integrate NVR webhooks with Node C/Node A as needed\\n# verify egress only to approved AI endpoints'
+        commands: ['# integrate NVR webhooks with Node C/Node A as needed', '# verify egress only to approved AI endpoints'].join(lineBreak)
       },
       {
         key: 'kvm',
         label: 'KVM Operator',
         summary: 'Denylist is guardrail-only. Keep REQUIRE_APPROVAL=true and treat ALLOW_DANGEROUS=true as break-glass.',
-        commands: 'cd kvm-operator\\ncp .env.example .env\\npython3 -m venv .venv && source .venv/bin/activate\\npip install -r requirements.txt\\nuvicorn app:app --host 0.0.0.0 --port 5000'
+        commands: ['cd kvm-operator', 'cp .env.example .env', 'python3 -m venv .venv && source .venv/bin/activate', 'pip install -r requirements.txt', 'uvicorn app:app --host 0.0.0.0 --port 5000'].join(lineBreak)
       },
     ];
 
