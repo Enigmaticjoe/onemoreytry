@@ -1,0 +1,54 @@
+# Grand Unified AI Home Lab — Deploy GUI
+# Visual deployment console running on Fedora 43 command center
+#
+# Access: http://localhost:9999
+#
+# Usage:
+#   docker compose up -d --build
+#
+# First-time setup:
+#   1. Open http://localhost:9999
+#   2. Go to Settings tab
+#   3. Set your node IPs and tokens
+#   4. Return to Overview and click Refresh
+
+version: "3.9"
+
+services:
+  deploy-gui:
+    build: .
+    image: homelab-deploy-gui:latest
+    container_name: homelab-deploy-gui
+    restart: unless-stopped
+
+    ports:
+      - "9999:9999"
+
+    environment:
+      DEPLOY_GUI_PORT: "9999"
+      DATA_DIR: /data
+      # Optionally set a startup password to protect the GUI
+      # DEPLOY_GUI_SECRET: change-me
+
+    volumes:
+      # Persisted settings (node IPs, tokens)
+      - deploy-gui-data:/data
+      # SSH keys for remote node access — mount your ~/.ssh directory
+      # Ensure keys are added with: ssh-copy-id user@<node-ip>
+      - ${HOME}/.ssh:/home/deployer/.ssh:ro
+      # Mount the homelab repo so the GUI can run scripts directly
+      - ..:/homelab:ro
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9999/api/status >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  deploy-gui-data:
+    name: homelab-deploy-gui-data

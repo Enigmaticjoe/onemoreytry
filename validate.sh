@@ -279,6 +279,80 @@ test_result $? "KVM_OPERATOR_TOKEN env var in OpenClaw docker-compose"
 grep -q "skill-kvm" openclaw/skill-kvm.md
 test_result $? "skill-kvm.md references NanoKVM skill name"
 
+# Deploy skill
+[ -f "openclaw/skill-deploy.md" ]
+test_result $? "openclaw/skill-deploy.md (deployment skill) exists"
+
+grep -q "Portainer" openclaw/skill-deploy.md
+test_result $? "skill-deploy.md documents Portainer stack management"
+
+# Docker socket for deployment assistant
+grep -q "/var/run/docker.sock" openclaw/docker-compose.yml
+test_result $? "Docker socket mounted in OpenClaw (deployment assistant)"
+
+echo ""
+
+# Test 8: Validate new scripts and guidebook
+echo "8. Validating scripts and guidebook..."
+echo "---------------------------------------"
+
+[ -f "GUIDEBOOK.md" ]
+test_result $? "GUIDEBOOK.md (comprehensive unified guidebook) exists"
+
+grep -q "Chapter 0" GUIDEBOOK.md
+test_result $? "GUIDEBOOK.md has Chapter 0 (Pre-Flight)"
+
+grep -q "Chapter 5" GUIDEBOOK.md
+test_result $? "GUIDEBOOK.md has Chapter 5 (OpenClaw)"
+
+grep -q "Chapter 6" GUIDEBOOK.md
+test_result $? "GUIDEBOOK.md has Chapter 6 (OpenClaw x KVM Integration)"
+
+grep -q "Chapter 7" GUIDEBOOK.md
+test_result $? "GUIDEBOOK.md has Chapter 7 (Deploy GUI)"
+
+[ -f "scripts/deploy-all.sh" ]
+test_result $? "scripts/deploy-all.sh exists"
+
+[ -x "scripts/deploy-all.sh" ]
+test_result $? "scripts/deploy-all.sh is executable"
+
+[ -f "scripts/preflight-check.sh" ]
+test_result $? "scripts/preflight-check.sh exists"
+
+[ -x "scripts/preflight-check.sh" ]
+test_result $? "scripts/preflight-check.sh is executable"
+
+[ -f "scripts/install-openclaw-deployer.sh" ]
+test_result $? "scripts/install-openclaw-deployer.sh exists"
+
+[ -x "scripts/install-openclaw-deployer.sh" ]
+test_result $? "scripts/install-openclaw-deployer.sh is executable"
+
+[ -f "deploy-gui/deploy-gui.js" ]
+test_result $? "deploy-gui/deploy-gui.js exists"
+
+[ -f "deploy-gui/Dockerfile" ]
+test_result $? "deploy-gui/Dockerfile exists"
+
+[ -f "deploy-gui/docker-compose.yml" ]
+test_result $? "deploy-gui/docker-compose.yml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('deploy-gui/docker-compose.yml'))"
+test_result $? "deploy-gui/docker-compose.yml YAML syntax valid"
+
+grep -q "9999" deploy-gui/docker-compose.yml
+test_result $? "Deploy GUI exposes port 9999"
+
+grep -q "/api/status" deploy-gui/deploy-gui.js
+test_result $? "Deploy GUI has /api/status endpoint"
+
+grep -q "/api/deploy" deploy-gui/deploy-gui.js
+test_result $? "Deploy GUI has /api/deploy endpoint"
+
+grep -q "portainer" deploy-gui/deploy-gui.js
+test_result $? "Deploy GUI has Portainer integration"
+
 echo ""
 echo "================================================================================"
 echo "  TEST RESULTS"
