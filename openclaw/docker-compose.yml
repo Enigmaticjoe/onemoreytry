@@ -47,8 +47,6 @@
 #   Unraid API   :80/graphql ← Docker/VM/array/system control via agents
 # ═══════════════════════════════════════════════════════════════════════════════
 
-version: "3.9"
-
 services:
 
   openclaw-gateway:

@@ -182,7 +182,7 @@ Before deploying, ensure:
 - [ ] **Node C:** Fedora 43 with Intel drivers installed
 - [ ] **Node C:** Run `sudo dnf install intel-level-zero-gpu intel-opencl`
 - [ ] **Network:** All nodes can communicate on 192.168.1.0/24
-- [ ] **IPs:** Verify: Node C=192.168.1.6, HA=192.168.1.149, Proxmox=192.168.1.174, Node E TBD
+- [x] **IPs:** Node C=192.168.1.6, HA=192.168.1.149, Proxmox=192.168.1.174, Blue Iris=192.168.1.116, KVM=192.168.1.130 (kvm-d829.local), Brawn=192.168.1.222
 
 ### Deployment Steps
 
@@ -398,7 +398,7 @@ api_key: sk-master-key  # Must match config.yaml
 
 ## Next Steps
 
-1. **Verify IP Addresses:** Node C=`192.168.1.6`, HA=`192.168.1.149`, Proxmox=`192.168.1.174`, Brawn=`192.168.1.222` (set Node E when known)
+1. **Network Addresses:** Node C=`192.168.1.6`, HA=`192.168.1.149`, Proxmox=`192.168.1.174`, Brawn=`192.168.1.222`, Blue Iris=`192.168.1.116`, KVM=`192.168.1.130` (kvm-d829.local)
 2. **Deploy Infrastructure:** Follow deployment checklist above
 3. **Test All Endpoints:** Run all validation tests
 4. **Monitor Performance:** Check logs and resource usage

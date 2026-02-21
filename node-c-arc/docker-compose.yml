@@ -7,8 +7,6 @@
 # FIXED: Now uses standard Ollama image with Intel Compute Runtime
 # (No ROCm - Intel Arc uses /dev/dri and Intel OneAPI/Level Zero)
 
-version: "3.9"
-
 services:
   # Ollama service for Intel Arc A770
   ollama:

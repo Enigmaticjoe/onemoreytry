@@ -32,7 +32,7 @@ echo "════════════════════════�
 echo ""
 
 # ── Load node IPs from inventory/settings ─────────────────────────────────────
-LITELLM_KEY="${LITELLM_KEY:-sk-master-key}"
+LITELLM_KEY="${LITELLM_API_KEY:-sk-master-key}"
 
 # Try to read from deploy-gui settings
 if [ -f "deploy-gui/data/settings.json" ]; then
@@ -41,21 +41,44 @@ if [ -f "deploy-gui/data/settings.json" ]; then
   NODE_C_IP=$(python3 -c "import json,sys; s=json.load(open('deploy-gui/data/settings.json')); print(s['nodes']['nodeC']['ip'])" 2>/dev/null || echo "$NODE_C_IP")
 fi
 
+# Detect docker command (with sudo fallback)
+DOCKER_CMD="docker"
+detect_docker_cmd() {
+  if command -v docker &>/dev/null; then
+    if docker info &>/dev/null 2>&1; then
+      DOCKER_CMD="docker"
+      return 0
+    elif sudo docker info &>/dev/null 2>&1; then
+      DOCKER_CMD="sudo docker"
+      return 0
+    fi
+  fi
+  return 1
+}
+
 if [ "$HEALTH_ONLY" = false ]; then
   echo "1. System Requirements"
   echo "──────────────────────"
 
-  # Docker
-  if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
-    pass "Docker is running ($(docker --version | cut -d' ' -f3 | tr -d ','))"
-  elif command -v docker &>/dev/null; then
-    fail "Docker is installed but the daemon is not running (sudo systemctl start docker)"
+  # Docker — try without sudo first, then with sudo
+  if command -v docker &>/dev/null; then
+    if docker info &>/dev/null 2>&1; then
+      pass "Docker is running ($(docker --version | cut -d' ' -f3 | tr -d ','))"
+    elif sudo docker info &>/dev/null 2>&1; then
+      warn "Docker requires sudo — running as $(whoami) without docker group"
+      info "  Fix: sudo usermod -aG docker $(whoami) && newgrp docker"
+      pass "Docker is running via sudo ($(docker --version | cut -d' ' -f3 | tr -d ','))"
+    else
+      fail "Docker is installed but the daemon is not running (sudo systemctl start docker)"
+    fi
   else
     fail "Docker is not installed (see GUIDEBOOK.md §0.3)"
   fi
 
+  detect_docker_cmd
+
   # Docker Compose
-  if docker compose version &>/dev/null 2>&1; then
+  if docker compose version &>/dev/null 2>&1 || $DOCKER_CMD compose version &>/dev/null 2>&1; then
     pass "Docker Compose plugin available"
   elif command -v docker-compose &>/dev/null; then
     warn "Legacy docker-compose found; prefer the compose plugin"
@@ -68,9 +91,9 @@ if [ "$HEALTH_ONLY" = false ]; then
     NODE_VER=$(node --version | sed 's/v//')
     NODE_MAJOR=$(echo "$NODE_VER" | cut -d. -f1)
     if [ "$NODE_MAJOR" -ge 20 ]; then
-      pass "Node.js v${NODE_VER} (≥ 20 required)"
+      pass "Node.js v${NODE_VER} (>= 20 required)"
     else
-      fail "Node.js v${NODE_VER} is too old — need ≥ 20"
+      fail "Node.js v${NODE_VER} is too old — need >= 20"
     fi
   else
     fail "Node.js not found (sudo dnf install nodejs -y)"
@@ -96,6 +119,13 @@ if [ "$HEALTH_ONLY" = false ]; then
     pass "jq available"
   else
     warn "jq not found — install with: sudo dnf install jq -y"
+  fi
+
+  # curl
+  if command -v curl &>/dev/null; then
+    pass "curl available"
+  else
+    fail "curl not found — install with: sudo dnf install curl -y"
   fi
 
   echo ""
@@ -142,21 +172,40 @@ if [ "$HEALTH_ONLY" = false ]; then
   done
 
   echo ""
-  echo "4. SSH Connectivity"
-  echo "───────────────────"
-fi  # end !HEALTH_ONLY for sections 1-4
+  echo "4. Network & SSH Connectivity"
+  echo "──────────────────────────────"
 
-if [ "$HEALTH_ONLY" = false ]; then
-  for ip in "$NODE_B_IP" "$NODE_C_IP"; do
+  # Ping all configured nodes
+  for pair in "Node A:${NODE_A_IP}" "Node B:${NODE_B_IP}" "Node C:${NODE_C_IP}" "Node D:${NODE_D_IP:-}" "Node E:${NODE_E_IP:-}" "KVM:${KVM_IP:-}"; do
+    label="${pair%%:*}"
+    ip="${pair#*:}"
+    if [ -z "$ip" ] || is_missing_or_placeholder_ip "$ip"; then
+      continue
+    fi
+    if ping -c1 -W2 "$ip" &>/dev/null; then
+      pass "Ping ${label} (${ip}) -- reachable"
+    else
+      warn "Ping ${label} (${ip}) -- unreachable"
+    fi
+  done
+
+  echo ""
+
+  # SSH to remote nodes
+  for triple in "Node B:${NODE_B_IP}:${NODE_B_SSH_USER}" "Node C:${NODE_C_IP}:${NODE_C_SSH_USER:-root}"; do
+    label="${triple%%:*}"
+    rest="${triple#*:}"
+    ip="${rest%%:*}"
+    user="${rest#*:}"
+
     if is_missing_or_placeholder_ip "$ip"; then
-      warn "Placeholder IP not set: ${ip} — update in GUIDEBOOK.md §0.2 and deploy-gui Settings"
       continue
     fi
     if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
-         root@"$ip" true &>/dev/null 2>&1; then
-      pass "SSH OK: ${ip}"
+         "${user}@${ip}" true &>/dev/null 2>&1; then
+      pass "SSH ${label} (${user}@${ip}) -- connected"
     else
-      warn "SSH failed: ${ip} (set up key-based auth — see GUIDEBOOK.md §0.4)"
+      warn "SSH ${label} (${user}@${ip}) -- failed (set up: ssh-copy-id ${user}@${ip})"
     fi
   done
   echo ""
@@ -166,19 +215,26 @@ echo "5. Service Health (running services)"
 echo "─────────────────────────────────────"
 
 check_service() {
-  local label="$1"; local url="$2"
+  local label="$1" url="$2" auth_header="${3:-}"
   local code
-  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null || echo "000")
-  if [[ "$code" =~ ^2 ]] || [[ "$code" =~ ^3 ]]; then
-    pass "${label} — HTTP ${code}"
-  elif [ "$code" = "000" ]; then
-    info "${label} — not reachable (may not be running yet)"
+  if [ -n "$auth_header" ]; then
+    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 -H "$auth_header" "$url" 2>/dev/null || echo "000")
   else
-    warn "${label} — HTTP ${code}"
+    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null || echo "000")
+  fi
+  if [[ "$code" =~ ^2 ]] || [[ "$code" =~ ^3 ]]; then
+    pass "${label} -- HTTP ${code}"
+  elif [ "$code" = "000" ]; then
+    info "${label} -- not reachable (may not be running yet)"
+  elif [ "$code" = "401" ]; then
+    warn "${label} -- HTTP 401 (auth required, service is running)"
+  else
+    warn "${label} -- HTTP ${code}"
   fi
 }
 
-check_service "LiteLLM Gateway"    "http://${NODE_B_IP}:4000/health"
+# Use /health/readiness for LiteLLM (doesn't require auth)
+check_service "LiteLLM Gateway"    "http://${NODE_B_IP}:4000/health/readiness"
 check_service "Ollama (Node C)"    "http://${NODE_C_IP}:11434/api/version"
 check_service "Chimera Face UI"    "http://${NODE_C_IP}:3000"
 check_service "Node A Dashboard"   "http://${NODE_A_IP}:3099/api/status"
@@ -189,7 +245,7 @@ check_service "Deploy GUI"         "http://localhost:9999/api/status"
 
 echo ""
 echo "═══════════════════════════════════════════════════"
-echo "   Results: ${GREEN}${PASS} passed${NC}  |  ${RED}${FAIL} failed${NC}  |  ${YELLOW}${WARN} warnings${NC}"
+echo -e "   Results: ${GREEN}${PASS} passed${NC}  |  ${RED}${FAIL} failed${NC}  |  ${YELLOW}${WARN} warnings${NC}"
 echo "═══════════════════════════════════════════════════"
 echo ""
 

@@ -60,7 +60,7 @@ The intent of this guide is to turn **Node A into the central brain** while stil
 | Central observability | Distributed checks, no single control pane | Slow incident triage | Add Node A command-center dashboard with status polling |
 | Brain access path | Routed via Node B | Good, but no dedicated operator console | Add built-in chat panel on Node A dashboard |
 | Documentation distribution | Multiple docs, no dedicated Node A guidebook | Onboarding complexity | Add one deep guidebook + links from root docs |
-| IP address management | Node C=`192.168.1.6`, HA=`192.168.1.149`, Node E TBD | Node E not yet configured | Set NODE_E_IP once Sentinel is deployed |
+| IP address management | Node C=`192.168.1.6`, HA=`192.168.1.149`, Blue Iris=`192.168.1.116`, KVM=`192.168.1.130` | All IPs configured | Node E Sentinel webhook integration next |
 | Security defaults | Shared static key in examples | Acceptable for lab, weak for production | Add key rotation and network segmentation guidance |
 
 ---
@@ -130,7 +130,7 @@ This split preserves performance and allows minimal churn to existing compose de
              ┌─────▼─────┐                 ┌─────▼─────┐
              │ Node D     │                 │ Node E     │
              │ Home Asst  │                 │ Sentinel   │
-             │ 192.168.1.149│               │ 192.168.1.Z│
+             │ 192.168.1.149│               │ 192.168.1.116│
              └────────────┘                 └────────────┘
 ```
 
@@ -321,7 +321,7 @@ User report -> Open Node A dashboard -> Refresh status
 
 ## Appendix B — Reality checks before declaring completion
 
-- [x] Network IPs configured: Node C=`192.168.1.6`, HA=`192.168.1.149`, Proxmox=`192.168.1.174`, Brawn=`192.168.1.222` (Node E TBD)
+- [x] Network IPs configured: Node C=`192.168.1.6`, HA=`192.168.1.149`, Proxmox=`192.168.1.174`, Brawn=`192.168.1.222`, Blue Iris=`192.168.1.116`, KVM=`192.168.1.130` (kvm-d829.local)
 - [ ] Confirm Node A model server is available at configured endpoint
 - [ ] Confirm LiteLLM key and model aliases are valid
 - [ ] Confirm operator access controls for dashboard exposure

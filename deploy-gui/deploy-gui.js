@@ -38,7 +38,7 @@ const DEFAULT_SETTINGS = {
     nodeB: { label: 'Node B (Unraid/LiteLLM)', ip: '192.168.1.222', sshUser: 'root', enabled: true },
     nodeC: { label: 'Node C (Intel Arc)', ip: '192.168.1.6', sshUser: 'root', enabled: true },
     nodeD: { label: 'Node D (Home Assistant)', ip: '192.168.1.149', sshUser: 'root', enabled: false },
-    nodeE: { label: 'Node E (Sentinel)', ip: '192.168.1.Z', sshUser: 'root', enabled: false },
+    nodeE: { label: 'Node E (Blue Iris/Sentinel)', ip: '192.168.1.116', sshUser: 'root', enabled: false },
   },
   services: {
     litellm: { label: 'LiteLLM Gateway', url: 'http://192.168.1.222:4000/health' },
