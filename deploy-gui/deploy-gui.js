@@ -41,7 +41,7 @@ const DEFAULT_SETTINGS = {
     nodeE: { label: 'Node E (Blue Iris/Sentinel)', ip: '192.168.1.116', sshUser: 'root', enabled: false },
   },
   services: {
-    litellm: { label: 'LiteLLM Gateway', url: 'http://192.168.1.222:4000/health' },
+    litellm: { label: 'LiteLLM Gateway', url: 'http://192.168.1.222:4000/health/readiness' },
     ollama: { label: 'Ollama (Node C)', url: 'http://192.168.1.6:11434/api/version' },
     openwebui: { label: 'Chimera Face UI', url: 'http://192.168.1.6:3000' },
     nodeaDash: { label: 'Node A Dashboard', url: 'http://192.168.1.9:3099/api/status' },
@@ -59,6 +59,14 @@ const DEFAULT_SETTINGS = {
   portainerUrl: 'http://192.168.1.222:9000',
   openclawUrl: 'http://192.168.1.222:18789',
   kvmOperatorUrl: 'http://192.168.1.9:5000',
+  cloudflare: {
+    dashboardUrl: '',
+    litellmUrl: '',
+    openclawUrl: '',
+    openwebuiUrl: '',
+    portainerUrl: '',
+    homeAssistantUrl: '',
+  },
 };
 
 // Minimal safe environment for child processes — never pass full process.env
@@ -79,7 +87,15 @@ function ensureDataDir() {
 function loadSettings() {
   try {
     const raw = fs.readFileSync(SETTINGS_FILE, 'utf8');
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    return {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+      nodes: { ...DEFAULT_SETTINGS.nodes, ...(parsed.nodes || {}) },
+      services: { ...DEFAULT_SETTINGS.services, ...(parsed.services || {}) },
+      tokens: { ...DEFAULT_SETTINGS.tokens, ...(parsed.tokens || {}) },
+      cloudflare: { ...DEFAULT_SETTINGS.cloudflare, ...(parsed.cloudflare || {}) },
+    };
   } catch (_) {
     return { ...DEFAULT_SETTINGS };
   }
@@ -360,13 +376,20 @@ function renderDashboard() {
   .refresh-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 4px 10px; font-size: 12px; border-radius: 5px; cursor: pointer; }
   .refresh-btn:hover { color: var(--text); }
   .openclaw-response { background: #0a0c14; border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-size: 13px; min-height: 80px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; color: #e8eaf6; display: none; }
+  .links-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px; }
+  .link-item { display:block; padding:10px; border:1px solid var(--border); border-radius:6px; text-decoration:none; color:var(--text); background:var(--surface2); }
+  .link-item:hover { border-color: var(--accent); }
+  .link-title { font-weight:600; font-size:13px; }
+  .link-sub { color:var(--text2); font-size:11px; margin-top:4px; word-break: break-all; }
+  .chat-shell { display:flex; flex-direction:column; gap:10px; }
+  .chat-response { background:#0a0c14; border:1px solid var(--border); border-radius:6px; padding:12px; min-height:140px; white-space:pre-wrap; color:#e8eaf6; }
 </style>
 </head>
 <body>
 <header>
   <span style="font-size:24px">🚀</span>
   <h1>Homelab Deploy GUI</h1>
-  <span>Grand Unified AI Home Lab — Fedora 43 Command Center</span>
+  <span>Grand Unified AI Home Lab — Command Center + Cloudflare Access</span>
   <span style="margin-left:auto;font-size:12px;color:var(--text2)" id="clock"></span>
 </header>
 <div class="tabs">
@@ -408,6 +431,24 @@ function renderDashboard() {
     <h3>📟 Quick Log</h3>
     <div class="terminal" id="quickLog">Ready. Use Quick Actions above or Deploy tab to run commands.</div>
   </div>
+  <div style="margin-top:16px" class="grid2">
+    <div class="card">
+      <h3>🌐 Ecosystem Links (Local + Cloudflare)</h3>
+      <div id="ecosystemLinks" class="links-grid"></div>
+    </div>
+    <div class="card">
+      <h3>🧭 Ecosystem Assistant</h3>
+      <div class="chat-shell">
+        <textarea id="ecosystemChatInput" rows="3" placeholder="Ask: where is Home Assistant, how do I deploy Node B, show Cloudflare links, suggest next checks"></textarea>
+        <div style="display:flex;gap:8px">
+          <button onclick="askEcosystemAssistant()">Ask Assistant</button>
+          <button class="secondary" onclick="fillOpenclawMsg(document.getElementById('ecosystemChatInput').value);showTab('openclaw')">Send to OpenClaw</button>
+        </div>
+        <div id="ecosystemChatResponse" class="chat-response">Assistant ready. I can index local services, Cloudflare URLs, and suggest next actions.</div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- DEPLOY TAB -->
@@ -535,6 +576,22 @@ function renderDashboard() {
       <label>Node E IP (Sentinel)</label>
       <input type="text" id="nodeEIp" value="${escapeHtml(settings.nodes.nodeE.ip)}">
     </div>
+
+    <div class="card">
+      <h3>Cloudflare Public URLs</h3>
+      <label>Dashboard URL</label>
+      <input type="text" id="cfDashboardUrl" value="${escapeHtml(settings.cloudflare.dashboardUrl || '')}" placeholder="https://dashboard.example.com">
+      <label>LiteLLM URL</label>
+      <input type="text" id="cfLitellmUrl" value="${escapeHtml(settings.cloudflare.litellmUrl || '')}" placeholder="https://litellm.example.com">
+      <label>OpenClaw URL</label>
+      <input type="text" id="cfOpenclawUrl" value="${escapeHtml(settings.cloudflare.openclawUrl || '')}" placeholder="https://openclaw.example.com">
+      <label>OpenWebUI URL</label>
+      <input type="text" id="cfOpenwebuiUrl" value="${escapeHtml(settings.cloudflare.openwebuiUrl || '')}" placeholder="https://chat.example.com">
+      <label>Portainer URL</label>
+      <input type="text" id="cfPortainerUrl" value="${escapeHtml(settings.cloudflare.portainerUrl || '')}" placeholder="https://portainer.example.com">
+      <label>Home Assistant URL</label>
+      <input type="text" id="cfHomeAssistantUrl" value="${escapeHtml(settings.cloudflare.homeAssistantUrl || '')}" placeholder="https://ha.example.com">
+    </div>
     <div class="card">
       <h3>Tokens & Keys</h3>
       <label>LiteLLM API Key</label>
@@ -588,6 +645,76 @@ async function refreshStatus() {
     document.getElementById('statusList').innerHTML =
       '<div class="status-row"><div class="dot red"></div><span>Failed to fetch status</span></div>';
   }
+}
+
+
+function buildEcosystemIndex() {
+  const links = [
+    { name: 'Node A Dashboard (local)', url: 'http://' + settings.nodes.nodeA.ip + ':3099', group: 'local' },
+    { name: 'LiteLLM Gateway (local)', url: 'http://' + settings.nodes.nodeB.ip + ':4000', group: 'local' },
+    { name: 'OpenClaw Gateway (local)', url: 'http://' + settings.nodes.nodeB.ip + ':18789', group: 'local' },
+    { name: 'Portainer (local)', url: settings.portainerUrl, group: 'local' },
+    { name: 'Ollama API (local)', url: 'http://' + settings.nodes.nodeC.ip + ':11434', group: 'local' },
+    { name: 'Chimera Face UI (local)', url: 'http://' + settings.nodes.nodeC.ip + ':3000', group: 'local' },
+    { name: 'KVM Operator (local)', url: settings.kvmOperatorUrl, group: 'local' },
+    { name: 'Home Assistant (local)', url: 'http://' + settings.nodes.nodeD.ip + ':8123', group: 'local' },
+    { name: 'Blue Iris / Sentinel (local)', url: 'http://' + settings.nodes.nodeE.ip + ':81', group: 'local' },
+    { name: 'Deploy GUI (local)', url: 'http://localhost:9999', group: 'local' },
+    { name: 'Dashboard (Cloudflare)', url: settings.cloudflare.dashboardUrl, group: 'cloudflare' },
+    { name: 'LiteLLM (Cloudflare)', url: settings.cloudflare.litellmUrl, group: 'cloudflare' },
+    { name: 'OpenClaw (Cloudflare)', url: settings.cloudflare.openclawUrl, group: 'cloudflare' },
+    { name: 'OpenWebUI (Cloudflare)', url: settings.cloudflare.openwebuiUrl, group: 'cloudflare' },
+    { name: 'Portainer (Cloudflare)', url: settings.cloudflare.portainerUrl, group: 'cloudflare' },
+    { name: 'Home Assistant (Cloudflare)', url: settings.cloudflare.homeAssistantUrl, group: 'cloudflare' },
+  ];
+  return links.filter(l => l.url);
+}
+
+function renderEcosystemLinks() {
+  const links = buildEcosystemIndex();
+  const el = document.getElementById('ecosystemLinks');
+  if (!el) return;
+  if (!links.length) {
+    el.innerHTML = '<div style="color:var(--text2)">No links configured yet. Add Cloudflare URLs in Settings.</div>';
+    return;
+  }
+  el.innerHTML = links.map(link => {
+    return '<a class="link-item" href="' + link.url + '" target="_blank" rel="noreferrer noopener">' +
+      '<div class="link-title">' + link.name + '</div>' +
+      '<div class="link-sub">' + link.url + '</div>' +
+      '</a>';
+  }).join('');
+}
+
+function askEcosystemAssistant() {
+  const input = (document.getElementById('ecosystemChatInput').value || '').trim();
+  const out = document.getElementById('ecosystemChatResponse');
+  if (!input) {
+    out.textContent = 'Ask a question first. Example: show me Cloudflare links for OpenClaw and Home Assistant.';
+    return;
+  }
+
+  const query = input.toLowerCase();
+  const links = buildEcosystemIndex();
+  const words = query.split(/\s+/).filter(Boolean);
+  const matches = links.filter(link => words.some(w => link.name.toLowerCase().includes(w) || link.url.toLowerCase().includes(w)));
+
+  const suggestions = [];
+  if (query.includes('deploy') || query.includes('restart')) suggestions.push('Use the Deploy tab to run Node deploy targets, then review logs in Quick Log.');
+  if (query.includes('health') || query.includes('status') || query.includes('down')) suggestions.push('Run Refresh in Overview, then run ./scripts/preflight-check.sh from Quick Actions for a full health report.');
+  if (query.includes('cloudflare') || query.includes('public')) suggestions.push('Validate Cloudflare tunnel DNS + ingress, then save/update the Cloudflare URLs in Settings for one-click access.');
+  if (query.includes('find') || query.includes('where') || query.includes('link')) suggestions.push('Use the Ecosystem Links card to open local and Cloudflare endpoints directly.');
+
+  let text = 'Query: ' + input + '\n\nIndexed endpoints: ' + links.length;
+  if (matches.length) {
+    text += '\n\nBest matches (' + matches.length + '):\n' + matches.slice(0, 8).map((m, i) => (i + 1) + '. ' + m.name + ' -> ' + m.url).join('\n');
+  } else {
+    text += '\n\nNo direct endpoint match. Try keywords like: litellm, openclaw, dashboard, home assistant, portainer, cloudflare.';
+  }
+  if (suggestions.length) {
+    text += '\n\nSuggested next actions:\n' + suggestions.map((v, i) => (i + 1) + '. ' + v).join('\n');
+  }
+  out.textContent = text;
 }
 
 function renderStatusList(services) {
@@ -778,6 +905,14 @@ async function saveSettings() {
       openclawToken: document.getElementById('openclawToken').value,
       portainerToken: document.getElementById('portainerToken').value,
     },
+    cloudflare: {
+      dashboardUrl: document.getElementById('cfDashboardUrl').value.trim(),
+      litellmUrl: document.getElementById('cfLitellmUrl').value.trim(),
+      openclawUrl: document.getElementById('cfOpenclawUrl').value.trim(),
+      openwebuiUrl: document.getElementById('cfOpenwebuiUrl').value.trim(),
+      portainerUrl: document.getElementById('cfPortainerUrl').value.trim(),
+      homeAssistantUrl: document.getElementById('cfHomeAssistantUrl').value.trim(),
+    },
   };
   try {
     const r = await fetch('/api/settings', {
@@ -808,6 +943,7 @@ function appendLog(elId, cls, text) {
 // Init
 refreshStatus();
 renderDeployList();
+renderEcosystemLinks();
 </script>
 </body>
 </html>`;
@@ -818,6 +954,10 @@ async function handleStatus(res) {
   const checks = Object.entries(settings.services).map(([k, v]) => checkService(k, v));
   const services = await Promise.all(checks);
   sendJson(res, 200, { timestamp: new Date().toISOString(), services });
+}
+
+function handleHealth(res) {
+  sendJson(res, 200, { ok: true, service: 'deploy-gui' });
 }
 
 async function handleDeploy(req, res) {
@@ -951,9 +1091,12 @@ async function handleSettingsSave(req, res) {
   ['portainerUrl', 'openclawUrl', 'kvmOperatorUrl'].forEach(key => {
     if (typeof body[key] === 'string') settings[key] = body[key];
   });
+  if (body.cloudflare && typeof body.cloudflare === 'object') {
+    settings.cloudflare = { ...settings.cloudflare, ...body.cloudflare };
+  }
 
   // Regenerate service URLs from updated node IPs
-  settings.services.litellm.url = `http://${settings.nodes.nodeB.ip}:4000/health`;
+  settings.services.litellm.url = `http://${settings.nodes.nodeB.ip}:4000/health/readiness`;
   settings.services.ollama.url = `http://${settings.nodes.nodeC.ip}:11434/api/version`;
   settings.services.openwebui.url = `http://${settings.nodes.nodeC.ip}:3000`;
   settings.services.nodeaDash.url = `http://${settings.nodes.nodeA.ip}:3099/api/status`;
@@ -983,6 +1126,7 @@ const server = http.createServer(async (req, res) => {
     return res.end(html);
   }
 
+  if (req.method === 'GET' && pathname === '/api/health') return handleHealth(res);
   if (req.method === 'GET' && pathname === '/api/status') return handleStatus(res);
   if (req.method === 'GET' && pathname === '/api/settings') return handleSettingsGet(res);
   if (req.method === 'POST' && pathname === '/api/settings') return handleSettingsSave(req, res);

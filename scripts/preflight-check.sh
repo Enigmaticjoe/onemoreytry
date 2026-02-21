@@ -241,7 +241,7 @@ check_service "Node A Dashboard"   "http://${NODE_A_IP}:3099/api/status"
 check_service "KVM Operator"       "http://${NODE_A_IP}:5000/health"
 check_service "OpenClaw"           "http://${NODE_B_IP}:18789/"
 check_service "Portainer"          "http://${NODE_B_IP}:9000/api/status"
-check_service "Deploy GUI"         "http://localhost:9999/api/status"
+check_service "Deploy GUI"         "http://localhost:9999/api/health"
 
 echo ""
 echo "═══════════════════════════════════════════════════"
