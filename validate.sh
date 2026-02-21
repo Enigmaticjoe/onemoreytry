@@ -192,6 +192,9 @@ test_result $? "Node A command center guidebook exists"
 [ -f "docs/10_UNIFIED_INSTALL_GUIDEBOOK.md" ]
 test_result $? "Unified install guidebook exists"
 
+[ -f "docs/11_OPENCLAW_KVM_GUIDEBOOK.md" ]
+test_result $? "OpenClaw + KVM integration guidebook exists"
+
 grep -q "api/status" node-a-command-center/node-a-command-center.js
 test_result $? "Node A dashboard status endpoint configured"
 
