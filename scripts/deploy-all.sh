@@ -91,6 +91,7 @@ LITELLM_KEY="${LITELLM_API_KEY:-sk-master-key}"
 wait_for_health() {
   local label="$1" url="$2" max_attempts="${3:-12}" delay="${4:-5}"
   local auth_header="${5:-}"
+  local extra_ok_codes="${6:-}"
   info "Waiting for ${label} to be healthy..."
   local i=0
   while [ $i -lt "$max_attempts" ]; do
@@ -100,7 +101,7 @@ wait_for_health() {
     else
       code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null || echo "000")
     fi
-    if [[ "$code" =~ ^2 ]] || [[ "$code" =~ ^3 ]]; then
+    if [[ "$code" =~ ^2 ]] || [[ "$code" =~ ^3 ]] || [[ ",${extra_ok_codes}," == *",${code},"* ]]; then
       ok "${label} is healthy (HTTP ${code})"
       return 0
     fi
@@ -300,21 +301,24 @@ ok "Node C ready"
 step "Step 3 — Node B LiteLLM Gateway (Unraid)"
 if [ "$SSH_TO_B" = true ]; then
   info "Deploying LiteLLM stack on Node B (${NODE_B_IP})..."
-  ssh_cmd "$NODE_B_IP" "$NODE_B_SSH_USER" \
+  if ssh_cmd "$NODE_B_IP" "$NODE_B_SSH_USER" \
     "cd /mnt/user/appdata/homelab/node-b-litellm 2>/dev/null || cd ~/homelab/node-b-litellm && docker compose -f litellm-stack.yml pull && docker compose -f litellm-stack.yml up -d" || {
     err "LiteLLM deploy command failed"
     note_error
-  }
+  }; then
 
-  # LiteLLM /health returns 401 when master_key is set — use /health/readiness instead
-  if ! wait_for_health "LiteLLM Gateway" "http://${NODE_B_IP}:4000/health/readiness" 12 5; then
-    warn "LiteLLM health check failed"
-    info "  Try checking directly: curl -H 'x-api-key: ${LITELLM_KEY}' http://${NODE_B_IP}:4000/health"
-    info "  Or use readiness endpoint: curl http://${NODE_B_IP}:4000/health/readiness"
-    info "  Check container logs: ssh ${NODE_B_SSH_USER}@${NODE_B_IP} docker logs litellm_gateway --tail 20"
-    note_error
+    # Some deployments return 401 on readiness when auth middleware is enabled.
+    if ! wait_for_health "LiteLLM Gateway" "http://${NODE_B_IP}:4000/health/readiness" 12 5 "" "401"; then
+      warn "LiteLLM health check failed"
+      info "  Try checking directly: curl -H 'x-api-key: ${LITELLM_KEY}' http://${NODE_B_IP}:4000/health"
+      info "  Or use readiness endpoint: curl http://${NODE_B_IP}:4000/health/readiness"
+      info "  Check container logs: ssh ${NODE_B_SSH_USER}@${NODE_B_IP} docker logs litellm_gateway --tail 20"
+      note_error
+    else
+      ok "Node B LiteLLM Gateway ready"
+    fi
   else
-    ok "Node B LiteLLM Gateway ready"
+    warn "Skipping LiteLLM health check because remote deploy command failed"
   fi
 elif ! is_missing_or_placeholder_ip "$NODE_B_IP"; then
   warn "SSH to Node B not available — skipping remote deploy"
@@ -390,18 +394,21 @@ fi
 step "Step 6 — OpenClaw AI Gateway (Node B)"
 if [ "$SSH_TO_B" = true ]; then
   info "Deploying OpenClaw on Node B (${NODE_B_IP})..."
-  ssh_cmd "$NODE_B_IP" "$NODE_B_SSH_USER" \
+  if ssh_cmd "$NODE_B_IP" "$NODE_B_SSH_USER" \
     "cd /mnt/user/appdata/homelab/openclaw 2>/dev/null || cd ~/homelab/openclaw && docker compose pull && docker compose up -d" || {
     err "OpenClaw deploy command failed"
     note_error
-  }
-  if ! wait_for_health "OpenClaw" "http://${NODE_B_IP}:18789/" 15 5; then
-    warn "OpenClaw health check failed"
-    info "  Check container logs: ssh ${NODE_B_SSH_USER}@${NODE_B_IP} docker logs openclaw-gateway --tail 20"
-    info "  OpenClaw can take 30-60s to start — check again in a minute"
-    note_error
+  }; then
+    if ! wait_for_health "OpenClaw" "http://${NODE_B_IP}:18789/" 15 5; then
+      warn "OpenClaw health check failed"
+      info "  Check container logs: ssh ${NODE_B_SSH_USER}@${NODE_B_IP} docker logs openclaw-gateway --tail 20"
+      info "  OpenClaw can take 30-60s to start — check again in a minute"
+      note_error
+    else
+      ok "OpenClaw ready at http://${NODE_B_IP}:18789"
+    fi
   else
-    ok "OpenClaw ready at http://${NODE_B_IP}:18789"
+    warn "Skipping OpenClaw health check because remote deploy command failed"
   fi
 elif ! is_missing_or_placeholder_ip "$NODE_B_IP"; then
   warn "SSH to Node B not available — skipping OpenClaw deploy"
@@ -424,7 +431,7 @@ info "Building and starting Deploy GUI..."
 docker_compose -f deploy-gui/docker-compose.yml up -d --build 2>&1 | tail -10
 
 sleep 5
-if ! wait_for_health "Deploy GUI" "http://localhost:9999/api/status" 8 3; then
+if ! wait_for_health "Deploy GUI" "http://localhost:9999/api/health" 8 3; then
   warn "Deploy GUI health check failed — checking container..."
   if $DOCKER_CMD ps --format '{{.Names}}' 2>/dev/null | grep -q homelab-deploy-gui; then
     show_container_logs "homelab-deploy-gui" 15
