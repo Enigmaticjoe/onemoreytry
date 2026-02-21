@@ -21,7 +21,7 @@ EXPOSE 9999
 
 # Run as a non-root user for security
 RUN addgroup -S deployer && adduser -S deployer -G deployer
-RUN mkdir -p /data && chown deployer:deployer /data
+RUN mkdir -p /data /home/deployer/.ssh && chown -R deployer:deployer /data /home/deployer/.ssh
 USER deployer
 
 CMD ["node", "deploy-gui.js"]

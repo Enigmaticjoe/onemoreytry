@@ -12,8 +12,6 @@
 #   3. Set your node IPs and tokens
 #   4. Return to Overview and click Refresh
 
-version: "3.9"
-
 services:
   deploy-gui:
     build: .
@@ -35,7 +33,8 @@ services:
       - deploy-gui-data:/data
       # SSH keys for remote node access — mount your ~/.ssh directory
       # Ensure keys are added with: ssh-copy-id user@<node-ip>
-      - ${HOME}/.ssh:/home/deployer/.ssh:ro
+      # Falls back to empty dir if ~/.ssh doesn't exist
+      - ${HOME:?}/.ssh:/home/deployer/.ssh:ro
       # Mount the homelab repo so the GUI can run scripts directly
       - ..:/homelab:ro
 

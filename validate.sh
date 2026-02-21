@@ -329,6 +329,12 @@ test_result $? "scripts/install-openclaw-deployer.sh exists"
 [ -x "scripts/install-openclaw-deployer.sh" ]
 test_result $? "scripts/install-openclaw-deployer.sh is executable"
 
+[ -f "scripts/prepare-openclaw.sh" ]
+test_result $? "scripts/prepare-openclaw.sh exists"
+
+[ -x "scripts/prepare-openclaw.sh" ]
+test_result $? "scripts/prepare-openclaw.sh is executable"
+
 [ -f "deploy-gui/deploy-gui.js" ]
 test_result $? "deploy-gui/deploy-gui.js exists"
 
