@@ -383,6 +383,42 @@ test_result $? "scripts/portainer-install.sh exists"
 [ -x "scripts/portainer-install.sh" ]
 test_result $? "scripts/portainer-install.sh is executable"
 
+[ -f "scripts/connection-wizard.sh" ]
+test_result $? "scripts/connection-wizard.sh (connection wizard) exists"
+
+[ -x "scripts/connection-wizard.sh" ]
+test_result $? "scripts/connection-wizard.sh is executable"
+
+grep -q "\-\-ssh" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh has --ssh direct-jump flag"
+
+grep -q "\-\-tailscale" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh has --tailscale direct-jump flag"
+
+grep -q "\-\-cloudflare" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh has --cloudflare direct-jump flag"
+
+grep -q "\-\-all-checks" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh has --all-checks flag"
+
+grep -q "ssh_menu\|ssh_audit_all\|ssh_copy_key" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh has SSH management functions"
+
+grep -q "tailscale_menu\|ts_install_local\|ts_connect_local" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh has Tailscale management functions"
+
+grep -q "cloudflare_menu\|cf_install\|cf_create_tunnel" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh has Cloudflare tunnel functions"
+
+grep -q "run_all_checks" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh has run_all_checks function"
+
+grep -q "ssh-auditor.sh" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh invokes ssh-auditor.sh"
+
+grep -q "preflight-check.sh" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh invokes preflight-check.sh"
+
 [ -f "docs/12_INSTALL_WIZARD_GUIDE.md" ]
 test_result $? "docs/12_INSTALL_WIZARD_GUIDE.md (wizard guide) exists"
 
