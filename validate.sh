@@ -389,6 +389,15 @@ test_result $? "scripts/connection-wizard.sh (connection wizard) exists"
 [ -x "scripts/connection-wizard.sh" ]
 test_result $? "scripts/connection-wizard.sh is executable"
 
+[ -f "connection-wizard.sh" ]
+test_result $? "connection-wizard.sh root wrapper exists"
+
+[ -x "connection-wizard.sh" ]
+test_result $? "connection-wizard.sh root wrapper is executable"
+
+grep -q "scripts/connection-wizard.sh" connection-wizard.sh
+test_result $? "connection-wizard.sh root wrapper delegates to scripts/connection-wizard.sh"
+
 grep -q "\-\-ssh" scripts/connection-wizard.sh
 test_result $? "connection-wizard.sh has --ssh direct-jump flag"
 
