@@ -132,6 +132,25 @@ test_result $? "Correct LiteLLM Gateway URL (192.168.1.222:4000/v1)"
 grep -q "sk-master-key" home-assistant/configuration.yaml.snippet
 test_result $? "API key (sk-master-key) configured"
 
+# Node D directory
+[ -d "node-d-home-assistant" ]
+test_result $? "node-d-home-assistant/ directory exists"
+
+[ -f "node-d-home-assistant/docker-compose.yml" ]
+test_result $? "node-d-home-assistant/docker-compose.yml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('node-d-home-assistant/docker-compose.yml'))"
+test_result $? "node-d-home-assistant/docker-compose.yml YAML syntax valid"
+
+grep -q "healthcheck:" node-d-home-assistant/docker-compose.yml
+test_result $? "node-d-home-assistant has healthcheck defined"
+
+[ -f "node-d-home-assistant/.env.example" ]
+test_result $? "node-d-home-assistant/.env.example exists"
+
+[ -f "node-d-home-assistant/configuration.yaml.snippet" ]
+test_result $? "node-d-home-assistant/configuration.yaml.snippet exists"
+
 echo ""
 
 # Test 5: Validate Docker Compose structure
@@ -149,6 +168,9 @@ test_result $? "LiteLLM has healthcheck defined"
 grep -q "healthcheck:" node-c-arc/docker-compose.yml
 test_result $? "Node C Ollama has healthcheck defined"
 
+grep -q "healthcheck:" node-a-vllm/docker-compose.yml
+test_result $? "Node A vLLM has healthcheck defined"
+
 # Check container names
 grep -q "container_name: litellm_gateway" node-b-litellm/litellm-stack.yml
 test_result $? "LiteLLM container named 'litellm_gateway'"
@@ -158,6 +180,9 @@ test_result $? "Ollama container named 'ollama_intel_arc'"
 
 grep -q "container_name: chimera_face" node-c-arc/docker-compose.yml
 test_result $? "Open WebUI container named 'chimera_face'"
+
+grep -q "container_name: vllm_brain" node-a-vllm/docker-compose.yml
+test_result $? "Node A vLLM container named 'vllm_brain'"
 
 echo ""
 
@@ -173,6 +198,18 @@ test_result $? "config.yaml exists"
 
 [ -f "node-c-arc/docker-compose.yml" ]
 test_result $? "node-c-arc/docker-compose.yml exists"
+
+[ -f "node-a-vllm/docker-compose.yml" ]
+test_result $? "node-a-vllm/docker-compose.yml exists"
+
+[ -f "node-a-vllm/.env.example" ]
+test_result $? "node-a-vllm/.env.example exists"
+
+[ -f "scripts/setup-node-a.sh" ]
+test_result $? "scripts/setup-node-a.sh exists"
+
+[ -x "scripts/setup-node-a.sh" ]
+test_result $? "scripts/setup-node-a.sh is executable"
 
 [ -f "home-assistant/configuration.yaml.snippet" ]
 test_result $? "configuration.yaml.snippet exists"
@@ -361,6 +398,138 @@ test_result $? "Deploy GUI has /api/deploy endpoint"
 
 grep -q "portainer" deploy-gui/deploy-gui.js
 test_result $? "Deploy GUI has Portainer integration"
+
+grep -q "/api/audit" deploy-gui/deploy-gui.js
+test_result $? "Deploy GUI has /api/audit endpoint (SSH auditor)"
+
+grep -q "wizard" deploy-gui/deploy-gui.js
+test_result $? "Deploy GUI has Setup Wizard tab"
+
+grep -q "/api/portainer-install" deploy-gui/deploy-gui.js
+test_result $? "Deploy GUI has /api/portainer-install endpoint"
+
+[ -f "scripts/ssh-auditor.sh" ]
+test_result $? "scripts/ssh-auditor.sh exists"
+
+[ -x "scripts/ssh-auditor.sh" ]
+test_result $? "scripts/ssh-auditor.sh is executable"
+
+[ -f "scripts/portainer-install.sh" ]
+test_result $? "scripts/portainer-install.sh exists"
+
+[ -x "scripts/portainer-install.sh" ]
+test_result $? "scripts/portainer-install.sh is executable"
+
+[ -f "scripts/connection-wizard.sh" ]
+test_result $? "scripts/connection-wizard.sh (connection wizard) exists"
+
+[ -x "scripts/connection-wizard.sh" ]
+test_result $? "scripts/connection-wizard.sh is executable"
+
+[ -f "connection-wizard.sh" ]
+test_result $? "connection-wizard.sh root wrapper exists"
+
+[ -x "connection-wizard.sh" ]
+test_result $? "connection-wizard.sh root wrapper is executable"
+
+grep -q "scripts/connection-wizard.sh" connection-wizard.sh
+test_result $? "connection-wizard.sh root wrapper delegates to scripts/connection-wizard.sh"
+
+grep -q "\-\-ssh" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh has --ssh direct-jump flag"
+
+grep -q "\-\-tailscale" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh has --tailscale direct-jump flag"
+
+grep -q "\-\-cloudflare" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh has --cloudflare direct-jump flag"
+
+grep -q "\-\-all-checks" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh has --all-checks flag"
+
+grep -q "ssh_menu\|ssh_audit_all\|ssh_copy_key" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh has SSH management functions"
+
+grep -q "tailscale_menu\|ts_install_local\|ts_connect_local" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh has Tailscale management functions"
+
+grep -q "cloudflare_menu\|cf_install\|cf_create_tunnel" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh has Cloudflare tunnel functions"
+
+grep -q "run_all_checks" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh has run_all_checks function"
+
+grep -q "ssh-auditor.sh" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh invokes ssh-auditor.sh"
+
+grep -q "preflight-check.sh" scripts/connection-wizard.sh
+test_result $? "connection-wizard.sh invokes preflight-check.sh"
+
+[ -f "docs/12_INSTALL_WIZARD_GUIDE.md" ]
+test_result $? "docs/12_INSTALL_WIZARD_GUIDE.md (wizard guide) exists"
+
+grep -q "Portainer" docs/12_INSTALL_WIZARD_GUIDE.md
+test_result $? "Install wizard guide covers Portainer setup"
+
+grep -q "ssh-auditor" docs/12_INSTALL_WIZARD_GUIDE.md
+test_result $? "Install wizard guide references ssh-auditor.sh"
+
+echo ""
+
+# Test 9: Validate Node C OpenClaw files
+echo "9. Validating Node C OpenClaw files..."
+echo "---------------------------------------"
+
+[ -f "node-c-arc/openclaw.yml" ]
+test_result $? "node-c-arc/openclaw.yml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('node-c-arc/openclaw.yml'))"
+test_result $? "node-c-arc/openclaw.yml YAML syntax valid"
+
+grep -q "/opt/openclaw" node-c-arc/openclaw.yml
+test_result $? "node-c-arc/openclaw.yml uses Linux /opt/openclaw paths (not Unraid)"
+
+grep -q "host.docker.internal:host-gateway" node-c-arc/openclaw.yml
+test_result $? "node-c-arc/openclaw.yml has host.docker.internal for Ollama access"
+
+grep -q "OLLAMA_API_KEY" node-c-arc/openclaw.yml
+test_result $? "node-c-arc/openclaw.yml has OLLAMA_API_KEY env var"
+
+grep -q "LITELLM_API_KEY" node-c-arc/openclaw.yml
+test_result $? "node-c-arc/openclaw.yml has LITELLM_API_KEY for Node B fallback"
+
+[ -f "node-c-arc/openclaw.json" ]
+test_result $? "node-c-arc/openclaw.json exists"
+
+grep -q "host.docker.internal:11434" node-c-arc/openclaw.json
+test_result $? "node-c-arc/openclaw.json points Ollama to host.docker.internal:11434"
+
+grep -q "192.168.1.222:4000" node-c-arc/openclaw.json
+test_result $? "node-c-arc/openclaw.json points LiteLLM to Node B (192.168.1.222:4000)"
+
+grep -q "ollama/your-ollama-model-here" node-c-arc/openclaw.json
+test_result $? "node-c-arc/openclaw.json has Ollama primary model placeholder"
+
+[ -f "node-c-arc/.env.openclaw.example" ]
+test_result $? "node-c-arc/.env.openclaw.example exists"
+
+grep -q "OPENCLAW_GATEWAY_TOKEN" node-c-arc/.env.openclaw.example
+test_result $? ".env.openclaw.example has OPENCLAW_GATEWAY_TOKEN"
+
+grep -q "KVM_OPERATOR_URL" node-c-arc/.env.openclaw.example
+test_result $? ".env.openclaw.example has KVM_OPERATOR_URL"
+
+[ -f "scripts/install-openclaw-node-c.sh" ]
+test_result $? "scripts/install-openclaw-node-c.sh exists"
+
+[ -x "scripts/install-openclaw-node-c.sh" ]
+test_result $? "scripts/install-openclaw-node-c.sh is executable"
+
+grep -q "NODE_C_IP" scripts/install-openclaw-node-c.sh
+test_result $? "install-openclaw-node-c.sh references NODE_C_IP from inventory"
+
+grep -q "/opt/openclaw" scripts/install-openclaw-node-c.sh
+test_result $? "install-openclaw-node-c.sh uses /opt/openclaw data path"
 
 echo ""
 echo "================================================================================"

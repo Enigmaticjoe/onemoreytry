@@ -1,0 +1,66 @@
+# Grand Unified AI Home Lab — Node A (Brain / Deep Thought)
+# Deploy on the same machine as the Command Center (192.168.1.9)
+#
+# Hardware: Core Ultra 7 265KF, 128 GB DDR5, AMD RX 7900 XT (20 GB)
+# Role:     Heavy reasoning / brain-heavy model via vLLM OpenAI-compatible API
+#
+# ROCm notes for RX 7900 XT (RDNA 3 / gfx1100):
+#   HSA_OVERRIDE_GFX_VERSION=11.0.0 tells ROCm the exact GPU ISA
+#   /dev/kfd  — ROCm kernel fusion driver (required)
+#   /dev/dri  — DRM render node (required)
+#
+# Usage:
+#   cp .env.example .env          # fill in HUGGINGFACE_TOKEN and MODEL
+#   docker compose up -d
+#   curl http://localhost:8000/health
+
+services:
+  vllm_brain:
+    image: rocm/vllm-openai:latest
+    container_name: vllm_brain
+    restart: unless-stopped
+    network_mode: host
+
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+
+    group_add:
+      - video
+      - render
+
+    ipc: host
+
+    volumes:
+      - vllm-models:/root/.cache/huggingface
+
+    environment:
+      # RX 7900 XT (gfx1100 / RDNA 3) — REQUIRED for ROCm to recognise the GPU
+      HSA_OVERRIDE_GFX_VERSION: "11.0.0"
+      HIP_VISIBLE_DEVICES: "0"
+
+      # HuggingFace token — required for gated models (e.g. Llama-3)
+      HUGGINGFACE_TOKEN: "${HUGGINGFACE_TOKEN:-}"
+
+      # Served model name (set in .env)
+      VLLM_MODEL: "${VLLM_MODEL:-meta-llama/Llama-3.1-8B-Instruct}"
+
+    # vLLM entrypoint — arguments control the model and API settings
+    command: >
+      --model ${VLLM_MODEL:-meta-llama/Llama-3.1-8B-Instruct}
+      --host 0.0.0.0
+      --port 8000
+      --dtype float16
+      --max-model-len 8192
+      --served-model-name brain-heavy
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 120s
+
+volumes:
+  vllm-models:
+    name: node-a-vllm-models

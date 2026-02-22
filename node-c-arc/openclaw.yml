@@ -1,0 +1,209 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# OpenClaw AI Gateway — Node C (Fedora 43 / Intel Arc A770)
+# https://github.com/openclaw/openclaw
+#
+# This file deploys OpenClaw on Node C alongside the existing Ollama stack.
+# Ollama (port 11434) is the primary AI backend; LiteLLM on Node B is the
+# fallback. The KVM Operator on Node A provides remote-control capability.
+#
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  QUICK START                                                            │
+# │                                                                         │
+# │  Option A — use the install script (recommended):                       │
+# │    ./scripts/install-openclaw-node-c.sh                                 │
+# │                                                                         │
+# │  Option B — manual steps on Node C (SSH in first):                      │
+# │                                                                         │
+# │  STEP 1 — Create data directories                                       │
+# │    sudo mkdir -p /opt/openclaw/{config,workspace,homebrew}              │
+# │    sudo chown -R root:root /opt/openclaw                                │
+# │                                                                         │
+# │  STEP 2 — Copy and edit openclaw.json                                   │
+# │    sudo cp node-c-arc/openclaw.json /opt/openclaw/config/               │
+# │    # Edit it: set your Ollama model name (see below)                    │
+# │    # Get model list: curl http://localhost:11434/v1/models              │
+# │                                                                         │
+# │  STEP 3 — Generate a gateway token                                      │
+# │    openssl rand -hex 24                                                 │
+# │    # Paste result into NODE_C_OPENCLAW_GATEWAY_TOKEN in your .env file  │
+# │                                                                         │
+# │  STEP 4 — Create /opt/openclaw/.env (see .env.openclaw.example)         │
+# │                                                                         │
+# │  STEP 5 — Start the stack                                               │
+# │    cd node-c-arc                                                        │
+# │    docker compose -f openclaw.yml --env-file /opt/openclaw/.env up -d  │
+# │                                                                         │
+# │  STEP 6 — Access the Control UI                                         │
+# │    http://<NODE_C_IP>:18789/?token=<NODE_C_OPENCLAW_GATEWAY_TOKEN>      │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
+# SERVICES ON NODE C USED BY THIS STACK:
+#   ollama_intel_arc  :11434  ← primary AI (Llava, llama3, etc.)
+#   chimera_face      :3000   ← Open WebUI — point at :18789/v1 to chat via OpenClaw
+#
+# SERVICES ON OTHER NODES:
+#   LiteLLM (Node B)  192.168.1.222:4000  ← fallback AI + cloud gateway
+#   KVM Operator (Node A) 192.168.1.9:5000 ← AI-driven KVM control
+#   Home Assistant (Node D) 192.168.1.149:8123 ← smart home control
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  openclaw-gateway:
+    image: ghcr.io/openclaw/openclaw:latest
+    container_name: openclaw-gateway
+    # REQUIRED: container must run as root (official template requirement)
+    user: root
+    hostname: OpenClaw-NodeC
+    restart: unless-stopped
+    init: true
+
+    # Startup: create config dir, write default config if none exists, start gateway
+    command:
+      - sh
+      - -c
+      - >
+        mkdir -p /root/.openclaw /home/linuxbrew &&
+        [ -s /root/.openclaw/openclaw.json ] ||
+        echo '{"gateway":{"mode":"local","bind":"lan","controlUi":{"allowInsecureAuth":true},"auth":{"mode":"token"}}}' > /root/.openclaw/openclaw.json &&
+        exec node dist/index.js gateway --bind lan
+
+    ports:
+      # ALL traffic on ONE port: WebSocket gateway + OpenAI-compat API +
+      # Control UI (?token=...) + Webhooks (/hooks/*) + Health
+      - "18789:18789"
+
+    environment:
+      HOME: /root
+      TERM: xterm-256color
+
+      # PATH must include Homebrew so skills that need brew/go tools work.
+      PATH: /home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+      # ── Gateway Auth (REQUIRED) ──────────────────────────────────────────
+      # Generate: openssl rand -hex 24
+      # Access UI: http://<NODE_C_IP>:18789/?token=<this value>
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+
+      # ── Local Ollama on Node C (primary AI backend) ──────────────────────
+      # Ollama runs with host networking, so it's reachable at host.docker.internal.
+      # The baseUrl is set in openclaw.json (models.providers.ollama.baseUrl).
+      # Any non-empty value here activates Ollama provider auto-discovery.
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-ollama}
+
+      # ── LiteLLM on Node B (fallback AI gateway + cloud models) ──────────
+      # Provides access to cloud providers (Anthropic, OpenAI, Gemini, etc.)
+      # via the unified sk-master-key.  baseUrl set in openclaw.json.
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-sk-master-key}
+
+      # ══════════════════════════════════════════════════════════════════════
+      # HOME ASSISTANT — Smart Home Control (Node D)
+      # Local URL:     http://192.168.1.149:8123
+      # Nabu Casa URL: https://xxxxx.ui.nabu.casa
+      # Token: HA → Profile → Long-Lived Access Tokens → Create Token
+      # ══════════════════════════════════════════════════════════════════════
+      HOME_ASSISTANT_URL: ${HOME_ASSISTANT_URL:-}
+      HOME_ASSISTANT_TOKEN: ${HOME_ASSISTANT_TOKEN:-}
+
+      # ══════════════════════════════════════════════════════════════════════
+      # KVM OPERATOR — NanoKVM control (Node A)
+      # Deploy kvm-operator first (Node A port 5000).
+      # ══════════════════════════════════════════════════════════════════════
+      KVM_OPERATOR_URL: ${KVM_OPERATOR_URL:-}
+      KVM_OPERATOR_TOKEN: ${KVM_OPERATOR_TOKEN:-}
+
+      # ══════════════════════════════════════════════════════════════════════
+      # CLOUD AI PROVIDERS (optional — used as fallback when Ollama is busy)
+      # ══════════════════════════════════════════════════════════════════════
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      XAI_API_KEY: ${XAI_API_KEY:-}
+
+      # ══════════════════════════════════════════════════════════════════════
+      # MESSAGING CHANNELS (optional)
+      # ══════════════════════════════════════════════════════════════════════
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+
+      # ══════════════════════════════════════════════════════════════════════
+      # SEARCH & TOOL APIs
+      # ══════════════════════════════════════════════════════════════════════
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+
+    volumes:
+      # Config, sessions, credentials — maps to /root/.openclaw (runs as root)
+      - /opt/openclaw/config:/root/.openclaw
+
+      # Agent workspace: files, memory, AGENTS.md, projects, skill files
+      - /opt/openclaw/workspace:/home/node/clawd
+
+      # Optional: Homebrew (skills that need brew/go tools persist across restarts)
+      - /opt/openclaw/homebrew:/home/linuxbrew/.linuxbrew
+
+      # Docker socket — lets OpenClaw manage Node C containers directly.
+      # SECURITY: This grants root-equivalent access to the Docker daemon.
+      # Only enable if you trust your OpenClaw configuration and keep the
+      # OPENCLAW_GATEWAY_TOKEN secret.
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    extra_hosts:
+      # Reach Ollama and other host-networked services from inside OpenClaw:
+      #   Ollama      → http://host.docker.internal:11434
+      #   LiteLLM     → http://192.168.1.222:4000  (routed via LAN, not this entry)
+      #   KVM Operator→ http://192.168.1.9:5000     (routed via LAN, not this entry)
+      - "host.docker.internal:host-gateway"
+
+    networks:
+      - openclaw
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "wget -qO- http://localhost:18789/ 2>/dev/null | grep -q . || exit 1"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+
+# ───────────────────────────────────────────────────────────────────────────
+# AFTER FIRST DEPLOY
+# ───────────────────────────────────────────────────────────────────────────
+#
+# 1. ACCESS CONTROL UI:
+#    http://<NODE_C_IP>:18789/?token=<OPENCLAW_GATEWAY_TOKEN>
+#
+# 2. VERIFY OLLAMA IS DETECTED (in container console):
+#    docker exec -it openclaw-gateway sh
+#    node dist/index.js models list
+#    → your Ollama models should appear under "ollama" provider
+#    Switch live: /model ollama/llava:latest  (in chat)
+#
+# 3. CONNECT CHIMERA FACE (Open WebUI on port 3000) TO OPENCLAW:
+#    Open WebUI → Settings → Connections → Add OpenAI-compatible API
+#    URL:   http://<NODE_C_IP>:18789/v1
+#    Key:   <OPENCLAW_GATEWAY_TOKEN>
+#    Model: openclaw:main  (or agent:main)
+#
+# 4. INSTALL KVM SKILL (for remote machine control):
+#    cp openclaw/skill-kvm.md    /opt/openclaw/workspace/
+#    cp openclaw/skill-deploy.md /opt/openclaw/workspace/
+#    (no restart needed — picked up on next conversation turn)
+#
+# 5. APPROVE CONTROL UI DEVICE (if you see 1008 error):
+#    docker exec -it openclaw-gateway sh
+#    node dist/index.js devices list
+#    node dist/index.js devices approve <DEVICE_ID>
+#
+# SECURITY NOTE: Do not expose port 18789 to the internet.
+#                Use Tailscale or a reverse proxy with HTTPS for remote access.
+# ───────────────────────────────────────────────────────────────────────────
+
+networks:
+  openclaw:
+    name: openclaw-node-c
+    driver: bridge

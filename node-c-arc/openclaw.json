@@ -1,0 +1,151 @@
+// OpenClaw Configuration — Node C (Fedora 43 / Intel Arc A770)
+// Format: JSON5 (comments + trailing commas allowed, strict key validation)
+// Path:   /opt/openclaw/config/openclaw.json
+//
+// BEFORE DEPLOYING:
+//   1. Get your Ollama model list:
+//      curl http://localhost:11434/v1/models | jq '.data[].id'
+//   2. Replace "your-ollama-model-here" with the model ID (e.g. "llava:latest")
+//   3. Set contextWindow to match the model's context size
+//   4. Remove any provider/tool blocks you don't use
+//
+// CRITICAL: Unknown config keys crash the Gateway on startup.
+//           Only use keys present in this file — all are verified against docs.
+//
+// Hot-reload: most changes apply without restart.
+// Exception:  gateway.* keys require a container restart.
+{
+  // ── Gateway Settings ───────────────────────────────────────────────────
+  gateway: {
+    mode: "local",
+    bind: "lan",
+    port: 18789,
+
+    auth: {
+      // Token is read from OPENCLAW_GATEWAY_TOKEN env var automatically.
+      mode: "token",
+    },
+
+    // ── Control UI ───────────────────────────────────────────────────
+    // Access at: http://<NODE_C_IP>:18789/?token=<OPENCLAW_GATEWAY_TOKEN>
+    controlUi: {
+      enabled: true,
+      // allowInsecureAuth: needed when accessing over plain HTTP on LAN.
+      allowInsecureAuth: true,
+    },
+
+    // ── OpenAI-Compatible HTTP API ──────────────────────────────────
+    // Enables POST /v1/chat/completions on port 18789.
+    // Connect Chimera Face (Open WebUI on :3000):
+    //   Settings → Connections → Add OpenAI-compat API
+    //   URL:   http://<NODE_C_IP>:18789/v1
+    //   Key:   <OPENCLAW_GATEWAY_TOKEN>
+    //   Model: openclaw:main
+    http: {
+      endpoints: {
+        chatCompletions: { enabled: true },
+        responses: { enabled: true },
+      },
+    },
+
+    // ── Webhook Endpoints ────────────────────────────────────────────
+    // POST /hooks/agent — trigger an agent turn from any HTTP client
+    // Auth: Authorization: Bearer <OPENCLAW_GATEWAY_TOKEN>
+    hooks: {
+      enabled: true,
+      token: "${OPENCLAW_GATEWAY_TOKEN}",
+      path: "/hooks",
+    },
+  },
+
+  // ── Default Model Selection ────────────────────────────────────────────
+  // Ollama runs locally on Node C (port 11434).
+  // Switch live in chat (no restart): /model ollama/llava:latest
+  // List all available (console):     node dist/index.js models list
+  agents: {
+    defaults: {
+      model: {
+        // LOCAL FIRST — Ollama on Node C (Intel Arc A770)
+        // CHANGE THIS to the model ID from: curl http://localhost:11434/v1/models
+        primary: "ollama/your-ollama-model-here",
+
+        // FALLBACKS — used if Ollama is unavailable or overloaded
+        // LiteLLM on Node B provides access to cloud providers and vLLM.
+        // Remove any you don't have API keys for.
+        fallbacks: [
+          "litellm/brain-heavy",
+          "litellm/brawn-fast",
+          "openrouter/google/gemini-2.0-flash-exp:free",
+        ],
+      },
+    },
+  },
+
+  // ── Custom Model Providers ─────────────────────────────────────────────
+  models: {
+    providers: {
+      // ── Ollama (local, Intel Arc A770, port 11434) ───────────────────
+      // Ollama runs with host networking — reachable at host.docker.internal.
+      // OpenClaw auto-discovers all models Ollama is serving.
+      // ${OLLAMA_API_KEY} is substituted from the env var at runtime.
+      ollama: {
+        baseUrl: "http://host.docker.internal:11434/v1",
+        apiKey: "${OLLAMA_API_KEY}",
+        api: "openai-responses",
+      },
+
+      // ── LiteLLM Gateway on Node B (192.168.1.222:4000) ──────────────
+      // Routes to vLLM (brain-heavy), Ollama on Node B (brawn-fast),
+      // and cloud providers (Anthropic, OpenAI, Gemini, etc.).
+      // ${LITELLM_API_KEY} is substituted from the env var at runtime.
+      litellm: {
+        baseUrl: "http://192.168.1.222:4000/v1",
+        apiKey: "${LITELLM_API_KEY}",
+        api: "openai-completions",
+      },
+
+      // ── vLLM (uncomment if you run a vLLM instance elsewhere) ────────
+      // vllm: {
+      //   baseUrl: "http://192.168.1.9:8000/v1",
+      //   apiKey: "${VLLM_API_KEY}",
+      //   api: "openai-completions",
+      //   models: [
+      //     {
+      //       id: "your-vllm-model-id",
+      //       name: "Remote vLLM",
+      //       contextWindow: 32768,
+      //       maxTokens: 8192,
+      //       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      //     },
+      //   ],
+      // },
+    },
+  },
+
+  // ── Tools ──────────────────────────────────────────────────────────────
+  tools: {
+    // ── Local Search (uncomment if you run SearXNG) ───────────────────
+    // searxng: {
+    //   baseUrl: "http://host.docker.internal:8082",
+    //   enabled: true,
+    // },
+
+    // ── Browser Automation (uncomment if you run Browserless) ─────────
+    // browser: {
+    //   wsEndpoint: "ws://host.docker.internal:3005",
+    // },
+  },
+
+  // ── Skills ─────────────────────────────────────────────────────────────
+  // Browse: https://clawhub.com
+  // Install (console): node dist/index.js skills install <skill-name>
+  //
+  // KVM skill: place skill-kvm.md in /opt/openclaw/workspace/ — loaded
+  // automatically on next conversation turn. Uses KVM_OPERATOR_URL +
+  // KVM_OPERATOR_TOKEN env vars to reach the operator on Node A.
+  // skills: {
+  //   entries: {
+  //     "some-skill": { enabled: true }
+  //   }
+  // },
+}

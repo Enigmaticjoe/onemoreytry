@@ -14,6 +14,8 @@
  *   GET  /api/settings  → Retrieve current settings
  *   POST /api/settings  → Save settings
  *   GET  /api/logs/:node → Stream container logs (Server-Sent Events)
+ *   POST /api/audit     → SSH + connectivity audit for a single node (wizard)
+ *   POST /api/portainer-install → Install Portainer CE on a remote node
  */
 
 'use strict';
@@ -259,6 +261,34 @@ function sshExec(host, user, command) {
   });
 }
 
+// ── SSH exec with stdin piping (for multi-line scripts) ───────────────────────
+function sshExecStdin(host, user, stdinScript, timeoutMs) {
+  return new Promise((resolve) => {
+    const proc = spawn('ssh', [
+      '-o', 'StrictHostKeyChecking=no',
+      '-o', 'ConnectTimeout=10',
+      '-o', 'BatchMode=yes',
+      `${user}@${host}`,
+      'bash -s',
+    ], { env: SAFE_CHILD_ENV, timeout: timeoutMs || 60000 });
+
+    let stdout = ''; let stderr = '';
+    proc.stdout.on('data', d => { stdout += d; });
+    proc.stderr.on('data', d => { stderr += d; });
+    proc.on('close', code => resolve({ ok: code === 0, stdout, stderr, error: code !== 0 ? `exit code ${code}` : null }));
+    proc.on('error', err => resolve({ ok: false, stdout, stderr, error: err.message }));
+
+    const timer = setTimeout(() => {
+      try { proc.kill(); } catch (_) {}
+      resolve({ ok: false, stdout, stderr, error: `SSH command timed out after ${timeoutMs || 60000}ms` });
+    }, (timeoutMs || 60000) + 2000);
+    proc.on('close', () => clearTimeout(timer));
+
+    proc.stdin.write(stdinScript);
+    proc.stdin.end();
+  });
+}
+
 // ── Portainer API helper ─────────────────────────────────────────────────────
 async function portainerRequest(endpoint, method = 'GET', body = null) {
   const url = `${settings.portainerUrl}/api${endpoint}`;
@@ -431,6 +461,33 @@ function renderDashboard() {
   .link-sub { color:var(--text2); font-size:11px; margin-top:4px; word-break: break-all; }
   .chat-shell { display:flex; flex-direction:column; gap:10px; }
   .chat-response { background: rgba(0,0,0,0.4); border:1px solid var(--border); border-radius:10px; padding:12px; min-height:140px; white-space:pre-wrap; color:#e8eaf6; }
+  /* ── Installation Wizard ── */
+  .wizard-steps { display:flex; gap:0; margin-bottom:24px; overflow-x:auto; padding-bottom:4px; }
+  .wstep { display:flex; align-items:center; gap:0; flex-shrink:0; }
+  .wstep-node { display:flex; flex-direction:column; align-items:center; cursor:pointer; padding:6px 12px; border-radius:10px; transition:background 0.15s; min-width:80px; }
+  .wstep-node:hover { background:var(--surface2); }
+  .wstep-num { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; background:var(--surface2); border:2px solid var(--border); color:var(--text2); transition:all 0.2s; }
+  .wstep-num.active { background:var(--accent); border-color:var(--accent); color:#fff; box-shadow:0 0 12px rgba(124,106,247,0.5); }
+  .wstep-num.done { background:var(--green); border-color:var(--green); color:#fff; }
+  .wstep-label { font-size:10px; color:var(--text2); margin-top:4px; text-align:center; white-space:nowrap; }
+  .wstep-label.active { color:var(--accent); font-weight:600; }
+  .wstep-label.done { color:var(--green); }
+  .wstep-arrow { color:var(--border); font-size:18px; padding:0 2px; margin-top:-4px; }
+  .wizard-body { min-height:320px; }
+  .audit-node-card { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:12px; }
+  .audit-node-header { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .audit-node-label { flex:1; font-weight:600; }
+  .audit-checks { display:flex; flex-direction:column; gap:4px; margin-top:6px; }
+  .audit-check { display:flex; align-items:center; gap:8px; font-size:12px; }
+  .audit-fixes { margin-top:8px; padding:8px; background:rgba(240,165,0,0.08); border:1px solid rgba(240,165,0,0.2); border-radius:8px; font-size:12px; }
+  .audit-fix-item { padding:2px 0; color:var(--warn); }
+  .inv-table { width:100%; border-collapse:collapse; font-size:12px; }
+  .inv-table th { text-align:left; padding:6px 8px; color:var(--text2); border-bottom:1px solid var(--border); }
+  .inv-table td { padding:6px 8px; border-bottom:1px solid rgba(255,255,255,0.04); }
+  .wz-nav { display:flex; gap:10px; margin-top:20px; }
+  .wz-node-row { display:grid; grid-template-columns:1fr 1fr 100px; gap:10px; margin-bottom:8px; align-items:end; }
+  .portainer-install-card { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:12px; }
+  .portainer-install-header { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
 </style>
 </head>
 <body>
@@ -447,6 +504,7 @@ function renderDashboard() {
   <div class="tab" onclick="showTab('ssh')">💻 Terminal</div>
   <div class="tab" onclick="showTab('openclaw')">🤖 OpenClaw</div>
   <div class="tab" onclick="showTab('settings')">⚙️ Settings</div>
+  <div class="tab" onclick="showTab('wizard')">🧙 Setup Wizard</div>
 </div>
 
 <!-- OVERVIEW TAB -->
@@ -658,9 +716,19 @@ function renderDashboard() {
   </div>
 </div>
 
+<!-- SETUP WIZARD TAB -->
+<div class="panel" id="tab-wizard">
+  <!-- Populated by renderWizard() on tab activation -->
+  <div style="color:var(--text2);padding:40px;text-align:center">
+    Loading wizard… <span style="animation:pulse 1s infinite">⚡</span>
+  </div>
+</div>
+
 <script>
 // ── State ─────────────────────────────────────────────────────────────────
 const DEPLOY_TARGETS = ${deployTargetsJson};
+const nodes = ${nodesJson};
+const settings = { nodes, services: ${servicesJson}, portainerUrl: ${JSON.stringify(s.portainerUrl)}, openclawUrl: ${JSON.stringify(s.openclawUrl)} };
 let statusData = [];
 
 // ── Clock ─────────────────────────────────────────────────────────────────
@@ -677,6 +745,7 @@ function showTab(name) {
   if (name === 'overview') refreshStatus();
   if (name === 'deploy') renderDeployList();
   if (name === 'portainer') loadPortainerStacks();
+  if (name === 'wizard') renderWizard();
 }
 
 // ── Status ────────────────────────────────────────────────────────────────
@@ -992,6 +1061,360 @@ function appendLog(elId, cls, text) {
 refreshStatus();
 renderDeployList();
 renderEcosystemLinks();
+
+// ── Setup Wizard ───────────────────────────────────────────────────────────
+const WZ_STEPS = ['Configure','SSH Audit','Inventory','Portainer','Deploy','Verify'];
+let wzStep = 0;
+let wzAuditResults = [];
+let wzPortainerResults = {};
+let wzNodes = [
+  { label: 'Node A (Brain)',          ip: nodes.nodeA.ip, user: nodes.nodeA.sshUser || 'root', enabled: true  },
+  { label: 'Node B (Unraid/LiteLLM)', ip: nodes.nodeB.ip, user: nodes.nodeB.sshUser || 'root', enabled: true  },
+  { label: 'Node C (Intel Arc)',       ip: nodes.nodeC.ip, user: nodes.nodeC.sshUser || 'root', enabled: true  },
+  { label: 'Node D (Home Assistant)',  ip: nodes.nodeD.ip, user: 'root',                        enabled: false },
+  { label: 'Node E (Sentinel)',        ip: nodes.nodeE.ip, user: 'root',                        enabled: false },
+];
+
+function renderWizardSteps() {
+  return WZ_STEPS.map((name, i) => {
+    const isDone   = i < wzStep;
+    const isActive = i === wzStep;
+    return \`<div class="wstep">
+      <div class="wstep-node" onclick="wzGoTo(\${i})">
+        <div class="wstep-num \${isDone ? 'done' : isActive ? 'active' : ''}">\${isDone ? '✓' : i + 1}</div>
+        <div class="wstep-label \${isDone ? 'done' : isActive ? 'active' : ''}">\${name}</div>
+      </div>
+      \${i < WZ_STEPS.length - 1 ? '<div class="wstep-arrow">›</div>' : ''}
+    </div>\`;
+  }).join('');
+}
+
+function wzGoTo(step) {
+  if (step > wzStep) return; // can't skip forward
+  wzStep = step;
+  renderWizard();
+}
+
+function renderWizard() {
+  const el = document.getElementById('tab-wizard');
+  if (!el) return;
+  el.innerHTML = \`
+    <div class="section-title">🧙 Installation Wizard</div>
+    <div class="card" style="margin-bottom:18px">
+      <div class="wizard-steps">\${renderWizardSteps()}</div>
+      <div class="wizard-body" id="wz-body"></div>
+      <div class="wz-nav" id="wz-nav"></div>
+    </div>
+  \`;
+  const body = document.getElementById('wz-body');
+  const nav  = document.getElementById('wz-nav');
+  switch (wzStep) {
+    case 0: wzRenderConfigure(body, nav); break;
+    case 1: wzRenderAudit(body, nav);     break;
+    case 2: wzRenderInventory(body, nav); break;
+    case 3: wzRenderPortainer(body, nav); break;
+    case 4: wzRenderDeploy(body, nav);    break;
+    case 5: wzRenderVerify(body, nav);    break;
+  }
+}
+
+// Step 0 — Configure Nodes
+function wzRenderConfigure(body, nav) {
+  body.innerHTML = \`
+    <div style="color:var(--text2);margin-bottom:14px;font-size:13px">
+      Enter the IP addresses of your nodes. Uncheck nodes you don't have.
+    </div>
+    \${wzNodes.map((n, i) => \`
+    <div class="wz-node-row">
+      <div>
+        <label style="display:flex;align-items:center;gap:6px">
+          <input type="checkbox" id="wz-en-\${i}" \${n.enabled ? 'checked' : ''}
+            onchange="wzNodes[\${i}].enabled=this.checked" style="width:auto">
+          \${n.label}
+        </label>
+        <input type="text" id="wz-ip-\${i}" value="\${n.ip}" placeholder="192.168.1.X"
+          onblur="wzNodes[\${i}].ip=this.value" style="margin-top:4px">
+      </div>
+      <div>
+        <label>SSH User</label>
+        <input type="text" id="wz-user-\${i}" value="\${n.user}" placeholder="root"
+          onblur="wzNodes[\${i}].user=this.value">
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button class="secondary" onclick="wzTestSingle(\${i})" id="wz-test-\${i}"
+          \${n.enabled ? '' : 'disabled'}>Test SSH</button>
+      </div>
+    </div>
+    <div id="wz-test-result-\${i}" style="font-size:12px;color:var(--text2);margin-bottom:6px"></div>
+    \`).join('')}
+  \`;
+  nav.innerHTML = \`
+    <button onclick="wzSaveConfigAndNext()">Next: Audit Connections →</button>
+  \`;
+}
+
+async function wzTestSingle(idx) {
+  const btn = document.getElementById('wz-test-' + idx);
+  const res = document.getElementById('wz-test-result-' + idx);
+  wzNodes[idx].ip   = document.getElementById('wz-ip-'   + idx).value;
+  wzNodes[idx].user = document.getElementById('wz-user-' + idx).value;
+  btn.disabled = true; btn.textContent = 'Testing…';
+  try {
+    const r = await fetch('/api/audit', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ ip: wzNodes[idx].ip, user: wzNodes[idx].user, quick: true }) });
+    const d = await r.json();
+    res.innerHTML = d.ping
+      ? (d.ssh ? \`<span style="color:var(--green)">✓ Reachable & SSH OK</span>\`
+               : \`<span style="color:var(--warn)">⚠ Ping OK — SSH auth failed (run ssh-copy-id \${wzNodes[idx].user}@\${wzNodes[idx].ip})</span>\`)
+      : \`<span style="color:var(--red)">✗ Not reachable (check IP / network)</span>\`;
+  } catch(e) { res.textContent = 'Error: ' + e.message; }
+  btn.disabled = false; btn.textContent = 'Test SSH';
+}
+
+function wzSaveConfigAndNext() {
+  // Sync input values (user may not have blurred)
+  wzNodes.forEach((n, i) => {
+    const ipEl   = document.getElementById('wz-ip-'   + i);
+    const userEl = document.getElementById('wz-user-' + i);
+    const enEl   = document.getElementById('wz-en-'   + i);
+    if (ipEl)   n.ip      = ipEl.value;
+    if (userEl) n.user    = userEl.value;
+    if (enEl)   n.enabled = enEl.checked;
+  });
+  wzStep = 1; renderWizard();
+}
+
+// Step 1 — SSH Audit
+async function wzRenderAudit(body, nav) {
+  const enabled = wzNodes.filter(n => n.enabled && n.ip && !n.ip.includes('X'));
+  body.innerHTML = \`<div style="color:var(--text2);font-size:13px;margin-bottom:14px">
+    Auditing SSH connectivity, firewall status, and available tools on each node…
+  </div>\` + enabled.map(n => \`
+    <div class="audit-node-card" id="wz-audit-\${n.ip.replace(/\\./g,'-')}">
+      <div class="audit-node-header">
+        <div class="dot checking"></div>
+        <div class="audit-node-label">\${n.label} — \${n.ip}</div>
+        <span style="font-size:12px;color:var(--text2)">Checking…</span>
+      </div>
+    </div>
+  \`).join('');
+  nav.innerHTML = '<button class="secondary" onclick="wzStep=0;renderWizard()">← Back</button>';
+
+  wzAuditResults = [];
+  const promises = enabled.map(n => wzAuditOne(n));
+  await Promise.all(promises);
+
+  nav.innerHTML = \`
+    <button class="secondary" onclick="wzStep=0;renderWizard()">← Back</button>
+    <button onclick="wzStep=2;renderWizard()">Next: Inventory →</button>
+  \`;
+}
+
+async function wzAuditOne(node) {
+  const cardId = 'wz-audit-' + node.ip.replace(/\\./g, '-');
+  try {
+    const r = await fetch('/api/audit', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ ip: node.ip, user: node.user }) });
+    const d = await r.json();
+    wzAuditResults.push({ ...d, label: node.label });
+    const card = document.getElementById(cardId);
+    if (!card) return;
+    const overall = d.ssh ? 'green' : d.ping ? 'warn' : 'red';
+    const dotClass = d.ssh ? 'green' : d.ping ? 'checking' : 'red';
+    const status   = d.ssh ? '✓ Connected' : d.ping ? '⚠ Ping OK / SSH failed' : '✗ Unreachable';
+    card.innerHTML = \`
+      <div class="audit-node-header">
+        <div class="dot \${dotClass}"></div>
+        <div class="audit-node-label">\${node.label} — \${node.ip}</div>
+        <span style="font-size:12px;color:var(--\${overall === 'green' ? 'accent2' : overall === 'warn' ? 'warn' : 'danger'})">\${status}</span>
+      </div>
+      <div class="audit-checks">
+        <div class="audit-check"><span>\${d.ping ? '✓' : '✗'}</span> Ping</div>
+        <div class="audit-check"><span>\${d.port22 ? '✓' : '✗'}</span> Port 22 open</div>
+        <div class="audit-check"><span>\${d.ssh ? '✓' : '✗'}</span> SSH key auth</div>
+        \${d.tailscale_ip ? \`<div class="audit-check"><span>✓</span> Tailscale: \${d.tailscale_ip}</div>\` : ''}
+      </div>
+      \${(d.fixes && d.fixes.length) ? \`
+      <div class="audit-fixes">
+        <div style="font-weight:600;margin-bottom:4px;color:var(--warn)">⚠ Suggested Fixes:</div>
+        \${d.fixes.map(f => \`<div class="audit-fix-item">→ \${f}</div>\`).join('')}
+      </div>\` : ''}
+    \`;
+  } catch(e) {
+    const card = document.getElementById(cardId);
+    if (card) card.innerHTML += \`<div style="color:var(--danger);font-size:12px">Error: \${e.message}</div>\`;
+  }
+}
+
+// Step 2 — Pre-Install Inventory
+function wzRenderInventory(body, nav) {
+  const results = wzAuditResults.filter(r => r.ssh);
+  if (!results.length) {
+    body.innerHTML = '<div style="color:var(--warn);padding:20px">No nodes were reachable via SSH — go back and fix connections first.</div>';
+  } else {
+    body.innerHTML = \`<div style="color:var(--text2);font-size:13px;margin-bottom:14px">
+      Software inventory collected from each reachable node:
+    </div>\` + results.map(r => {
+      const inv = r.inventory || {};
+      const rows = Object.entries(inv).map(([k,v]) => \`<tr><td>\${k}</td><td>\${v || '—'}</td></tr>\`).join('');
+      return \`<div class="audit-node-card">
+        <div class="audit-node-header">
+          <div class="dot green"></div>
+          <div class="audit-node-label">\${r.label} — \${r.ip}</div>
+        </div>
+        <table class="inv-table"><thead><tr><th>Package / Service</th><th>Version / Status</th></tr></thead>
+        <tbody>\${rows || '<tr><td colspan=2 style="color:var(--text2)">No inventory data</td></tr>'}</tbody>
+        </table>
+      </div>\`;
+    }).join('');
+  }
+  nav.innerHTML = \`
+    <button class="secondary" onclick="wzStep=1;renderWizard()">← Back</button>
+    <button onclick="wzStep=3;renderWizard()">Next: Install Portainer →</button>
+  \`;
+}
+
+// Step 3 — Install Portainer
+function wzRenderPortainer(body, nav) {
+  const targets = wzAuditResults.filter(r => r.ssh);
+  body.innerHTML = \`<div style="color:var(--text2);font-size:13px;margin-bottom:14px">
+    Install Portainer CE on each node. Portainer manages all Docker containers and stacks via a web UI.
+    Already-running instances will be skipped.
+  </div>\` + (targets.length ? targets.map(r => \`
+    <div class="portainer-install-card" id="wz-port-\${r.ip.replace(/\\./g,'-')}">
+      <div class="portainer-install-header">
+        <div class="dot \${wzPortainerResults[r.ip] === 'ok' ? 'green' : wzPortainerResults[r.ip] === 'running' ? 'green' : wzPortainerResults[r.ip] === 'error' ? 'red' : 'gray'}"></div>
+        <div style="flex:1;font-weight:600">\${r.label} — \${r.ip}</div>
+        \${wzPortainerResults[r.ip]
+          ? \`<span style="font-size:12px;color:var(--\${wzPortainerResults[r.ip] === 'ok' || wzPortainerResults[r.ip] === 'running' ? 'accent2' : 'danger'})">\${wzPortainerResults[r.ip] === 'ok' ? '✓ Installed' : wzPortainerResults[r.ip] === 'running' ? '✓ Already running' : '✗ Failed'}</span>\`
+          : \`<button onclick="wzInstallPortainer('\${r.ip}', '\${r.user}')">▶ Install Portainer</button>\`}
+      </div>
+      <div id="wz-port-log-\${r.ip.replace(/\\./g,'-')}" style="font-size:12px;color:var(--text2);margin-top:6px"></div>
+      \${wzPortainerResults[r.ip] && (wzPortainerResults[r.ip] === 'ok' || wzPortainerResults[r.ip] === 'running') ? \`
+        <div style="margin-top:8px">
+          <a href="http://\${r.ip}:9000" target="_blank" style="color:var(--accent)">
+            Open Portainer → http://\${r.ip}:9000
+          </a>
+        </div>\` : ''}
+    </div>
+  \`).join('') : '<div style="color:var(--warn);padding:20px">No reachable nodes — go back to Step 1 and fix SSH connections.</div>');
+
+  const allDone = targets.length > 0 && targets.every(r => ['ok','running'].includes(wzPortainerResults[r.ip]));
+  nav.innerHTML = \`
+    <button class="secondary" onclick="wzStep=2;renderWizard()">← Back</button>
+    <button onclick="wzStep=4;renderWizard()">Next: Deploy Stacks →</button>
+    \${allDone ? '<span style="color:var(--green);font-size:13px;margin-left:8px">✓ All nodes have Portainer</span>' : ''}
+  \`;
+}
+
+async function wzInstallPortainer(ip, user) {
+  const safeId = ip.replace(/\\./g, '-');
+  const log = document.getElementById('wz-port-log-' + safeId);
+  if (log) log.textContent = 'Installing Portainer CE… (this may take 60-90 seconds)';
+  try {
+    const r = await fetch('/api/portainer-install', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ ip, user }) });
+    const d = await r.json();
+    if (d.ok) {
+      wzPortainerResults[ip] = 'ok';
+    } else if (d.already_running) {
+      wzPortainerResults[ip] = 'running';
+    } else {
+      wzPortainerResults[ip] = 'error';
+      if (log) log.textContent = 'Error: ' + (d.error || 'unknown');
+    }
+  } catch(e) {
+    wzPortainerResults[ip] = 'error';
+    if (log) log.textContent = 'Error: ' + e.message;
+  }
+  renderWizard(); wzStep = 3;
+}
+
+// Step 4 — Deploy Stacks
+function wzRenderDeploy(body, nav) {
+  body.innerHTML = \`
+    <div style="color:var(--text2);font-size:13px;margin-bottom:14px">
+      Deploy all AI home-lab services.  Use the Quick Deploy buttons to start each stack,
+      or run the full deployment script.
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <h3>🚀 Full Automated Deploy</h3>
+      <p class="hint" style="margin-bottom:10px">Runs <code>scripts/deploy-all.sh</code> — deploys all nodes in sequence with health checks.</p>
+      <button onclick="wzRunFullDeploy()">▶ Run Full Deploy</button>
+      <div class="terminal" id="wz-deploy-log" style="margin-top:12px;min-height:140px;display:none"></div>
+    </div>
+    <div class="card">
+      <h3>📦 Individual Stack Deploys</h3>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <button onclick="quickDeploy('nodeC')">▶ Node C — Ollama (Intel Arc)</button>
+        <button onclick="quickDeploy('nodeB')">▶ Node B — LiteLLM Gateway</button>
+        <button onclick="quickDeploy('nodeADash')">▶ Node A — Command Center Dashboard</button>
+        <button onclick="quickDeploy('kvmOperator')">▶ KVM Operator</button>
+      </div>
+      <div class="terminal" id="wz-stack-log" style="margin-top:12px;min-height:100px;display:none"></div>
+    </div>
+  \`;
+  nav.innerHTML = \`
+    <button class="secondary" onclick="wzStep=3;renderWizard()">← Back</button>
+    <button onclick="wzStep=5;renderWizard()">Next: Verify →</button>
+  \`;
+}
+
+async function wzRunFullDeploy() {
+  const log = document.getElementById('wz-deploy-log');
+  if (log) { log.style.display = 'block'; log.textContent = 'Starting full deployment…\\n'; }
+  try {
+    const r = await fetch('/api/deploy', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ target: 'all' }) });
+    const d = await r.json();
+    if (log) log.textContent += (d.output || 'Done') + '\\n';
+  } catch(e) {
+    if (log) log.textContent += 'Error: ' + e.message + '\\n';
+  }
+}
+
+// Step 5 — Verify
+async function wzRenderVerify(body, nav) {
+  body.innerHTML = \`<div style="color:var(--text2);font-size:13px;margin-bottom:14px">
+    Running final health checks on all services…
+  </div><div id="wz-verify-list">
+    <div class="status-row"><div class="dot checking"></div><span>Checking…</span></div>
+  </div>\`;
+  nav.innerHTML = '<button class="secondary" onclick="wzStep=4;renderWizard()">← Back</button>';
+
+  try {
+    const r = await fetch('/api/status');
+    const data = await r.json();
+    const services = data.services || [];
+    const listEl = document.getElementById('wz-verify-list');
+    if (!listEl) return;
+    if (!services.length) {
+      listEl.innerHTML = '<div style="color:var(--text2)">No services configured yet.</div>';
+    } else {
+      listEl.innerHTML = services.map(s => \`
+        <div class="status-row">
+          <div class="dot \${s.status === 'ok' ? 'green' : s.status === 'unknown' ? 'gray' : 'red'}"></div>
+          <span class="svc-label">\${s.label}</span>
+          <span class="svc-latency">\${s.status === 'ok' ? s.latency + 'ms' : s.status}</span>
+        </div>
+      \`).join('');
+    }
+    const allOk = services.every(s => s.status === 'ok' || s.status === 'unknown');
+    nav.innerHTML = \`
+      <button class="secondary" onclick="wzStep=4;renderWizard()">← Back</button>
+      <button class="success" onclick="showTab('overview')">✓ Done — Go to Dashboard</button>
+      \${allOk ? '<span style="color:var(--green);font-size:13px;margin-left:8px">🎉 All services healthy!</span>' : ''}
+    \`;
+  } catch(e) {
+    const listEl = document.getElementById('wz-verify-list');
+    if (listEl) listEl.innerHTML = \`<div style="color:var(--danger)">Status check failed: \${e.message}</div>\`;
+  }
+}
 </script>
 </body>
 </html>`;
@@ -1111,6 +1534,159 @@ async function handleOpenclaw(req, res) {
   sendJson(res, 200, result);
 }
 
+// ── Audit handler — SSH/ping/inventory check for a single node ────────────────
+async function handleAudit(req, res) {
+  let body;
+  try { body = JSON.parse(await readBody(req)); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
+  const ip   = typeof body.ip   === 'string' ? body.ip.trim()   : '';
+  const user = typeof body.user === 'string' ? body.user.trim() : 'root';
+  const quick = Boolean(body.quick);
+
+  if (!ip) return sendJson(res, 400, { error: 'ip required' });
+
+  const result = {
+    ip, user,
+    ping: false, port22: false, ssh: false,
+    tailscale_ip: '',
+    inventory: {},
+    errors: [],
+    fixes: [],
+    recommend: 'unreachable',
+  };
+
+  // 1. Ping
+  const pingOk = await new Promise(resolve => {
+    execFile('ping', ['-c', '1', '-W', '2', ip], { timeout: 5000, env: SAFE_CHILD_ENV },
+      (err) => resolve(!err));
+  });
+  result.ping = pingOk;
+  if (!pingOk) result.errors.push('Host not reachable via ping');
+
+  // 2. Port 22 check using bash /dev/tcp via sh
+  const port22Ok = await new Promise(resolve => {
+    execFile('sh', ['-c', `(echo >/dev/tcp/${ip}/22) 2>/dev/null && echo ok || echo fail`],
+      { timeout: 6000, env: SAFE_CHILD_ENV },
+      (err, stdout) => resolve(!err && stdout.trim() === 'ok'));
+  });
+  result.port22 = port22Ok;
+  if (!port22Ok) {
+    result.errors.push('Port 22 is not reachable');
+    if (pingOk) {
+      result.fixes.push(`Ensure sshd is installed and running: systemctl enable --now sshd`);
+      result.fixes.push(`Allow SSH through firewall: sudo ufw allow ssh  OR  sudo firewall-cmd --permanent --add-service=ssh && sudo firewall-cmd --reload`);
+    }
+  }
+
+  // 3. SSH key auth test
+  const sshOk = await new Promise(resolve => {
+    execFile('ssh', [
+      '-o', 'StrictHostKeyChecking=no',
+      '-o', 'ConnectTimeout=8',
+      '-o', 'BatchMode=yes',
+      `${user}@${ip}`, 'true',
+    ], { timeout: 12000, env: SAFE_CHILD_ENV }, (err) => resolve(!err));
+  });
+  result.ssh = sshOk;
+  if (!sshOk) {
+    result.errors.push('SSH key authentication failed');
+    if (port22Ok) result.fixes.push(`Set up key-based auth: ssh-copy-id ${user}@${ip}`);
+    result.recommend = pingOk ? 'tailscale' : 'unreachable';
+  } else {
+    result.recommend = 'direct';
+  }
+
+  // 4. Full inventory (skip if quick=true or no SSH)
+  if (sshOk && !quick) {
+    const invScript = [
+      'OUT=""',
+      'command -v docker &>/dev/null && { DVER=$(docker --version 2>/dev/null | grep -oP "\\d+\\.\\d+\\.\\d+" | head -1); OUT="${OUT}docker=${DVER}|"; }',
+      'docker compose version &>/dev/null 2>&1 && { DCV=$(docker compose version 2>/dev/null | grep -oP "\\d+\\.\\d+\\.\\d+" | head -1 || echo plugin); OUT="${OUT}docker_compose=${DCV}|"; }',
+      'command -v docker &>/dev/null && { for c in portainer portainer-ce; do ST=$(docker inspect --format "{{.State.Status}}" "$c" 2>/dev/null||true); [ -n "$ST" ] && OUT="${OUT}portainer=${ST}|" && break; done; }',
+      'command -v docker &>/dev/null && { for c in litellm_gateway ollama_intel_arc chimera_face openclaw-gateway; do ST=$(docker inspect --format "{{.State.Status}}" "$c" 2>/dev/null||true); [ -n "$ST" ] && OUT="${OUT}${c}=${ST}|"; done; }',
+      'OS=$(grep -oP \'(?<=^PRETTY_NAME=").*(?=")\' /etc/os-release 2>/dev/null || echo unknown); OUT="${OUT}os=${OS}|"',
+      'command -v tailscale &>/dev/null && { TSIP=$(tailscale ip -4 2>/dev/null | head -1 || true); [ -n "$TSIP" ] && OUT="${OUT}tailscale_ip=${TSIP}|"; }',
+      'FW=none; command -v ufw &>/dev/null && ufw status 2>/dev/null|grep -q active && FW=ufw; command -v firewall-cmd &>/dev/null && firewall-cmd --state 2>/dev/null|grep -q running && FW=firewalld; OUT="${OUT}firewall=${FW}|"',
+      'command -v node &>/dev/null && OUT="${OUT}nodejs=$(node --version|tr -d v)|"',
+      'command -v python3 &>/dev/null && OUT="${OUT}python3=$(python3 --version 2>/dev/null|awk "{print $2}")|"',
+      'echo "$OUT"',
+    ].join('\n');
+
+    const invResult = await sshExecStdin(ip, user, invScript, 30000);
+    const invRaw = invResult.stdout || '';
+
+    // Parse key=value|… pairs
+    invRaw.split('|').forEach(pair => {
+      const eq = pair.indexOf('=');
+      if (eq > 0) {
+        const k = pair.slice(0, eq).trim();
+        const v = pair.slice(eq + 1).trim();
+        if (k && v) result.inventory[k] = v;
+      }
+    });
+
+    if (result.inventory.tailscale_ip) result.tailscale_ip = result.inventory.tailscale_ip;
+  }
+
+  sendJson(res, 200, result);
+}
+
+// ── Portainer-install handler ─────────────────────────────────────────────────
+async function handlePortainerInstall(req, res) {
+  let body;
+  try { body = JSON.parse(await readBody(req)); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
+  const ip   = typeof body.ip   === 'string' ? body.ip.trim()   : '';
+  const user = typeof body.user === 'string' ? body.user.trim() : 'root';
+  const port = Number(body.port) || 9000;
+
+  if (!ip) return sendJson(res, 400, { error: 'ip required' });
+
+  // Verify SSH connectivity
+  const sshOk = await new Promise(resolve => {
+    execFile('ssh', ['-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=8', '-o', 'BatchMode=yes',
+      `${user}@${ip}`, 'true'], { timeout: 12000, env: SAFE_CHILD_ENV }, err => resolve(!err));
+  });
+  if (!sshOk) return sendJson(res, 200, { ok: false, error: `SSH connection to ${user}@${ip} failed. Run the SSH audit first.` });
+
+  // Check if Portainer is already running
+  const alreadyRunning = await new Promise(resolve => {
+    execFile('ssh', ['-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=8', '-o', 'BatchMode=yes',
+      `${user}@${ip}`,
+      `docker inspect --format '{{.State.Status}}' portainer 2>/dev/null || docker inspect --format '{{.State.Status}}' portainer-ce 2>/dev/null || echo ''`],
+      { timeout: 15000, env: SAFE_CHILD_ENV }, (err, stdout) => resolve(!err && stdout.trim() === 'running'));
+  });
+  if (alreadyRunning) return sendJson(res, 200, { ok: true, already_running: true, url: `http://${ip}:${port}` });
+
+  // Run install script on the remote
+  const installScript = `
+set -euo pipefail
+PORT=${port}
+command -v docker &>/dev/null || { echo "Docker not installed — please install Docker first"; exit 1; }
+docker info &>/dev/null 2>&1 || { systemctl start docker 2>/dev/null || true; sleep 3; }
+docker rm -f portainer 2>/dev/null || true
+docker volume create portainer_data 2>/dev/null || true
+docker run -d --name portainer --restart always \\
+  -p $PORT:9000 -p 8000:8000 \\
+  -v /var/run/docker.sock:/var/run/docker.sock \\
+  -v portainer_data:/data \\
+  portainer/portainer-ce:latest
+for i in $(seq 1 20); do
+  HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://localhost:$PORT/api/status 2>/dev/null || echo 000)
+  [[ "$HTTP" =~ ^2 ]] && echo "READY" && break
+  sleep 3
+done
+`;
+
+  const installOut = await sshExecStdin(ip, user, installScript, 180000);
+
+  const ok = installOut.ok || installOut.stdout.includes('READY');
+  sendJson(res, 200, {
+    ok,
+    url: ok ? `http://${ip}:${port}` : '',
+    output: installOut.stdout,
+    error: ok ? null : (installOut.error || installOut.stderr),
+  });
+}
+
 async function handleSettingsGet(res) {
   // Return settings without sensitive tokens
   const safe = { ...settings, tokens: { ...settings.tokens, portainerToken: '***', openclawToken: '***', kvmOperatorToken: '***' } };
@@ -1182,6 +1758,8 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && pathname === '/api/ssh') return handleSsh(req, res);
   if (pathname === '/api/portainer') return handlePortainer(req, res, parsedUrl);
   if (req.method === 'POST' && pathname === '/api/openclaw') return handleOpenclaw(req, res);
+  if (req.method === 'POST' && pathname === '/api/audit') return handleAudit(req, res);
+  if (req.method === 'POST' && pathname === '/api/portainer-install') return handlePortainerInstall(req, res);
 
   sendJson(res, 404, { error: 'Not found' });
 });
