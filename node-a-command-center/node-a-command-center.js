@@ -9,6 +9,9 @@ const BRAIN_BASE_URL = process.env.BRAIN_BASE_URL || 'http://192.168.1.9:8000';
 const NODE_C_BASE_URL = process.env.NODE_C_BASE_URL || 'http://192.168.1.6';
 const NODE_D_BASE_URL = process.env.NODE_D_BASE_URL || 'http://192.168.1.149:8123';
 const NODE_E_BASE_URL = process.env.NODE_E_BASE_URL || 'http://192.168.1.116:3005';
+const UPTIME_KUMA_BASE_URL = process.env.UPTIME_KUMA_BASE_URL || 'http://192.168.1.222:3010';
+const DOZZLE_BASE_URL = process.env.DOZZLE_BASE_URL || 'http://192.168.1.222:8888';
+const HOMEPAGE_BASE_URL = process.env.HOMEPAGE_BASE_URL || 'http://192.168.1.222:8010';
 const LITELLM_API_KEY = process.env.LITELLM_API_KEY || 'sk-master-key';
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'brain-heavy';
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 7000);
@@ -22,6 +25,8 @@ const serviceChecks = [
   { key: 'nodeCUi', label: 'Node C Chimera Face UI', url: `${NODE_C_BASE_URL}:3000` },
   { key: 'nodeD', label: 'Node D Home Assistant', url: `${NODE_D_BASE_URL}/api/` },
   { key: 'nodeE', label: 'Node E Sentinel (Vision)', url: `${NODE_E_BASE_URL}/health` },
+  { key: 'uptimeKuma', label: 'Uptime Kuma (Monitoring)', url: `${UPTIME_KUMA_BASE_URL}` },
+  { key: 'dozzle', label: 'Dozzle (Log Viewer)', url: `${DOZZLE_BASE_URL}/healthcheck` },
 ];
 
 const dashboardLinks = [
@@ -29,6 +34,9 @@ const dashboardLinks = [
   { name: 'Node C Chimera Face UI', href: `${NODE_C_BASE_URL}:3000` },
   { name: 'Node D Home Assistant', href: `${NODE_D_BASE_URL}` },
   { name: 'Node E Sentinel Dashboard', href: `${NODE_E_BASE_URL}` },
+  { name: 'Homepage Dashboard', href: `${HOMEPAGE_BASE_URL}` },
+  { name: 'Uptime Kuma (Monitoring)', href: `${UPTIME_KUMA_BASE_URL}` },
+  { name: 'Dozzle (Container Logs)', href: `${DOZZLE_BASE_URL}` },
   { name: 'Deployment Guide', href: '/docs/DEPLOYMENT_GUIDE' },
   { name: 'Quick Reference', href: '/docs/QUICK_REFERENCE' },
   { name: 'Node A Guidebook', href: '/docs/NODE_A_GUIDEBOOK' },

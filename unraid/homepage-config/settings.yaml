@@ -1,0 +1,36 @@
+---
+# Homepage dashboard settings
+# https://gethomepage.dev/configs/settings/
+
+title: Happy Struggle Bus — Home Lab
+
+# Favicon and logo
+favicon: https://homepage.happystrugglebus.us/icons/favicon.png
+
+# Appearance
+theme: dark
+color: slate
+headerStyle: boxed
+statusStyle: "dot"
+useEqualHeights: true
+
+# Link target (open external links in new tab)
+target: _blank
+
+# Layout: display service groups in defined order
+layout:
+  Management:
+    style: row
+    columns: 4
+  AI Gateway:
+    style: row
+    columns: 3
+  Node C — Intel Arc Vision:
+    style: row
+    columns: 2
+  Smart Home:
+    style: row
+    columns: 2
+  Security & NVR:
+    style: row
+    columns: 2

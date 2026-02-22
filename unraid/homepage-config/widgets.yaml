@@ -1,0 +1,20 @@
+---
+# Top-level info widgets displayed across the top of the homepage
+# https://gethomepage.dev/widgets/
+
+- resources:
+    cpu: true
+    memory: true
+    disk: /mnt/user
+    label: Unraid
+
+- datetime:
+    text_size: xl
+    format:
+      timeStyle: short
+      dateStyle: short
+      hour12: true
+
+- search:
+    provider: google
+    target: _blank

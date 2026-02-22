@@ -594,6 +594,139 @@ grep -q "Chapter 2.5" GUIDEBOOK.md
 test_result $? "GUIDEBOOK.md has Chapter 2.5 (Node A Brain)"
 
 echo ""
+
+# Test 11: Validate Unraid management stack + Homepage config
+echo "11. Validating Unraid management stack and Homepage config..."
+echo "-------------------------------------------------------------"
+
+[ -d "unraid" ]
+test_result $? "unraid/ directory exists"
+
+[ -f "unraid/docker-compose.yml" ]
+test_result $? "unraid/docker-compose.yml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('unraid/docker-compose.yml'))"
+test_result $? "unraid/docker-compose.yml YAML syntax valid"
+
+grep -q "container_name: homepage" unraid/docker-compose.yml
+test_result $? "unraid/docker-compose.yml defines homepage container"
+
+grep -q "container_name: uptime-kuma" unraid/docker-compose.yml
+test_result $? "unraid/docker-compose.yml defines uptime-kuma container"
+
+grep -q "container_name: dozzle" unraid/docker-compose.yml
+test_result $? "unraid/docker-compose.yml defines dozzle container"
+
+grep -q "container_name: watchtower" unraid/docker-compose.yml
+test_result $? "unraid/docker-compose.yml defines watchtower container"
+
+grep -q "HOMEPAGE_ALLOWED_HOSTS" unraid/docker-compose.yml
+test_result $? "unraid/docker-compose.yml sets HOMEPAGE_ALLOWED_HOSTS (fixes 400 error)"
+
+grep -q "healthcheck:" unraid/docker-compose.yml
+test_result $? "unraid/docker-compose.yml has at least one healthcheck defined"
+
+[ -f "unraid/.env.example" ]
+test_result $? "unraid/.env.example exists"
+
+grep -q "TAILSCALE_AUTHKEY" unraid/.env.example
+test_result $? "unraid/.env.example documents TAILSCALE_AUTHKEY"
+
+grep -q "HA_LONG_LIVED_TOKEN" unraid/.env.example
+test_result $? "unraid/.env.example documents HA_LONG_LIVED_TOKEN"
+
+[ -d "unraid/homepage-config" ]
+test_result $? "unraid/homepage-config/ directory exists"
+
+[ -f "unraid/homepage-config/services.yaml" ]
+test_result $? "unraid/homepage-config/services.yaml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('unraid/homepage-config/services.yaml'))"
+test_result $? "unraid/homepage-config/services.yaml YAML syntax valid"
+
+grep -q "192.168.1.222" unraid/homepage-config/services.yaml
+test_result $? "homepage services.yaml references Unraid IP (192.168.1.222)"
+
+grep -q "192.168.1.9" unraid/homepage-config/services.yaml
+test_result $? "homepage services.yaml references Node A Brain (192.168.1.9)"
+
+grep -q "192.168.1.6" unraid/homepage-config/services.yaml
+test_result $? "homepage services.yaml references Node C Arc (192.168.1.6)"
+
+grep -q "192.168.1.149" unraid/homepage-config/services.yaml
+test_result $? "homepage services.yaml references Node D Home Assistant (192.168.1.149)"
+
+grep -q "192.168.1.116" unraid/homepage-config/services.yaml
+test_result $? "homepage services.yaml references Node E Sentinel (192.168.1.116)"
+
+grep -q "uptime-kuma" unraid/homepage-config/services.yaml
+test_result $? "homepage services.yaml includes Uptime Kuma"
+
+grep -q "dozzle\|Dozzle" unraid/homepage-config/services.yaml
+test_result $? "homepage services.yaml includes Dozzle"
+
+grep -q "LiteLLM\|litellm" unraid/homepage-config/services.yaml
+test_result $? "homepage services.yaml includes LiteLLM Gateway"
+
+grep -q "Home Assistant\|homeassistant" unraid/homepage-config/services.yaml
+test_result $? "homepage services.yaml includes Home Assistant"
+
+[ -f "unraid/homepage-config/bookmarks.yaml" ]
+test_result $? "unraid/homepage-config/bookmarks.yaml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('unraid/homepage-config/bookmarks.yaml'))"
+test_result $? "unraid/homepage-config/bookmarks.yaml YAML syntax valid"
+
+[ -f "unraid/homepage-config/settings.yaml" ]
+test_result $? "unraid/homepage-config/settings.yaml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('unraid/homepage-config/settings.yaml'))"
+test_result $? "unraid/homepage-config/settings.yaml YAML syntax valid"
+
+grep -q "Happy Struggle Bus\|happystrugglebus" unraid/homepage-config/settings.yaml
+test_result $? "homepage settings.yaml sets correct title (Happy Struggle Bus)"
+
+[ -f "unraid/homepage-config/widgets.yaml" ]
+test_result $? "unraid/homepage-config/widgets.yaml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('unraid/homepage-config/widgets.yaml'))"
+test_result $? "unraid/homepage-config/widgets.yaml YAML syntax valid"
+
+[ -f "unraid/homepage-config/docker.yaml" ]
+test_result $? "unraid/homepage-config/docker.yaml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('unraid/homepage-config/docker.yaml'))"
+test_result $? "unraid/homepage-config/docker.yaml YAML syntax valid"
+
+grep -q "docker.sock" unraid/homepage-config/docker.yaml
+test_result $? "homepage docker.yaml configures Docker socket integration"
+
+[ -f "docs/13_HOMEPAGE_SETUP_GUIDE.md" ]
+test_result $? "docs/13_HOMEPAGE_SETUP_GUIDE.md (homepage setup guide) exists"
+
+grep -q "HOMEPAGE_ALLOWED_HOSTS" docs/13_HOMEPAGE_SETUP_GUIDE.md
+test_result $? "homepage guide covers HOMEPAGE_ALLOWED_HOSTS fix"
+
+grep -q "Uptime Kuma\|uptimekuma" docs/13_HOMEPAGE_SETUP_GUIDE.md
+test_result $? "homepage guide covers Uptime Kuma integration"
+
+# Node A command center includes the new infra links
+grep -q "UPTIME_KUMA_BASE_URL" node-a-command-center/node-a-command-center.js
+test_result $? "Command center defines UPTIME_KUMA_BASE_URL"
+
+grep -q "DOZZLE_BASE_URL" node-a-command-center/node-a-command-center.js
+test_result $? "Command center defines DOZZLE_BASE_URL"
+
+grep -q "HOMEPAGE_BASE_URL" node-a-command-center/node-a-command-center.js
+test_result $? "Command center defines HOMEPAGE_BASE_URL"
+
+grep -q "Uptime Kuma" node-a-command-center/node-a-command-center.js
+test_result $? "Command center lists Uptime Kuma in dashboard links"
+
+grep -q "Dozzle" node-a-command-center/node-a-command-center.js
+test_result $? "Command center lists Dozzle in dashboard links"
+
+echo ""
 echo "================================================================================"
 echo "  TEST RESULTS"
 echo "================================================================================"

@@ -1,0 +1,25 @@
+---
+# Bookmarks — quick links shown on the homepage
+# https://gethomepage.dev/configs/bookmarks/
+
+- Documentation:
+    - Deployment Guide:
+        - abbr: DEPLOY
+          href: https://github.com/Enigmaticjoe/onemoreytry/blob/main/DEPLOYMENT_GUIDE.md
+    - Quick Reference:
+        - abbr: QR
+          href: https://github.com/Enigmaticjoe/onemoreytry/blob/main/QUICK_REFERENCE.md
+    - Guidebook:
+        - abbr: GUIDE
+          href: https://github.com/Enigmaticjoe/onemoreytry/blob/main/GUIDEBOOK.md
+
+- Infrastructure:
+    - Tailscale Admin:
+        - abbr: TS
+          href: https://login.tailscale.com/admin
+    - GitHub Repo:
+        - abbr: GH
+          href: https://github.com/Enigmaticjoe/onemoreytry
+    - Install Wizard:
+        - abbr: WIZ
+          href: http://192.168.1.222:3099/install-wizard

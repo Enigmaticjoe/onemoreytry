@@ -1,0 +1,7 @@
+---
+# Docker socket integration for container status auto-detection
+# https://gethomepage.dev/configs/docker/
+# The homepage container mounts /var/run/docker.sock:ro for read access.
+
+my-docker:
+  socket: /var/run/docker.sock
