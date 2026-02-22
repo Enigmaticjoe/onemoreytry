@@ -1,0 +1,43 @@
+# Grand Unified AI Home Lab - Media Expansion Stack
+# Node B (Brawn) - Unraid at 192.168.1.222
+#
+# Extends the main media stack with audiobook management.
+#
+#   audiobookshelf: Self-hosted audiobook + podcast server with progress sync.
+#
+# AI Integration:
+#   Audiobookshelf can feed listening history into Home Assistant automations
+#   and Open WebUI for personalised content recommendations.
+#
+# Usage:
+#   cp stacks/.env.example stacks/.env
+#   docker compose -f stacks/media-expansion-stack.yml up -d
+
+services:
+
+  # ─── Audiobookshelf — audiobook & podcast server ───────────────────────────
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "13378:80"
+    volumes:
+      - ${APPDATA_PATH}/audiobookshelf:/config
+      - ${APPDATA_PATH}/audiobookshelf/metadata:/metadata
+      - ${MEDIA_PATH}/audiobooks:/audiobooks
+      - ${MEDIA_PATH}/podcasts:/podcasts
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/healthcheck || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - media-expansion
+
+networks:
+  media-expansion:
+    name: media-expansion
+    driver: bridge

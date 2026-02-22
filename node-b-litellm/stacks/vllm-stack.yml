@@ -1,0 +1,64 @@
+# Grand Unified AI Home Lab - vLLM Stack (NVIDIA GPU Inference)
+# Node B (Brawn) - Unraid at 192.168.1.222
+#
+# Runs a local OpenAI-compatible API using vLLM on the RTX 4070 (12 GB VRAM).
+# LiteLLM routes the "brawn-fast" model alias to this container on port 8880.
+#
+# AI Integration:
+#   LiteLLM (port 4000) → vLLM (port 8880) for fast local inference
+#   Compatible with any OpenAI API client
+#
+# Recommended models for 12 GB VRAM:
+#   - mistralai/Mistral-7B-Instruct-v0.3    (fast, general purpose)
+#   - NousResearch/Hermes-2-Pro-Mistral-7B  (agentic, tool use)
+#   - microsoft/Phi-3-mini-128k-instruct    (small, very fast)
+#
+# Usage:
+#   cp stacks/.env.example stacks/.env
+#   docker compose -f stacks/vllm-stack.yml up -d
+
+services:
+
+  hf-vllm:
+    image: vllm/vllm-openai:latest
+    container_name: hf-vllm
+    restart: unless-stopped
+    # NVIDIA CUDA runtime — requires nvidia-container-toolkit on the host
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # Model to load — change to any HuggingFace model that fits in 12 GB VRAM
+      - VLLM_MODEL=${VLLM_MODEL:-mistralai/Mistral-7B-Instruct-v0.3}
+      # HuggingFace token (required for gated models like Llama 3)
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "8880:8000"
+    volumes:
+      # Cache downloaded model weights so they survive container restarts
+      - ${APPDATA_PATH}/hf-vllm/cache:/root/.cache/huggingface
+    command:
+      - "--model"
+      - "${VLLM_MODEL:-mistralai/Mistral-7B-Instruct-v0.3}"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--max-model-len"
+      - "${VLLM_MAX_CTX:-8192}"
+      - "--gpu-memory-utilization"
+      - "${VLLM_GPU_MEM:-0.90}"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1"]
+      interval: 60s
+      timeout: 20s
+      retries: 3
+      start_period: 120s
