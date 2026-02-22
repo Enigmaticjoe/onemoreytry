@@ -1,0 +1,84 @@
+# Grand Unified AI Home Lab - Unraid Server Management Stack
+# Deploy on Unraid (192.168.1.222)
+#
+# Services managed here: Homepage dashboard, Uptime Kuma, Dozzle, Watchtower, Tailscale
+#
+# Usage:
+#   cp .env.example .env  # fill in required values
+#   docker compose up -d
+
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: tailscale
+    hostname: unraid
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - TS_AUTHKEY=${TAILSCALE_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_EXTRA_ARGS=--advertise-exit-node --advertise-routes=${LOCAL_SUBNET}
+      - TS_USERSPACE=false
+    volumes:
+      - ${APPDATA_PATH}/tailscale:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    network_mode: host
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    restart: unless-stopped
+    volumes:
+      - /mnt/user/appdata/homepage/config:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /mnt/user/data:/mnt/user/data:ro
+    ports:
+      - "8010:3000"
+    environment:
+      - HOMEPAGE_ALLOWED_HOSTS=*
+      - HOMEPAGE_VAR_HA_TOKEN=${HA_LONG_LIVED_TOKEN}
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    restart: unless-stopped
+    ports:
+      - "3010:3001"
+    volumes:
+      - ${APPDATA_PATH}/uptime-kuma:/app/data
+    environment:
+      - TZ=${TZ}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/status-page/default || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle
+    restart: unless-stopped
+    ports:
+      - "8888:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - TZ=${TZ}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthcheck || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=86400
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

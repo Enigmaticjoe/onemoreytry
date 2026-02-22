@@ -1,0 +1,105 @@
+---
+# Homepage service groups for the full AI home-lab ecosystem
+# https://gethomepage.dev/configs/services/
+#
+# Adjust IPs/ports if your network differs from the defaults below.
+# IPs used:
+#   Unraid / Node B  : 192.168.1.222
+#   Node A Brain     : 192.168.1.9
+#   Node C Arc       : 192.168.1.6
+#   Node D HA        : 192.168.1.149
+#   Node E Sentinel  : 192.168.1.116
+
+# ping/healthcheck endpoints vary by service:
+#   /health          — standard REST health check (LiteLLM, vLLM, Sentinel, KVM Operator)
+#   /api/version     — Ollama version endpoint (doubles as liveness check)
+#   /healthcheck     — Dozzle-specific healthcheck path
+# These are the authoritative endpoints for each upstream; no standardisation is possible.
+
+- Management:
+    - Homepage:
+        href: http://192.168.1.222:8010
+        description: This dashboard (gethomepage)
+        icon: homepage.svg
+        server: my-docker
+        container: homepage
+
+    - Uptime Kuma:
+        href: http://192.168.1.222:3010
+        description: Service uptime and alerting
+        icon: uptime-kuma.svg
+        server: my-docker
+        container: uptime-kuma
+        widget:
+          type: uptimekuma
+          url: http://192.168.1.222:3010
+          slug: default
+
+    - Dozzle:
+        href: http://192.168.1.222:8888
+        description: Live Docker container log viewer
+        icon: dozzle.svg
+        server: my-docker
+        container: dozzle
+
+    - Command Center:
+        href: http://192.168.1.222:3099
+        description: Node A AI command center & chatbot
+        icon: dashboard.svg
+        ping: http://192.168.1.222:3099
+
+- AI Gateway:
+    - LiteLLM Gateway:
+        href: http://192.168.1.222:4000
+        description: Unified AI model proxy (Node B)
+        icon: litellm.svg
+        ping: http://192.168.1.222:4000/health
+
+    - Node A Brain — vLLM:
+        href: http://192.168.1.9:8000
+        description: RX 7900 XT brain inference via ROCm vLLM
+        icon: ollama.svg
+        ping: http://192.168.1.9:8000/health
+
+    - Node A Brain — Ollama:
+        href: http://192.168.1.9:11435
+        description: RX 7900 XT Ollama endpoint (ROCm)
+        icon: ollama.svg
+        ping: http://192.168.1.9:11435/api/version
+
+- Node C — Intel Arc Vision:
+    - Chimera Face (Open WebUI):
+        href: http://192.168.1.6:3000
+        description: Open WebUI for Intel Arc vision models
+        icon: open-webui.svg
+        server: my-docker
+        container: chimera_face
+
+    - Ollama — Intel Arc:
+        href: http://192.168.1.6:11434
+        description: Intel Arc GPU Ollama inference endpoint
+        icon: ollama.svg
+        ping: http://192.168.1.6:11434/api/version
+
+- Smart Home:
+    - Home Assistant:
+        href: http://192.168.1.149:8123
+        description: Home automation with AI conversation (Node D)
+        icon: home-assistant.svg
+        widget:
+          type: homeassistant
+          url: http://192.168.1.149:8123
+          key: "{{HOMEPAGE_VAR_HA_TOKEN}}"
+
+- Security & NVR:
+    - Sentinel (Node E):
+        href: http://192.168.1.116:3005
+        description: AI vision NVR event processor
+        icon: frigate.svg
+        ping: http://192.168.1.116:3005/health
+
+    - KVM Operator:
+        href: http://192.168.1.222:5000
+        description: AI-driven KVM with human-in-the-loop approval
+        icon: remote-desktop.svg
+        ping: http://192.168.1.222:5000/health
