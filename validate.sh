@@ -727,6 +727,68 @@ grep -q "Dozzle" node-a-command-center/node-a-command-center.js
 test_result $? "Command center lists Dozzle in dashboard links"
 
 echo ""
+
+# Test 12: Validate AI Sherpa and Mobile Monitor features
+echo "12. Validating AI Sherpa and Mobile Monitor features..."
+echo "-------------------------------------------------------"
+
+# Sherpa system prompt is defined
+grep -q "SHERPA_SYSTEM_PROMPT" node-a-command-center/node-a-command-center.js
+test_result $? "Command center defines SHERPA_SYSTEM_PROMPT"
+
+# Sherpa route is defined
+grep -q "'/sherpa'" node-a-command-center/node-a-command-center.js
+test_result $? "Command center serves /sherpa route"
+
+# Sherpa API endpoint is defined
+grep -q "'/api/sherpa-chat'" node-a-command-center/node-a-command-center.js
+test_result $? "Command center serves /api/sherpa-chat route"
+
+# handleSherpaChat function exists
+grep -q "handleSherpaChat" node-a-command-center/node-a-command-center.js
+test_result $? "Command center implements handleSherpaChat function"
+
+# Sherpa uses system prompt in API call
+grep -q "role.*'system'\|role.*\"system\"" node-a-command-center/node-a-command-center.js
+test_result $? "Sherpa chat sends system-role message to LiteLLM"
+
+# Mobile page route is defined
+grep -q "'/mobile'" node-a-command-center/node-a-command-center.js
+test_result $? "Command center serves /mobile route"
+
+# PWA manifest route is defined
+grep -q "'/manifest.json'" node-a-command-center/node-a-command-center.js
+test_result $? "Command center serves /manifest.json PWA manifest route"
+
+# Mobile page includes PWA meta tags
+grep -q "mobile-web-app-capable" node-a-command-center/node-a-command-center.js
+test_result $? "Mobile page includes PWA meta tags (mobile-web-app-capable)"
+
+# Mobile page has auto-refresh
+grep -q "setInterval(loadStatus, 30000)" node-a-command-center/node-a-command-center.js
+test_result $? "Mobile page auto-refreshes status every 30 seconds"
+
+# Dashboard links include Sherpa and Mobile
+grep -q "AI Sherpa Guide" node-a-command-center/node-a-command-center.js
+test_result $? "Dashboard links include AI Sherpa Guide"
+
+grep -q "Mobile Monitor" node-a-command-center/node-a-command-center.js
+test_result $? "Dashboard links include Mobile Monitor"
+
+# AI Sherpa guide doc exists
+[ -f "docs/14_AI_SHERPA_GUIDE.md" ]
+test_result $? "docs/14_AI_SHERPA_GUIDE.md (AI Sherpa guide) exists"
+
+grep -q "manifest.json\|manifest" docs/14_AI_SHERPA_GUIDE.md
+test_result $? "AI Sherpa guide documents PWA manifest"
+
+grep -q "sherpa-chat\|/api/sherpa" docs/14_AI_SHERPA_GUIDE.md
+test_result $? "AI Sherpa guide documents Sherpa API endpoint"
+
+grep -q "Android\|android" docs/14_AI_SHERPA_GUIDE.md
+test_result $? "AI Sherpa guide covers Android installation"
+
+
 echo "================================================================================"
 echo "  TEST RESULTS"
 echo "================================================================================"
