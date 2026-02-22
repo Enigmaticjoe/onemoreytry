@@ -7,6 +7,7 @@ const PORT = Number(process.env.COMMAND_CENTER_PORT || 3099);
 const LITELLM_BASE_URL = process.env.LITELLM_BASE_URL || 'http://192.168.1.222:4000';
 const BRAIN_BASE_URL = process.env.BRAIN_BASE_URL || 'http://192.168.1.9:8000';
 const NODE_C_BASE_URL = process.env.NODE_C_BASE_URL || 'http://192.168.1.6';
+const NODE_D_BASE_URL = process.env.NODE_D_BASE_URL || 'http://192.168.1.149:8123';
 const NODE_E_BASE_URL = process.env.NODE_E_BASE_URL || 'http://192.168.1.116:3005';
 const LITELLM_API_KEY = process.env.LITELLM_API_KEY || 'sk-master-key';
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'brain-heavy';

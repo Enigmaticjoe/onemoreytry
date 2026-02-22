@@ -1,0 +1,29 @@
+# Node D — Home Assistant (The Voice)
+# Hardware: Ryzen 7 7430U, 32GB DDR4, no GPU
+# IP: 192.168.1.149
+#
+# Runs Home Assistant with the extended_openai_conversation integration
+# pointed at the LiteLLM Gateway on Node B (192.168.1.222:4000).
+#
+# Usage:
+#   cp .env.example .env   # set real values
+#   docker compose up -d
+
+services:
+  homeassistant:
+    container_name: homeassistant
+    image: ghcr.io/home-assistant/home-assistant:stable
+    volumes:
+      - ./config:/config
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+    environment:
+      - TZ=America/Chicago
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8123/api/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s

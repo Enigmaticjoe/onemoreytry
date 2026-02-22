@@ -132,6 +132,25 @@ test_result $? "Correct LiteLLM Gateway URL (192.168.1.222:4000/v1)"
 grep -q "sk-master-key" home-assistant/configuration.yaml.snippet
 test_result $? "API key (sk-master-key) configured"
 
+# Node D directory
+[ -d "node-d-home-assistant" ]
+test_result $? "node-d-home-assistant/ directory exists"
+
+[ -f "node-d-home-assistant/docker-compose.yml" ]
+test_result $? "node-d-home-assistant/docker-compose.yml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('node-d-home-assistant/docker-compose.yml'))"
+test_result $? "node-d-home-assistant/docker-compose.yml YAML syntax valid"
+
+grep -q "healthcheck:" node-d-home-assistant/docker-compose.yml
+test_result $? "node-d-home-assistant has healthcheck defined"
+
+[ -f "node-d-home-assistant/.env.example" ]
+test_result $? "node-d-home-assistant/.env.example exists"
+
+[ -f "node-d-home-assistant/configuration.yaml.snippet" ]
+test_result $? "node-d-home-assistant/configuration.yaml.snippet exists"
+
 echo ""
 
 # Test 5: Validate Docker Compose structure
