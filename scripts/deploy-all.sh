@@ -41,6 +41,47 @@ header(){ echo -e "${BOLD}$1${NC}"; }
 DEPLOY_ERRORS=0
 note_error() { ((DEPLOY_ERRORS++)) || true; }
 
+# ── Global error handler with state tracking ──────────────────────────────────
+declare -A DEPLOY_STATE
+DEPLOY_STATE[phase]="init"
+DEPLOY_STATE[node]="none"
+
+handle_error() {
+  local line="$1" exit_code="$2"
+  echo ""
+  echo -e "${RED}╔══════════════════════════════════════════════════════╗${NC}"
+  echo -e "${RED}║  DEPLOYMENT ERROR                                    ║${NC}"
+  echo -e "${RED}╚══════════════════════════════════════════════════════╝${NC}"
+  echo -e "  ${RED}Phase:${NC}     ${DEPLOY_STATE[phase]}"
+  echo -e "  ${RED}Node:${NC}      ${DEPLOY_STATE[node]}"
+  echo -e "  ${RED}Line:${NC}      ${line}"
+  echo -e "  ${RED}Exit code:${NC} ${exit_code}"
+  echo ""
+  # Capture recent container logs if a container name is tracked
+  if [[ -n "${DEPLOY_STATE[container]:-}" ]] && command -v docker &>/dev/null; then
+    echo -e "  ${YELLOW}Last 20 lines from container '${DEPLOY_STATE[container]}':${NC}"
+    docker logs --tail 20 "${DEPLOY_STATE[container]}" 2>&1 | while IFS= read -r l; do
+      echo "    $l"
+    done 2>/dev/null || true
+    echo ""
+  fi
+  echo -e "  ${YELLOW}Tip:${NC} Run ./scripts/preflight-check.sh to diagnose the environment."
+  echo ""
+}
+
+cleanup() {
+  local exit_code=$?
+  # Restore terminal attributes in case they were changed
+  tput sgr0 2>/dev/null || true
+  if [[ $exit_code -ne 0 ]] && [[ "${DEPLOY_STATE[phase]}" != "complete" ]]; then
+    handle_error "${BASH_LINENO[0]:-0}" "$exit_code"
+  fi
+}
+
+trap 'handle_error ${LINENO} $?' ERR
+trap 'cleanup' EXIT
+trap 'echo ""; warn "Interrupted — cleaning up..."; exit 130' INT TERM
+
 # ── Docker command helper ─────────────────────────────────────────────────────
 # Detect whether we need sudo for docker
 DOCKER_CMD="docker"
@@ -87,15 +128,14 @@ fi
 
 LITELLM_KEY="${LITELLM_API_KEY:-sk-master-key}"
 
-# ── Health check with auth support ────────────────────────────────────────────
+# ── Health check with exponential backoff ────────────────────────────────────
 wait_for_health() {
-  local label="$1" url="$2" max_attempts="${3:-12}" delay="${4:-5}"
+  local label="$1" url="$2" max_attempts="${3:-12}" initial_delay="${4:-2}"
   local auth_header="${5:-}"
   local extra_ok_codes="${6:-}"
-  info "Waiting for ${label} to be healthy..."
-  local i=0
+  info "Waiting for ${label} to be healthy (exponential backoff)..."
+  local i=0 delay="$initial_delay" code
   while [ $i -lt "$max_attempts" ]; do
-    local code
     if [ -n "$auth_header" ]; then
       code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 -H "$auth_header" "$url" 2>/dev/null || echo "000")
     else
@@ -106,8 +146,10 @@ wait_for_health() {
       return 0
     fi
     i=$((i+1))
-    info "  Attempt $i/${max_attempts} -- HTTP ${code}, retrying in ${delay}s..."
+    info "  Attempt $i/${max_attempts} — HTTP ${code}, retrying in ${delay}s..."
     sleep "$delay"
+    # Double the delay on each attempt, cap at 60 seconds
+    delay=$(( delay * 2 > 60 ? 60 : delay * 2 ))
   done
   err "${label} did not become healthy after ${max_attempts} attempts (last HTTP ${code:-000})"
   return 1
@@ -155,6 +197,107 @@ show_container_logs() {
   $DOCKER_CMD logs --tail "$lines" "$container" 2>&1 | while IFS= read -r line; do
     info "    ${line}"
   done
+}
+
+# ── Systemd user service generator ───────────────────────────────────────────
+# Creates and enables a systemd user service for a long-running process.
+# Uses atomic file placement (write to tmp, then mv) to avoid race conditions.
+# Arguments: service_name description exec_start working_dir
+install_systemd_service() {
+  local svc_name="$1" description="$2" exec_start="$3" working_dir="$4"
+  local svc_dir="${HOME}/.config/systemd/user"
+  local svc_file="${svc_dir}/${svc_name}.service"
+  local tmp_file
+  tmp_file="$(mktemp)"
+
+  mkdir -p "$svc_dir"
+
+  cat > "$tmp_file" <<EOF
+[Unit]
+Description=${description}
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${working_dir}
+ExecStart=${exec_start}
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
+EOF
+
+  # Validate the unit file before placing it (best-effort; warn if unavailable)
+  if ! systemd-analyze verify "$tmp_file" &>/dev/null; then
+    warn "systemd-analyze verify skipped or reported issues for '${svc_name}' — proceeding anyway"
+  fi
+  mv "$tmp_file" "$svc_file"
+
+  systemctl --user daemon-reload
+  systemctl --user enable "${svc_name}" --now 2>/dev/null || \
+    systemctl --user restart "${svc_name}" 2>/dev/null || true
+  ok "Systemd user service '${svc_name}' installed and started"
+}
+
+# ── Portainer API orchestration ───────────────────────────────────────────────
+# Triggers a Portainer stack redeploy via its REST API.
+# Arguments: stack_id portainer_url portainer_token
+portainer_redeploy_stack() {
+  local stack_id="$1" portainer_url="$2" portainer_token="$3"
+  local endpoint="${portainer_url}/api/stacks/${stack_id}/git/redeploy"
+  info "Redeploying Portainer stack ${stack_id} via API..."
+  local response http_code
+  http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+    --max-time 30 \
+    -X PUT \
+    -H "X-API-Key: ${portainer_token}" \
+    -H "Content-Type: application/json" \
+    -d '{"pullImage":true,"prune":false}' \
+    "${endpoint}" 2>/dev/null || echo "000")
+  if [[ "$http_code" =~ ^2 ]]; then
+    ok "Portainer stack ${stack_id} redeployed (HTTP ${http_code})"
+    return 0
+  else
+    warn "Portainer stack redeploy returned HTTP ${http_code} — falling back to SSH"
+    return 1
+  fi
+}
+
+# ── Portainer stack deploy (create or update) via API ────────────────────────
+# Looks up the stack by name and redeploys it, or falls back to SSH.
+# Arguments: stack_name portainer_url portainer_token ssh_fallback_cmd node_ip ssh_user
+portainer_deploy_stack() {
+  local stack_name="$1" portainer_url="$2" portainer_token="$3"
+  local ssh_fallback="$4" node_ip="$5" ssh_user="$6"
+
+  if [ -z "$portainer_token" ]; then
+    info "PORTAINER_TOKEN not set — using SSH fallback"
+    ssh_cmd "$node_ip" "$ssh_user" "$ssh_fallback" && return 0 || return 1
+  fi
+
+  # Fetch the stack list and find our stack's ID
+  local stacks_json
+  stacks_json=$(curl -s --max-time 10 \
+    -H "X-API-Key: ${portainer_token}" \
+    "${portainer_url}/api/stacks" 2>/dev/null || echo "[]")
+
+  local stack_id
+  stack_id=$(echo "$stacks_json" | \
+    python3 -c "import json,sys; stacks=json.load(sys.stdin); \
+      match=[s['Id'] for s in stacks if s.get('Name')=='${stack_name}']; \
+      print(match[0] if match else '')" 2>/dev/null || true)
+
+  if [ -n "$stack_id" ]; then
+    portainer_redeploy_stack "$stack_id" "$portainer_url" "$portainer_token" && return 0
+  else
+    info "Stack '${stack_name}' not found in Portainer — using SSH fallback"
+  fi
+
+  # SSH fallback if Portainer API unavailable or stack not found
+  ssh_cmd "$node_ip" "$ssh_user" "$ssh_fallback"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -212,6 +355,7 @@ echo "  KVM:                  ${KVM_IP:-not set}"
 echo ""
 
 # ── Step 0: Preflight — Docker, Network, SSH ─────────────────────────────────
+DEPLOY_STATE[phase]="preflight"; DEPLOY_STATE[node]="local"
 step "Step 0 — Preflight Checks"
 
 # Docker
@@ -270,6 +414,7 @@ else
 fi
 
 # ── Step 1: Validate config files ────────────────────────────────────────────
+DEPLOY_STATE[phase]="validation"; DEPLOY_STATE[node]="local"
 step "Step 1 — Validate configuration"
 if ./validate.sh; then
   ok "Configuration validation passed"
@@ -279,6 +424,8 @@ else
 fi
 
 # ── Step 2: Node C — Intel Arc + Ollama ──────────────────────────────────────
+DEPLOY_STATE[phase]="node-c-deploy"; DEPLOY_STATE[node]="Node C (Intel Arc)"
+DEPLOY_STATE[container]="ollama_intel_arc"
 step "Step 2 — Node C (Intel Arc + Ollama)"
 info "Pulling latest images..."
 docker_compose -f node-c-arc/docker-compose.yml pull 2>&1 | tail -5 || true
@@ -298,17 +445,24 @@ docker_exec ollama_intel_arc ollama pull llava 2>&1 | tail -3 || warn "Model pul
 ok "Node C ready"
 
 # ── Step 3: Node B — LiteLLM Gateway ─────────────────────────────────────────
+DEPLOY_STATE[phase]="node-b-litellm"; DEPLOY_STATE[node]="Node B (Unraid)"
+DEPLOY_STATE[container]="litellm_gateway"
 step "Step 3 — Node B LiteLLM Gateway (Unraid)"
-if [ "$SSH_TO_B" = true ]; then
+
+PORTAINER_URL="${PORTAINER_URL:-http://${NODE_B_IP}:9000}"
+PORTAINER_TOKEN="${PORTAINER_TOKEN:-}"
+
+if [ "$SSH_TO_B" = true ] || [ -n "$PORTAINER_TOKEN" ]; then
   info "Deploying LiteLLM stack on Node B (${NODE_B_IP})..."
-  if ssh_cmd "$NODE_B_IP" "$NODE_B_SSH_USER" \
-    "cd /mnt/user/appdata/homelab/node-b-litellm 2>/dev/null || cd ~/homelab/node-b-litellm && docker compose -f litellm-stack.yml pull && docker compose -f litellm-stack.yml up -d" || {
+  local_ssh_cmd="cd /mnt/user/appdata/homelab/node-b-litellm 2>/dev/null || cd ~/homelab/node-b-litellm && docker compose -f litellm-stack.yml pull && docker compose -f litellm-stack.yml up -d"
+  if portainer_deploy_stack "litellm" "$PORTAINER_URL" "$PORTAINER_TOKEN" \
+      "$local_ssh_cmd" "$NODE_B_IP" "$NODE_B_SSH_USER" || {
     err "LiteLLM deploy command failed"
     note_error
+    false
   }; then
-
     # Some deployments return 401 on readiness when auth middleware is enabled.
-    if ! wait_for_health "LiteLLM Gateway" "http://${NODE_B_IP}:4000/health/readiness" 12 5 "" "401"; then
+    if ! wait_for_health "LiteLLM Gateway" "http://${NODE_B_IP}:4000/health/readiness" 12 2 "" "401"; then
       warn "LiteLLM health check failed"
       info "  Try checking directly: curl -H 'x-api-key: ${LITELLM_KEY}' http://${NODE_B_IP}:4000/health"
       info "  Or use readiness endpoint: curl http://${NODE_B_IP}:4000/health/readiness"
@@ -321,29 +475,54 @@ if [ "$SSH_TO_B" = true ]; then
     warn "Skipping LiteLLM health check because remote deploy command failed"
   fi
 elif ! is_missing_or_placeholder_ip "$NODE_B_IP"; then
-  warn "SSH to Node B not available — skipping remote deploy"
+  warn "SSH to Node B not available and PORTAINER_TOKEN not set — skipping remote deploy"
   info "Deploy manually: ssh ${NODE_B_SSH_USER}@${NODE_B_IP} 'cd /mnt/user/appdata/homelab/node-b-litellm && docker compose -f litellm-stack.yml up -d'"
+  info "Or set PORTAINER_TOKEN to deploy via Portainer API"
 
   # Still check if it's already running
   info "Checking if LiteLLM is already running..."
-  wait_for_health "LiteLLM Gateway (existing)" "http://${NODE_B_IP}:4000/health/readiness" 2 3 || true
+  wait_for_health "LiteLLM Gateway (existing)" "http://${NODE_B_IP}:4000/health/readiness" 2 2 || true
 else
   warn "Node B IP not configured — skipping LiteLLM deploy"
 fi
 
 # ── Step 4: Node A Dashboard ──────────────────────────────────────────────────
+DEPLOY_STATE[phase]="node-a-dashboard"; DEPLOY_STATE[node]="Node A (local)"; DEPLOY_STATE[container]=""
 step "Step 4 — Node A Command Center Dashboard"
 if command -v node &>/dev/null; then
-  pkill -f node-a-command-center.js 2>/dev/null || true
-  sleep 1
-  nohup node node-a-command-center/node-a-command-center.js \
-    > /tmp/node-a-dashboard.log 2>&1 &
-  NODE_A_PID=$!
-  info "Started Node A dashboard (PID ${NODE_A_PID})"
+  # Prefer systemd user service for reliable auto-restart on failure
+  if systemctl --user cat node-a-dashboard.service &>/dev/null; then
+    # Service already exists — reload and restart it
+    systemctl --user daemon-reload
+    systemctl --user restart node-a-dashboard 2>/dev/null && ok "Node A Dashboard restarted via systemd" || note_error
+  elif command -v systemctl &>/dev/null && systemctl --user status &>/dev/null; then
+    # Install as a systemd user service for auto-restart on crash
+    info "Installing Node A Dashboard as a systemd user service..."
+    install_systemd_service \
+      "node-a-dashboard" \
+      "Node A Central Brain Command Center" \
+      "$(command -v node) ${REPO_ROOT}/node-a-command-center/node-a-command-center.js" \
+      "${REPO_ROOT}/node-a-command-center"
+  else
+    # Fallback: kill existing instance by PID file, then launch in background
+    if [ -f /tmp/node-a-dashboard.pid ]; then
+      old_pid=$(cat /tmp/node-a-dashboard.pid 2>/dev/null || true)
+      if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+        kill "$old_pid" 2>/dev/null || true
+        sleep 1
+      fi
+      rm -f /tmp/node-a-dashboard.pid
+    fi
+    node node-a-command-center/node-a-command-center.js \
+      > /tmp/node-a-dashboard.log 2>&1 &
+    echo $! > /tmp/node-a-dashboard.pid
+    info "Started Node A dashboard (PID $(cat /tmp/node-a-dashboard.pid))"
+  fi
   sleep 3
-  if ! wait_for_health "Node A Dashboard" "http://localhost:3099/api/status" 6 3; then
+  if ! wait_for_health "Node A Dashboard" "http://localhost:3099/api/status" 6 2; then
     warn "Node A Dashboard may have failed to start"
     info "  Check log: cat /tmp/node-a-dashboard.log"
+    info "  Or systemd: journalctl --user -u node-a-dashboard --no-pager -n 20"
     note_error
   else
     ok "Node A Dashboard ready at http://localhost:3099"
@@ -353,6 +532,7 @@ else
 fi
 
 # ── Step 5: KVM Operator ───────────────────────────────────────────────────────
+DEPLOY_STATE[phase]="kvm-operator"; DEPLOY_STATE[node]="local"
 step "Step 5 — KVM Operator"
 
 # Auto-create .env from .env.example if missing
@@ -363,21 +543,50 @@ if [ ! -f "kvm-operator/.env" ] && [ -f "kvm-operator/.env.example" ]; then
 fi
 
 if [ -f "kvm-operator/.env" ]; then
-  if systemctl is-enabled ai-kvm-operator &>/dev/null 2>&1; then
+  if systemctl is-enabled ai-kvm-operator &>/dev/null; then
     sudo systemctl restart ai-kvm-operator
     sleep 3
-    if ! wait_for_health "KVM Operator" "http://localhost:5000/health" 6 3; then
+    if ! wait_for_health "KVM Operator" "http://localhost:5000/health" 6 2; then
       warn "KVM Operator may have failed — check: sudo journalctl -u ai-kvm-operator --no-pager -n 20"
       note_error
     else
       ok "KVM Operator started via systemd"
     fi
-  else
-    pkill -f "uvicorn app:app" 2>/dev/null || true
-    sleep 1
-    (cd kvm-operator && nohup ./run_dev.sh > /tmp/kvm-operator.log 2>&1 &)
+  elif command -v systemctl &>/dev/null && systemctl --user status &>/dev/null && \
+       command -v python3 &>/dev/null; then
+    # Install as a systemd user service for auto-restart on crash
+    info "Installing KVM Operator as a systemd user service..."
+    venv_python="${REPO_ROOT}/kvm-operator/.venv/bin/python"
+    if [ ! -x "$venv_python" ]; then
+      venv_python="$(command -v python3)"
+    fi
+    install_systemd_service \
+      "ai-kvm-operator" \
+      "AI KVM Operator (FastAPI)" \
+      "${venv_python} -m uvicorn app:app --host 0.0.0.0 --port 5000" \
+      "${REPO_ROOT}/kvm-operator"
     sleep 5
-    if ! wait_for_health "KVM Operator" "http://localhost:5000/health" 6 3; then
+    if ! wait_for_health "KVM Operator" "http://localhost:5000/health" 6 2; then
+      warn "KVM Operator may have failed to start"
+      info "  Check: journalctl --user -u ai-kvm-operator --no-pager -n 20"
+      note_error
+    else
+      ok "KVM Operator ready at http://localhost:5000"
+    fi
+  else
+    # Fallback: kill existing instance by PID file, then launch in background
+    if [ -f /tmp/kvm-operator.pid ]; then
+      old_pid=$(cat /tmp/kvm-operator.pid 2>/dev/null || true)
+      if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+        kill "$old_pid" 2>/dev/null || true
+        sleep 1
+      fi
+      rm -f /tmp/kvm-operator.pid
+    fi
+    (cd kvm-operator && ./run_dev.sh > /tmp/kvm-operator.log 2>&1 &
+     echo $! > /tmp/kvm-operator.pid)
+    sleep 5
+    if ! wait_for_health "KVM Operator" "http://localhost:5000/health" 6 2; then
       warn "KVM Operator may have failed to start"
       info "  Check log: cat /tmp/kvm-operator.log"
       note_error
@@ -391,15 +600,18 @@ else
 fi
 
 # ── Step 6: OpenClaw (Node B) ─────────────────────────────────────────────────
+DEPLOY_STATE[phase]="openclaw"; DEPLOY_STATE[node]="Node B (Unraid)"; DEPLOY_STATE[container]=""
 step "Step 6 — OpenClaw AI Gateway (Node B)"
-if [ "$SSH_TO_B" = true ]; then
+if [ "$SSH_TO_B" = true ] || [ -n "$PORTAINER_TOKEN" ]; then
   info "Deploying OpenClaw on Node B (${NODE_B_IP})..."
-  if ssh_cmd "$NODE_B_IP" "$NODE_B_SSH_USER" \
-    "cd /mnt/user/appdata/homelab/openclaw 2>/dev/null || cd ~/homelab/openclaw && docker compose pull && docker compose up -d" || {
+  local_ssh_cmd="cd /mnt/user/appdata/homelab/openclaw 2>/dev/null || cd ~/homelab/openclaw && docker compose pull && docker compose up -d"
+  if portainer_deploy_stack "openclaw" "$PORTAINER_URL" "$PORTAINER_TOKEN" \
+      "$local_ssh_cmd" "$NODE_B_IP" "$NODE_B_SSH_USER" || {
     err "OpenClaw deploy command failed"
     note_error
+    false
   }; then
-    if ! wait_for_health "OpenClaw" "http://${NODE_B_IP}:18789/" 15 5; then
+    if ! wait_for_health "OpenClaw" "http://${NODE_B_IP}:18789/" 15 2; then
       warn "OpenClaw health check failed"
       info "  Check container logs: ssh ${NODE_B_SSH_USER}@${NODE_B_IP} docker logs openclaw-gateway --tail 20"
       info "  OpenClaw can take 30-60s to start — check again in a minute"
@@ -411,17 +623,18 @@ if [ "$SSH_TO_B" = true ]; then
     warn "Skipping OpenClaw health check because remote deploy command failed"
   fi
 elif ! is_missing_or_placeholder_ip "$NODE_B_IP"; then
-  warn "SSH to Node B not available — skipping OpenClaw deploy"
+  warn "SSH to Node B not available and PORTAINER_TOKEN not set — skipping OpenClaw deploy"
   info "Deploy manually or use: ./scripts/prepare-openclaw.sh"
 
   # Still check if already running
   info "Checking if OpenClaw is already running..."
-  wait_for_health "OpenClaw (existing)" "http://${NODE_B_IP}:18789/" 2 3 || true
+  wait_for_health "OpenClaw (existing)" "http://${NODE_B_IP}:18789/" 2 2 || true
 else
   warn "Node B IP not configured — skipping OpenClaw deploy"
 fi
 
 # ── Step 7: Deploy GUI ─────────────────────────────────────────────────────────
+DEPLOY_STATE[phase]="deploy-gui"; DEPLOY_STATE[node]="local"; DEPLOY_STATE[container]="homelab-deploy-gui"
 step "Step 7 — Deploy GUI"
 
 # Ensure ~/.ssh exists (needed for volume mount)
@@ -431,7 +644,7 @@ info "Building and starting Deploy GUI..."
 docker_compose -f deploy-gui/docker-compose.yml up -d --build 2>&1 | tail -10
 
 sleep 5
-if ! wait_for_health "Deploy GUI" "http://localhost:9999/api/health" 8 3; then
+if ! wait_for_health "Deploy GUI" "http://localhost:9999/api/health" 8 2; then
   warn "Deploy GUI health check failed — checking container..."
   if $DOCKER_CMD ps --format '{{.Names}}' 2>/dev/null | grep -q homelab-deploy-gui; then
     show_container_logs "homelab-deploy-gui" 15
@@ -445,6 +658,7 @@ else
 fi
 
 # ── Final summary ──────────────────────────────────────────────────────────────
+DEPLOY_STATE[phase]="complete"
 echo ""
 echo "╔════════════════════════════════════════════════════╗"
 echo "║   Deployment Complete                              ║"

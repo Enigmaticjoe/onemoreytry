@@ -115,24 +115,100 @@ function renderDashboard() {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Node A Central Brain Command Center</title>
   <style>
-    :root { color-scheme: dark; font-family: Inter, Arial, sans-serif; }
-    body { margin: 0; background: #0f172a; color: #e2e8f0; }
-    header { padding: 18px 20px; border-bottom: 1px solid #1e293b; }
-    h1 { margin: 0 0 6px; font-size: 1.35rem; }
-    main { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); padding: 20px; }
-    section { border: 1px solid #1e293b; border-radius: 10px; background: #111827; padding: 14px; }
-    ul { margin: 8px 0 0; padding-left: 20px; }
+    :root {
+      color-scheme: dark;
+      font-family: Inter, 'Segoe UI', Arial, sans-serif;
+      --bg-base: #050811;
+      --bg-mid: #0b0f1e;
+      --glass-bg: rgba(255,255,255,0.04);
+      --glass-bg-hover: rgba(255,255,255,0.07);
+      --glass-border: rgba(255,255,255,0.08);
+      --glass-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.05) inset;
+      --accent: #7c6af7;
+      --accent2: #5ce65c;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --ok: #22c55e;
+      --bad: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg-base);
+      background-image:
+        radial-gradient(ellipse 80% 50% at 20% 10%, rgba(124,106,247,0.18) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(92,230,92,0.08) 0%, transparent 60%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      padding: 20px 24px;
+      background: rgba(255,255,255,0.03);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--glass-border);
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.02em; }
+    h2 { font-size: 1rem; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+    main { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); padding: 24px; }
+    section {
+      background: var(--glass-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: var(--glass-shadow);
+      transition: border-color 0.2s;
+    }
+    section:hover { border-color: rgba(124,106,247,0.25); }
+    ul { margin: 8px 0 0; padding-left: 18px; }
     li { margin: 8px 0; }
-    a { color: #93c5fd; }
-    button { background: #2563eb; color: white; border: 0; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
-    button:hover { background: #1d4ed8; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
-    th, td { border-bottom: 1px solid #1e293b; text-align: left; padding: 8px; }
-    .ok { color: #22c55e; }
-    .bad { color: #ef4444; }
-    textarea { width: 100%; min-height: 90px; border-radius: 8px; background: #0b1220; color: #e2e8f0; border: 1px solid #334155; padding: 10px; box-sizing: border-box; }
-    pre { background: #0b1220; border-radius: 8px; border: 1px solid #334155; padding: 10px; min-height: 90px; overflow: auto; white-space: pre-wrap; }
-    .small { font-size: 0.85rem; color: #94a3b8; }
+    a { color: #93c5fd; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    button {
+      background: linear-gradient(135deg, var(--accent), #5b50c8);
+      color: white;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    button:hover { opacity: 0.88; transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-top: 12px; }
+    th { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 8px; border-bottom: 1px solid var(--glass-border); }
+    td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .ok { color: var(--ok); font-weight: 500; }
+    .bad { color: var(--bad); font-weight: 500; }
+    textarea {
+      width: 100%;
+      min-height: 90px;
+      border-radius: 10px;
+      background: rgba(0,0,0,0.3);
+      color: var(--text);
+      border: 1px solid var(--glass-border);
+      padding: 10px;
+      font-size: 0.9rem;
+      resize: vertical;
+    }
+    textarea:focus { outline: none; border-color: rgba(124,106,247,0.5); box-shadow: 0 0 0 3px rgba(124,106,247,0.15); }
+    pre {
+      background: rgba(0,0,0,0.35);
+      border-radius: 10px;
+      border: 1px solid var(--glass-border);
+      padding: 12px;
+      min-height: 90px;
+      overflow: auto;
+      white-space: pre-wrap;
+      font-size: 0.875rem;
+      line-height: 1.5;
+      margin-top: 10px;
+    }
+    .small { font-size: 0.82rem; color: var(--text-muted); margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -230,17 +306,70 @@ function renderInstallWizard() {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Install Wizard - Multi-Node Lab</title>
   <style>
-    :root { color-scheme: dark; font-family: Inter, Arial, sans-serif; }
-    body { margin: 0; background: #0f172a; color: #e2e8f0; }
-    header { padding: 16px 20px; border-bottom: 1px solid #1e293b; }
-    main { max-width: 980px; margin: 0 auto; padding: 16px; }
-    h1, h2 { margin: 0 0 8px; }
-    .small { font-size: 0.9rem; color: #94a3b8; margin-bottom: 12px; }
-    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-    button { background: #1e40af; color: #fff; border: 0; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
-    button:hover { background: #1d4ed8; }
-    pre { background: #0b1220; border: 1px solid #334155; border-radius: 8px; padding: 10px; overflow: auto; white-space: pre-wrap; }
-    .card { border: 1px solid #1e293b; border-radius: 10px; background: #111827; padding: 14px; }
+    :root {
+      color-scheme: dark;
+      font-family: Inter, 'Segoe UI', Arial, sans-serif;
+      --bg-base: #050811;
+      --glass-bg: rgba(255,255,255,0.04);
+      --glass-border: rgba(255,255,255,0.08);
+      --glass-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.05) inset;
+      --accent: #7c6af7;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg-base);
+      background-image:
+        radial-gradient(ellipse 80% 50% at 20% 10%, rgba(124,106,247,0.18) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(92,230,92,0.08) 0%, transparent 60%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      padding: 20px 24px;
+      background: rgba(255,255,255,0.03);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--glass-border);
+    }
+    h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 4px; }
+    h2 { font-size: 1rem; font-weight: 600; margin-bottom: 10px; }
+    main { max-width: 980px; margin: 0 auto; padding: 24px; }
+    .small { font-size: 0.88rem; color: var(--text-muted); margin-bottom: 12px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    button {
+      background: linear-gradient(135deg, var(--accent), #5b50c8);
+      color: #fff;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    button:hover { opacity: 0.88; transform: translateY(-1px); }
+    pre {
+      background: rgba(0,0,0,0.35);
+      border: 1px solid var(--glass-border);
+      border-radius: 10px;
+      padding: 12px;
+      overflow: auto;
+      white-space: pre-wrap;
+      font-size: 0.875rem;
+      line-height: 1.5;
+      margin-top: 10px;
+    }
+    .card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: var(--glass-shadow);
+    }
   </style>
 </head>
 <body>
