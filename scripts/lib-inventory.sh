@@ -20,6 +20,19 @@ load_inventory() {
   NODE_A_SSH_USER="${NODE_A_SSH_USER:-root}"
   NODE_B_SSH_USER="${NODE_B_SSH_USER:-root}"
   NODE_C_SSH_USER="${NODE_C_SSH_USER:-root}"
+  NODE_D_SSH_USER="${NODE_D_SSH_USER:-root}"
+  NODE_E_SSH_USER="${NODE_E_SSH_USER:-root}"
+
+  # Tailscale fallback IPs (optional — set in node-inventory.env)
+  NODE_A_TS_IP="${NODE_A_TS_IP:-}"
+  NODE_B_TS_IP="${NODE_B_TS_IP:-}"
+  NODE_C_TS_IP="${NODE_C_TS_IP:-}"
+  NODE_D_TS_IP="${NODE_D_TS_IP:-}"
+  NODE_E_TS_IP="${NODE_E_TS_IP:-}"
+
+  # Portainer defaults
+  PORTAINER_PORT="${PORTAINER_PORT:-9000}"
+  PORTAINER_TOKEN="${PORTAINER_TOKEN:-}"
 }
 
 is_missing_or_placeholder_ip() {

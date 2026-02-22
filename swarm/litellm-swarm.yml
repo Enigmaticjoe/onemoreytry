@@ -1,0 +1,62 @@
+# ══════════════════════════════════════════════════════════════════════════════
+#  LiteLLM Gateway — Docker Swarm Stack
+# ══════════════════════════════════════════════════════════════════════════════
+#
+#  Deploys LiteLLM on NODE_B (the gateway node with RTX 4070) using
+#  Swarm placement constraints so it always runs on the right hardware.
+#
+#  Deploy via Portainer BE:
+#    Environments → Homelab Swarm → Stacks → Add Stack → Upload this file
+#
+#  Deploy via CLI:
+#    docker stack deploy -c swarm/litellm-swarm.yml litellm
+#
+#  Environment variables (set in Portainer stack environment or .env):
+#    NODE_A_IP, NODE_B_IP, NODE_C_IP, LITELLM_API_KEY
+#
+# ══════════════════════════════════════════════════════════════════════════════
+version: "3.8"
+
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    ports:
+      - "4000:4000"
+    volumes:
+      - type: bind
+        source: /mnt/user/appdata/homelab/node-b-litellm/config.yaml
+        target: /app/config.yaml
+        read_only: true
+    environment:
+      LITELLM_LOG: INFO
+      JSON_LOGS: "true"
+      WORKERS: "4"
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    networks:
+      - litellm_net
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          # Always run on NODE_B (the Unraid gateway with RTX 4070)
+          - node.labels.homelab.node == B
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      labels:
+        - "portainer.agent.stack=litellm"
+
+networks:
+  litellm_net:
+    driver: overlay
+    attachable: true

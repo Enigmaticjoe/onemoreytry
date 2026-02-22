@@ -1,0 +1,85 @@
+# ══════════════════════════════════════════════════════════════════════════════
+#  OpenClaw AI Gateway — Docker Swarm Stack
+# ══════════════════════════════════════════════════════════════════════════════
+#
+#  Deploys OpenClaw on NODE_B with Swarm placement constraints.
+#  Requires Docker socket access for container management capabilities.
+#
+#  IMPORTANT: OpenClaw uses --user root and Docker socket mount.
+#  This is intentional per OpenClaw's official template requirements.
+#
+#  Deploy via Portainer BE:
+#    Environments → Homelab Swarm → Stacks → Add Stack → Upload this file
+#    Add environment variables in the Portainer stack editor.
+#
+# ══════════════════════════════════════════════════════════════════════════════
+version: "3.8"
+
+services:
+  openclaw:
+    image: ghcr.io/openclawai/openclaw:latest
+    user: root
+    ports:
+      - "18789:18789"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - openclaw_workspace:/home/node/clawd
+      - openclaw_config:/home/node/.config
+    environment:
+      # ── AI Providers (add your keys) ────────────────────────────────────
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+
+      # ── Local LLM (LiteLLM gateway) ─────────────────────────────────────
+      OPENAI_BASE_URL: http://tasks.litellm:4000/v1
+      LOCAL_LLM_API_KEY: ${LITELLM_API_KEY:-sk-master-key}
+
+      # ── Home Assistant ───────────────────────────────────────────────────
+      HA_URL: ${HA_URL:-http://192.168.1.149:8123}
+      HA_TOKEN: ${HA_TOKEN:-}
+
+      # ── KVM Operator ─────────────────────────────────────────────────────
+      KVM_OPERATOR_URL: ${KVM_OPERATOR_URL:-http://192.168.1.9:5000}
+      KVM_OPERATOR_TOKEN: ${KVM_OPERATOR_TOKEN:-}
+
+      # ── Unraid ───────────────────────────────────────────────────────────
+      UNRAID_API_KEY: ${UNRAID_API_KEY:-}
+      UNRAID_URL: ${UNRAID_URL:-http://192.168.1.222}
+
+      GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
+      NODE_ENV: production
+    init: true
+    networks:
+      - openclaw_net
+      - litellm_net
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.homelab.node == B
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+      resources:
+        limits:
+          memory: 2G
+      update_config:
+        parallelism: 1
+        failure_action: rollback
+
+volumes:
+  openclaw_workspace:
+    driver: local
+  openclaw_config:
+    driver: local
+
+networks:
+  openclaw_net:
+    driver: overlay
+    attachable: true
+  litellm_net:
+    external: true
+    name: litellm_litellm_net
