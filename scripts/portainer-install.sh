@@ -12,16 +12,24 @@
 #    ./scripts/ssh-auditor.sh
 #
 #    # Step 2:
-#    ./scripts/portainer-install.sh                    # install on all nodes
+#    ./scripts/portainer-install.sh                    # install CE on all nodes
+#    ./scripts/portainer-install.sh --business         # install BE (licensed) on all nodes
 #    ./scripts/portainer-install.sh --node NODE_B      # single node
 #    ./scripts/portainer-install.sh --force            # reinstall even if running
 #    ./scripts/portainer-install.sh --status           # check status only
 #    ./scripts/portainer-install.sh --update           # pull latest portainer image
 #
+#  PORTAINER EDITIONS:
+#    CE (Community Edition): portainer/portainer-ce:latest  — free, single environment
+#    BE (Business Edition):  portainer/portainer-ee:latest  — licensed, multi-environment,
+#      Swarm support, RBAC, GitOps, centralized admin across all nodes.
+#      Use --business if you have a Portainer BE license key.
+#      After install: Settings → Licenses → paste your key.
+#
 #  WHAT IT DOES PER NODE:
 #    1. Checks if Docker is installed — installs if missing
 #    2. Checks if Portainer is already running — skips or reinstalls
-#    3. Deploys Portainer CE with persistent data volume
+#    3. Deploys Portainer CE or BE with persistent data volume
 #    4. Opens required firewall ports (9000, 9443)
 #    5. Waits for Portainer to become healthy
 #    6. Prints the admin URL and first-login instructions
@@ -32,7 +40,9 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONNMAP_FILE="/tmp/homelab-connmap.env"
 SSH_TIMEOUT=10
-PORTAINER_IMAGE="portainer/portainer-ce:latest"
+PORTAINER_CE_IMAGE="portainer/portainer-ce:latest"
+PORTAINER_BE_IMAGE="portainer/portainer-ee:latest"
+PORTAINER_IMAGE="$PORTAINER_CE_IMAGE"   # overridden by --business flag
 PORTAINER_DATA_VOL="portainer_data"
 PORTAINER_HTTP_PORT="${PORTAINER_PORT:-9000}"
 PORTAINER_HTTPS_PORT="9443"
@@ -42,12 +52,14 @@ PORTAINER_AGENT_PORT="8000"
 FLAG_FORCE=false
 FLAG_STATUS=false
 FLAG_UPDATE=false
+FLAG_BUSINESS=false
 TARGET_NODE=""
 
 for arg in "$@"; do
   case "$arg" in
-    --force)   FLAG_FORCE=true ;;
-    --status)  FLAG_STATUS=true ;;
+    --force)    FLAG_FORCE=true ;;
+    --status)   FLAG_STATUS=true ;;
+    --business) FLAG_BUSINESS=true; PORTAINER_IMAGE="$PORTAINER_BE_IMAGE" ;;
     --update)  FLAG_UPDATE=true ;;
     --node)    : ;;
     *)
@@ -141,6 +153,19 @@ echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║   Portainer Install — Homelab Multi-Node Deployment          ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+if [[ "$FLAG_BUSINESS" == "true" ]]; then
+  echo -e "  ${BOLD}Edition:${NC} ${MAGENTA}Portainer Business Edition (BE)${NC}"
+  echo -e "  ${CYAN}Image:${NC}   ${PORTAINER_BE_IMAGE}"
+  echo ""
+  echo -e "  ${YELLOW}After install → Settings → Licenses → paste your key${NC}"
+else
+  echo -e "  ${BOLD}Edition:${NC} Portainer Community Edition (CE)"
+  echo -e "  ${CYAN}Image:${NC}   ${PORTAINER_CE_IMAGE}"
+  echo ""
+  echo -e "  ${YELLOW}Tip: Use --business if you have a Portainer BE license.${NC}"
+  echo -e "  ${YELLOW}BE adds multi-environment central admin, Swarm, RBAC, GitOps.${NC}"
+fi
 echo ""
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -479,11 +504,27 @@ if [[ "$DEPLOYED" -gt 0 ]]; then
   echo -e "  ${GREEN}Next steps:${NC}"
   echo "    1. Log in to each Portainer instance (URLs shown above)"
   echo "    2. Create your admin account on first login"
-  echo "    3. Deploy your stacks via Portainer or:"
-  echo "       ./scripts/deploy-all.sh"
+  echo ""
+  if [[ "$FLAG_BUSINESS" == "true" ]]; then
+    echo -e "  ${MAGENTA}Portainer BE — Central Admin Setup:${NC}"
+    echo "    3. Apply license: Settings → Licenses → Add License"
+    echo "    4. Add environments: Home → Add Environment"
+    echo "       → Docker Standalone → Agent → enter each node's IP:9001"
+    echo "    5. Initialize Swarm (optional):"
+    echo "       ./scripts/swarm-init.sh"
+    echo "    6. Deploy stacks from Portainer UI or:"
+    echo "       ./scripts/deploy-all.sh"
+  else
+    echo "    3. Deploy your stacks via Portainer or:"
+    echo "       ./scripts/deploy-all.sh"
+    echo ""
+    echo -e "  ${YELLOW}Have a Portainer BE license? Upgrade:${NC}"
+    echo "    ./scripts/portainer-install.sh --business --force"
+    echo "    Then: ./scripts/swarm-init.sh   (for Swarm + central admin)"
+  fi
   echo ""
   echo "    To generate Portainer API tokens (for automation):"
-  echo "    → Settings → Users → Add API token"
+  echo "    → top-right username → My Account → Access Tokens → Add"
   echo "    → Add to config/node-inventory.env as PORTAINER_TOKEN=ptr_..."
   echo ""
 fi
