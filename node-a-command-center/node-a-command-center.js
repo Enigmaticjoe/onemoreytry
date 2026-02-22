@@ -20,12 +20,14 @@ const serviceChecks = [
   { key: 'brain', label: 'Node A Brain vLLM', url: `${BRAIN_BASE_URL}/health` },
   { key: 'vision', label: 'Node C Vision (Ollama)', url: `${NODE_C_BASE_URL}:11434/api/version` },
   { key: 'nodeCUi', label: 'Node C Chimera Face UI', url: `${NODE_C_BASE_URL}:3000` },
+  { key: 'nodeD', label: 'Node D Home Assistant', url: `${NODE_D_BASE_URL}/api/` },
   { key: 'nodeE', label: 'Node E Sentinel (Vision)', url: `${NODE_E_BASE_URL}/health` },
 ];
 
 const dashboardLinks = [
   { name: 'LiteLLM Gateway Health', href: `${LITELLM_BASE_URL}/health` },
   { name: 'Node C Chimera Face UI', href: `${NODE_C_BASE_URL}:3000` },
+  { name: 'Node D Home Assistant', href: `${NODE_D_BASE_URL}` },
   { name: 'Node E Sentinel Dashboard', href: `${NODE_E_BASE_URL}` },
   { name: 'Deployment Guide', href: '/docs/DEPLOYMENT_GUIDE' },
   { name: 'Quick Reference', href: '/docs/QUICK_REFERENCE' },

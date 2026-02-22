@@ -168,6 +168,9 @@ test_result $? "LiteLLM has healthcheck defined"
 grep -q "healthcheck:" node-c-arc/docker-compose.yml
 test_result $? "Node C Ollama has healthcheck defined"
 
+grep -q "healthcheck:" node-a-vllm/docker-compose.yml
+test_result $? "Node A vLLM has healthcheck defined"
+
 # Check container names
 grep -q "container_name: litellm_gateway" node-b-litellm/litellm-stack.yml
 test_result $? "LiteLLM container named 'litellm_gateway'"
@@ -177,6 +180,9 @@ test_result $? "Ollama container named 'ollama_intel_arc'"
 
 grep -q "container_name: chimera_face" node-c-arc/docker-compose.yml
 test_result $? "Open WebUI container named 'chimera_face'"
+
+grep -q "container_name: vllm_brain" node-a-vllm/docker-compose.yml
+test_result $? "Node A vLLM container named 'vllm_brain'"
 
 echo ""
 
@@ -192,6 +198,18 @@ test_result $? "config.yaml exists"
 
 [ -f "node-c-arc/docker-compose.yml" ]
 test_result $? "node-c-arc/docker-compose.yml exists"
+
+[ -f "node-a-vllm/docker-compose.yml" ]
+test_result $? "node-a-vllm/docker-compose.yml exists"
+
+[ -f "node-a-vllm/.env.example" ]
+test_result $? "node-a-vllm/.env.example exists"
+
+[ -f "scripts/setup-node-a.sh" ]
+test_result $? "scripts/setup-node-a.sh exists"
+
+[ -x "scripts/setup-node-a.sh" ]
+test_result $? "scripts/setup-node-a.sh is executable"
 
 [ -f "home-assistant/configuration.yaml.snippet" ]
 test_result $? "configuration.yaml.snippet exists"
