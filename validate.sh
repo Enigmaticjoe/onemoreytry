@@ -362,6 +362,36 @@ test_result $? "Deploy GUI has /api/deploy endpoint"
 grep -q "portainer" deploy-gui/deploy-gui.js
 test_result $? "Deploy GUI has Portainer integration"
 
+grep -q "/api/audit" deploy-gui/deploy-gui.js
+test_result $? "Deploy GUI has /api/audit endpoint (SSH auditor)"
+
+grep -q "wizard" deploy-gui/deploy-gui.js
+test_result $? "Deploy GUI has Setup Wizard tab"
+
+grep -q "/api/portainer-install" deploy-gui/deploy-gui.js
+test_result $? "Deploy GUI has /api/portainer-install endpoint"
+
+[ -f "scripts/ssh-auditor.sh" ]
+test_result $? "scripts/ssh-auditor.sh exists"
+
+[ -x "scripts/ssh-auditor.sh" ]
+test_result $? "scripts/ssh-auditor.sh is executable"
+
+[ -f "scripts/portainer-install.sh" ]
+test_result $? "scripts/portainer-install.sh exists"
+
+[ -x "scripts/portainer-install.sh" ]
+test_result $? "scripts/portainer-install.sh is executable"
+
+[ -f "docs/12_INSTALL_WIZARD_GUIDE.md" ]
+test_result $? "docs/12_INSTALL_WIZARD_GUIDE.md (wizard guide) exists"
+
+grep -q "Portainer" docs/12_INSTALL_WIZARD_GUIDE.md
+test_result $? "Install wizard guide covers Portainer setup"
+
+grep -q "ssh-auditor" docs/12_INSTALL_WIZARD_GUIDE.md
+test_result $? "Install wizard guide references ssh-auditor.sh"
+
 echo ""
 echo "================================================================================"
 echo "  TEST RESULTS"
