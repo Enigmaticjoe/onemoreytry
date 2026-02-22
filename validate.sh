@@ -532,6 +532,68 @@ grep -q "/opt/openclaw" scripts/install-openclaw-node-c.sh
 test_result $? "install-openclaw-node-c.sh uses /opt/openclaw data path"
 
 echo ""
+
+# Test 10: Validate Node A Brain (RX 7900 XT) documentation and compose files
+echo "10. Validating Node A Brain (RX 7900 XT) documentation and config..."
+echo "---------------------------------------------------------------------"
+
+[ -f "docs/03_DEPLOY_NODE_A_BRAIN.md" ]
+test_result $? "docs/03_DEPLOY_NODE_A_BRAIN.md (brain node guide) exists"
+
+grep -q "7900 XT\|7900XT\|RX 7900" docs/03_DEPLOY_NODE_A_BRAIN.md
+test_result $? "Brain guide references RX 7900 XT"
+
+grep -q "ROCm" docs/03_DEPLOY_NODE_A_BRAIN.md
+test_result $? "Brain guide covers ROCm installation"
+
+grep -q "HSA_OVERRIDE_GFX_VERSION" docs/03_DEPLOY_NODE_A_BRAIN.md
+test_result $? "Brain guide documents HSA_OVERRIDE_GFX_VERSION (required for gfx1100)"
+
+grep -q "8000" docs/03_DEPLOY_NODE_A_BRAIN.md
+test_result $? "Brain guide documents vLLM port 8000"
+
+grep -q "11435" docs/03_DEPLOY_NODE_A_BRAIN.md
+test_result $? "Brain guide documents Ollama port 11435"
+
+grep -q "brain-heavy" docs/03_DEPLOY_NODE_A_BRAIN.md
+test_result $? "Brain guide references brain-heavy model name"
+
+[ -f "node-a-vllm/docker-compose.ollama.yml" ]
+test_result $? "node-a-vllm/docker-compose.ollama.yml (Ollama alternative) exists"
+
+python3 -c "import yaml; yaml.safe_load(open('node-a-vllm/docker-compose.ollama.yml'))"
+test_result $? "node-a-vllm/docker-compose.ollama.yml YAML syntax valid"
+
+grep -q "container_name: ollama_brain" node-a-vllm/docker-compose.ollama.yml
+test_result $? "Ollama brain container named 'ollama_brain'"
+
+grep -q "ollama/ollama:rocm" node-a-vllm/docker-compose.ollama.yml
+test_result $? "Ollama brain uses ROCm image"
+
+grep -q "HSA_OVERRIDE_GFX_VERSION.*11.0.0" node-a-vllm/docker-compose.ollama.yml
+test_result $? "Ollama brain sets HSA_OVERRIDE_GFX_VERSION=11.0.0"
+
+grep -q "/dev/kfd" node-a-vllm/docker-compose.ollama.yml
+test_result $? "Ollama brain maps /dev/kfd for ROCm"
+
+grep -q "healthcheck:" node-a-vllm/docker-compose.ollama.yml
+test_result $? "Ollama brain has healthcheck defined"
+
+grep -q "11435" node-a-vllm/docker-compose.ollama.yml
+test_result $? "Ollama brain exposes port 11435"
+
+# DEPLOYMENT_GUIDE.md has Node A section
+grep -q "Node A.*vLLM\|Node A.*Brain\|Node A: Deploy" DEPLOYMENT_GUIDE.md
+test_result $? "DEPLOYMENT_GUIDE.md has Node A Brain deployment section"
+
+grep -q "8000" DEPLOYMENT_GUIDE.md
+test_result $? "DEPLOYMENT_GUIDE.md documents vLLM port 8000"
+
+# GUIDEBOOK.md has Chapter 2.5
+grep -q "Chapter 2.5" GUIDEBOOK.md
+test_result $? "GUIDEBOOK.md has Chapter 2.5 (Node A Brain)"
+
+echo ""
 echo "================================================================================"
 echo "  TEST RESULTS"
 echo "================================================================================"

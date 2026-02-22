@@ -12,6 +12,7 @@
 | 0 | [Pre-Flight & Network Map](#chapter-0--pre-flight--network-map) | Verify hardware, set IP plan, install Ansible & prereqs on Fedora 43 |
 | 1 | [Node C — Intel Arc Command Center](#chapter-1--node-c--intel-arc-command-center-fedora-43) | Ollama + Chimera Face UI on your Fedora 43 / Intel Arc A770 |
 | 2 | [Node B — LiteLLM Gateway](#chapter-2--node-b--litellm-gateway-unraid) | Unified AI API gateway on Unraid (Node B) |
+| 2.5 | [Node A — Brain Node (RX 7900 XT)](#chapter-25--node-a--brain-node-rx-7900-xt) | ROCm + vLLM (or Ollama) on the AMD RX 7900 XT |
 | 3 | [Node A — Command Center Dashboard](#chapter-3--node-a--command-center-dashboard) | Node.js status dashboard + chat proxy |
 | 4 | [KVM Operator](#chapter-4--kvm-operator) | FastAPI AI-controlled KVM over IP (NanoKVM Cube) |
 | 5 | [OpenClaw AI Gateway](#chapter-5--openclaw-ai-gateway) | OpenClaw personal AI assistant + deployment skills |
@@ -257,6 +258,93 @@ curl http://192.168.1.222:4000/v1/models \
 ### 2.5 Postgres (Optional — for LiteLLM history)
 
 Already included in `litellm-stack.yml`. Postgres runs as a sidecar container and provides spend tracking, audit logs, and key management.
+
+---
+
+## Chapter 2.5 — Node A — Brain Node (RX 7900 XT)
+
+> **Install on Node A (192.168.1.9).** This provides the `brain-heavy` model that LiteLLM (Node B) routes heavy-reasoning requests to.  
+> Full guide: [`docs/03_DEPLOY_NODE_A_BRAIN.md`](docs/03_DEPLOY_NODE_A_BRAIN.md)
+
+### 2.5.1 Install ROCm (AMD GPU driver)
+
+```bash
+# Fedora
+sudo tee /etc/yum.repos.d/rocm.repo > /dev/null <<'REPO'
+[ROCm]
+name=ROCm
+baseurl=https://repo.radeon.com/rocm/rhel9/latest/main
+enabled=1
+gpgcheck=1
+gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key
+REPO
+
+sudo dnf install -y rocm-hip-sdk rocm-opencl-sdk rocminfo
+sudo usermod -aG render,video "$USER"
+# Log out and back in after this step
+```
+
+### 2.5.2 Verify the GPU
+
+```bash
+/opt/rocm/bin/rocminfo | grep "Marketing Name"
+# Expected: "  Marketing Name:  Radeon RX 7900 XT"
+
+ls -la /dev/kfd /dev/dri/render*
+# Both must exist
+```
+
+### 2.5.3 Deploy vLLM (Primary)
+
+```bash
+cd ~/homelab/node-a-vllm
+cp .env.example .env
+# Edit .env: set HUGGINGFACE_TOKEN and VLLM_MODEL
+
+docker compose up -d
+
+# Wait for model load (~2-5 min on first start)
+docker logs vllm_brain -f | grep -E "Uvicorn|error"
+
+# Verify
+curl http://localhost:8000/health
+curl http://localhost:8000/v1/models | jq '.data[].id'
+# → "brain-heavy"
+```
+
+### 2.5.4 Deploy Ollama+ROCm (Alternative)
+
+```bash
+docker compose -f node-a-vllm/docker-compose.ollama.yml up -d
+docker exec ollama_brain ollama pull llama3.1:8b
+
+curl http://localhost:11435/api/version
+```
+
+### 2.5.5 Node A Port Summary
+
+| Port | Service |
+|------|---------|
+| **8000** | vLLM OpenAI API (`brain-heavy`) |
+| **11435** | Ollama + ROCm alternative |
+| **3099** | Command Center Dashboard (Chapter 3) |
+| **5000** | KVM Operator (Chapter 4) |
+
+### 2.5.6 Test via LiteLLM Gateway
+
+```bash
+curl -X POST http://192.168.1.222:4000/v1/chat/completions \
+  -H "Authorization: Bearer sk-master-key" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"brain-heavy","messages":[{"role":"user","content":"ping"}]}'
+```
+
+### 2.5.7 Automated setup
+
+```bash
+./scripts/setup-node-a.sh           # full ROCm + vLLM deploy
+./scripts/setup-node-a.sh --status  # GPU + container health check
+```
 
 ---
 

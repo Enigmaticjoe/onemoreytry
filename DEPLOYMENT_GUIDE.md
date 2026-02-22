@@ -35,6 +35,66 @@ API Key: `sk-master-key`
 
 ## Deployment Steps
 
+### Node A: Deploy vLLM Brain (AMD RX 7900 XT)
+
+**Location:** `node-a-vllm/`  
+**Full guide:** [`docs/03_DEPLOY_NODE_A_BRAIN.md`](docs/03_DEPLOY_NODE_A_BRAIN.md)
+
+1. Install ROCm on the host (Fedora example):
+   ```bash
+   sudo tee /etc/yum.repos.d/rocm.repo > /dev/null <<'REPO'
+   [ROCm]
+   name=ROCm
+   baseurl=https://repo.radeon.com/rocm/rhel9/latest/main
+   enabled=1
+   gpgcheck=1
+   gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key
+   REPO
+   sudo dnf install -y rocm-hip-sdk rocm-opencl-sdk rocminfo
+   sudo usermod -aG render,video "$USER"
+   ```
+
+2. Verify the GPU is visible to ROCm:
+   ```bash
+   /opt/rocm/bin/rocminfo | grep "Marketing Name"
+   # Expected: Radeon RX 7900 XT
+   ```
+
+3. Configure the model:
+   ```bash
+   cd node-a-vllm
+   cp .env.example .env
+   # Edit .env: set HUGGINGFACE_TOKEN and VLLM_MODEL
+   ```
+
+4. Deploy vLLM:
+   ```bash
+   docker compose up -d
+   ```
+
+5. Verify (may take 2–5 min on first start while the model downloads):
+   ```bash
+   docker logs vllm_brain --tail 20 -f
+   curl http://localhost:8000/health
+   curl http://localhost:8000/v1/models | jq '.data[].id'
+   ```
+
+6. One-command setup alternative:
+   ```bash
+   ./scripts/setup-node-a.sh        # full ROCm install + vLLM deploy
+   ./scripts/setup-node-a.sh --status   # check GPU + container health
+   ```
+
+**Port summary for Node A:**
+| Port | Service |
+|------|---------|
+| 8000 | vLLM OpenAI API (`brain-heavy` model) |
+| 11435 | Ollama + ROCm (alternative — see `node-a-vllm/docker-compose.ollama.yml`) |
+| 3099 | Command Center Dashboard (Node.js) |
+| 5000 | KVM Operator (FastAPI) |
+
+---
+
 ### Node B: Deploy LiteLLM Gateway (Unraid)
 
 **Location:** `/home/runner/work/onemoreytry/onemoreytry/node-b-litellm/`

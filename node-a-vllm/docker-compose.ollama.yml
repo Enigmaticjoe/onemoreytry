@@ -1,0 +1,62 @@
+# Grand Unified AI Home Lab — Node A (Brain / Deep Thought) — Ollama variant
+# Deploy on the same machine as the vLLM stack (192.168.1.9)
+#
+# Hardware: Core Ultra 7 265KF, 128 GB DDR5, AMD RX 7900 XT (20 GB)
+# Role:     Heavy reasoning via Ollama + ROCm (simpler alternative to vLLM)
+#
+# ROCm notes for RX 7900 XT (RDNA 3 / gfx1100):
+#   HSA_OVERRIDE_GFX_VERSION=11.0.0 tells ROCm the exact GPU ISA
+#   /dev/kfd  — ROCm kernel fusion driver (required)
+#   /dev/dri  — DRM render node (required)
+#
+# Port: 11435  (non-default to avoid conflict if another Ollama runs locally)
+#
+# Usage:
+#   docker compose -f docker-compose.ollama.yml up -d
+#   docker exec ollama_brain ollama pull llama3.1:8b
+#   curl http://localhost:11435/api/version
+
+services:
+  ollama_brain:
+    image: ollama/ollama:rocm
+    container_name: ollama_brain
+    restart: unless-stopped
+    network_mode: host
+
+    # ROCm GPU access for RX 7900 XT
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+
+    group_add:
+      - video
+      - render
+
+    volumes:
+      - ollama-brain-models:/root/.ollama
+
+    environment:
+      # Expose on all interfaces — Node A uses host networking so this makes
+      # the API reachable from other nodes (Node B LiteLLM gateway) on the LAN.
+      # See docs/07_SECURITY.md for firewall hardening recommendations.
+      OLLAMA_HOST: "0.0.0.0:11435"
+
+      # RX 7900 XT (gfx1100 / RDNA 3) — REQUIRED for ROCm to recognise the GPU
+      HSA_OVERRIDE_GFX_VERSION: "11.0.0"
+
+      # Use the first (primary) GPU
+      HIP_VISIBLE_DEVICES: "0"
+
+      # Enable all available ROCm GPUs
+      OLLAMA_NUM_GPU: "999"
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11435/api/version >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  ollama-brain-models:
+    name: node-a-ollama-brain-models
