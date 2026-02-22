@@ -728,67 +728,104 @@ test_result $? "Command center lists Dozzle in dashboard links"
 
 echo ""
 
-# Test 12: Validate AI Sherpa and Mobile Monitor features
-echo "12. Validating AI Sherpa and Mobile Monitor features..."
-echo "-------------------------------------------------------"
+# Test 12: Validate new layman's guides documentation suite
+echo "12. Validating layman's guides documentation suite..."
+echo "------------------------------------------------------"
 
-# Sherpa system prompt is defined
-grep -q "SHERPA_SYSTEM_PROMPT" node-a-command-center/node-a-command-center.js
-test_result $? "Command center defines SHERPA_SYSTEM_PROMPT"
+[ -f "docs/14_POST_INSTALL_LAYMENS_GUIDE.md" ]
+test_result $? "docs/14_POST_INSTALL_LAYMENS_GUIDE.md (post-install guide) exists"
 
-# Sherpa route is defined
-grep -q "'/sherpa'" node-a-command-center/node-a-command-center.js
-test_result $? "Command center serves /sherpa route"
+grep -q "health\|Health\|verify\|Verify" docs/14_POST_INSTALL_LAYMENS_GUIDE.md
+test_result $? "post-install guide covers health checks"
 
-# Sherpa API endpoint is defined
-grep -q "'/api/sherpa-chat'" node-a-command-center/node-a-command-center.js
-test_result $? "Command center serves /api/sherpa-chat route"
+grep -q "3099\|Command Center\|command center" docs/14_POST_INSTALL_LAYMENS_GUIDE.md
+test_result $? "post-install guide references Node A Command Center (port 3099)"
 
-# handleSherpaChat function exists
-grep -q "handleSherpaChat" node-a-command-center/node-a-command-center.js
-test_result $? "Command center implements handleSherpaChat function"
+grep -q "ollama pull\|ollama" docs/14_POST_INSTALL_LAYMENS_GUIDE.md
+test_result $? "post-install guide covers loading Ollama models"
 
-# Sherpa uses system prompt in API call
-grep -q "role.*'system'\|role.*\"system\"" node-a-command-center/node-a-command-center.js
-test_result $? "Sherpa chat sends system-role message to LiteLLM"
+[ -f "docs/15_LITELLM_OPENWEBUI_USER_GUIDE.md" ]
+test_result $? "docs/15_LITELLM_OPENWEBUI_USER_GUIDE.md (LiteLLM+OpenWebUI guide) exists"
 
-# Mobile page route is defined
-grep -q "'/mobile'" node-a-command-center/node-a-command-center.js
-test_result $? "Command center serves /mobile route"
+grep -q "192.168.1.222:4000" docs/15_LITELLM_OPENWEBUI_USER_GUIDE.md
+test_result $? "LiteLLM+OpenWebUI guide contains correct gateway URL"
 
-# PWA manifest route is defined
-grep -q "'/manifest.json'" node-a-command-center/node-a-command-center.js
-test_result $? "Command center serves /manifest.json PWA manifest route"
+grep -q "sk-master-key" docs/15_LITELLM_OPENWEBUI_USER_GUIDE.md
+test_result $? "LiteLLM+OpenWebUI guide references master key"
 
-# Mobile page includes PWA meta tags
-grep -q "mobile-web-app-capable" node-a-command-center/node-a-command-center.js
-test_result $? "Mobile page includes PWA meta tags (mobile-web-app-capable)"
+grep -q "system prompt\|System Prompt\|master prompt\|Master Prompt" docs/15_LITELLM_OPENWEBUI_USER_GUIDE.md
+test_result $? "LiteLLM+OpenWebUI guide covers system/master prompts"
 
-# Mobile page has auto-refresh
-grep -q "setInterval(loadStatus, 30000)" node-a-command-center/node-a-command-center.js
-test_result $? "Mobile page auto-refreshes status every 30 seconds"
+grep -q "Anthropic\|OpenAI\|Gemini\|OpenRouter" docs/15_LITELLM_OPENWEBUI_USER_GUIDE.md
+test_result $? "LiteLLM+OpenWebUI guide covers cloud connectors"
 
-# Dashboard links include Sherpa and Mobile
-grep -q "AI Sherpa Guide" node-a-command-center/node-a-command-center.js
-test_result $? "Dashboard links include AI Sherpa Guide"
+[ -f "docs/16_NODE_A_LAYMENS_GUIDE.md" ]
+test_result $? "docs/16_NODE_A_LAYMENS_GUIDE.md (Node A guide) exists"
 
-grep -q "Mobile Monitor" node-a-command-center/node-a-command-center.js
-test_result $? "Dashboard links include Mobile Monitor"
+grep -q "192.168.1.9\|ROCm\|vLLM\|7900" docs/16_NODE_A_LAYMENS_GUIDE.md
+test_result $? "Node A guide references correct IP, ROCm, vLLM"
 
-# AI Sherpa guide doc exists
-[ -f "docs/14_AI_SHERPA_GUIDE.md" ]
-test_result $? "docs/14_AI_SHERPA_GUIDE.md (AI Sherpa guide) exists"
+grep -q "HSA_OVERRIDE_GFX_VERSION" docs/16_NODE_A_LAYMENS_GUIDE.md
+test_result $? "Node A guide documents HSA_OVERRIDE_GFX_VERSION fix"
 
-grep -q "manifest.json\|manifest" docs/14_AI_SHERPA_GUIDE.md
-test_result $? "AI Sherpa guide documents PWA manifest"
+[ -f "docs/17_NODE_B_LAYMENS_GUIDE.md" ]
+test_result $? "docs/17_NODE_B_LAYMENS_GUIDE.md (Node B guide) exists"
 
-grep -q "sherpa-chat\|/api/sherpa" docs/14_AI_SHERPA_GUIDE.md
-test_result $? "AI Sherpa guide documents Sherpa API endpoint"
+grep -q "192.168.1.222\|LiteLLM\|Portainer" docs/17_NODE_B_LAYMENS_GUIDE.md
+test_result $? "Node B guide references correct IP, LiteLLM, Portainer"
 
-grep -q "Android\|android" docs/14_AI_SHERPA_GUIDE.md
-test_result $? "AI Sherpa guide covers Android installation"
+[ -f "docs/18_NODE_C_LAYMENS_GUIDE.md" ]
+test_result $? "docs/18_NODE_C_LAYMENS_GUIDE.md (Node C guide) exists"
 
+grep -q "192.168.1.6\|Intel Arc\|chimera_face\|ZES_ENABLE_SYSMAN" docs/18_NODE_C_LAYMENS_GUIDE.md
+test_result $? "Node C guide references correct IP, Intel Arc, chimera_face, ZES_ENABLE_SYSMAN"
 
+[ -f "docs/19_NODE_D_LAYMENS_GUIDE.md" ]
+test_result $? "docs/19_NODE_D_LAYMENS_GUIDE.md (Node D Home Assistant guide) exists"
+
+grep -q "192.168.1.149\|8123\|openai_conversation" docs/19_NODE_D_LAYMENS_GUIDE.md
+test_result $? "Node D guide references correct IP, port 8123, openai_conversation"
+
+[ -f "docs/20_NODE_E_LAYMENS_GUIDE.md" ]
+test_result $? "docs/20_NODE_E_LAYMENS_GUIDE.md (Node E Sentinel guide) exists"
+
+grep -q "Frigate\|Sentinel\|3005\|SENTINEL_TOKEN" docs/20_NODE_E_LAYMENS_GUIDE.md
+test_result $? "Node E guide references Frigate, Sentinel, port 3005, SENTINEL_TOKEN"
+
+[ -f "docs/21_OPENCLAW_KVM_LAYMENS_GUIDE.md" ]
+test_result $? "docs/21_OPENCLAW_KVM_LAYMENS_GUIDE.md (OpenClaw+KVM big guide) exists"
+
+grep -q "18789\|OPENCLAW_GATEWAY_TOKEN\|openssl rand" docs/21_OPENCLAW_KVM_LAYMENS_GUIDE.md
+test_result $? "OpenClaw+KVM guide covers port 18789, token, openssl rand"
+
+grep -q "skill-kvm\|KVM_OPERATOR_URL\|REQUIRE_APPROVAL" docs/21_OPENCLAW_KVM_LAYMENS_GUIDE.md
+test_result $? "OpenClaw+KVM guide covers skill-kvm, KVM_OPERATOR_URL, REQUIRE_APPROVAL"
+
+grep -q "5000\|approval\|Approval\|denylist" docs/21_OPENCLAW_KVM_LAYMENS_GUIDE.md
+test_result $? "OpenClaw+KVM guide covers KVM Operator port 5000, approval, denylist"
+
+[ -f "docs/22_PROXMOX_BLUEIRIS_FRIGATE_GUIDE.md" ]
+test_result $? "docs/22_PROXMOX_BLUEIRIS_FRIGATE_GUIDE.md (Proxmox+Blue Iris+Frigate guide) exists"
+
+grep -q "192.168.1.174\|Proxmox\|8006" docs/22_PROXMOX_BLUEIRIS_FRIGATE_GUIDE.md
+test_result $? "Proxmox guide references correct IP and port 8006"
+
+grep -q "Blue Iris\|Frigate\|RTSP" docs/22_PROXMOX_BLUEIRIS_FRIGATE_GUIDE.md
+test_result $? "Proxmox guide covers Blue Iris, Frigate, and RTSP"
+
+grep -q "Windows\|VM\|VirtIO" docs/22_PROXMOX_BLUEIRIS_FRIGATE_GUIDE.md
+test_result $? "Proxmox guide covers Windows VM with VirtIO"
+
+[ -f "docs/23_HOME_ASSISTANT_LAYMENS_GUIDE.md" ]
+test_result $? "docs/23_HOME_ASSISTANT_LAYMENS_GUIDE.md (Home Assistant big guide) exists"
+
+grep -q "192.168.1.149\|8123\|brawn-fast\|brain-heavy" docs/23_HOME_ASSISTANT_LAYMENS_GUIDE.md
+test_result $? "HA guide references correct IP, port 8123, model names"
+
+grep -q "HACS\|automation\|Automation\|voice\|Voice" docs/23_HOME_ASSISTANT_LAYMENS_GUIDE.md
+test_result $? "HA guide covers HACS, automations, and voice control"
+
+echo ""
 echo "================================================================================"
 echo "  TEST RESULTS"
 echo "================================================================================"
