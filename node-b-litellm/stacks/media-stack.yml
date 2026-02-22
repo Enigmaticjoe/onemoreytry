@@ -1,0 +1,345 @@
+# Grand Unified AI Home Lab - Media Stack
+# Node B (Brawn) - Unraid at 192.168.1.222
+#
+# This stack runs the full *arr media automation suite plus Jellyfin,
+# Real-Debrid/Zurg integration, and VPN-protected torrent client.
+#
+# AI Integration: Jellyfin feeds watch history into Home Assistant / Open WebUI
+# automations; Bazarr uses Whisper AI for subtitle generation.
+#
+# Usage:
+#   cp stacks/.env.example stacks/.env   # fill in your values
+#   docker compose -f stacks/media-stack.yml up -d
+#
+# Deploy order: gluetun → zurg → rclone-zurg → rdt-client → qbittorrent
+#               → prowlarr → sonarr → radarr → lidarr → bazarr
+#               → overseerr → tautulli → jellyfin
+
+services:
+
+  # ─── VPN tunnel — all download traffic routes through this ─────────────────
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER:-private internet access}
+      - VPN_TYPE=openvpn
+      - OPENVPN_USER=${VPN_USER}
+      - OPENVPN_PASSWORD=${VPN_PASSWORD}
+      - SERVER_REGIONS=${VPN_REGIONS:-US East}
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "8090:8090"    # Gluetun HTTP proxy / control
+      - "6881:6881"    # qBittorrent torrent port (routed through VPN)
+      - "6881:6881/udp"
+    volumes:
+      - ${APPDATA_PATH}/gluetun:/gluetun
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- https://api.ipify.org || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    networks:
+      - media
+
+  # ─── Zurg — Real-Debrid filesystem daemon ───────────────────────────────────
+  zurg:
+    image: ghcr.io/debridmediamanager/zurg-testing:latest
+    container_name: zurg
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "9999:9999"
+    volumes:
+      - ${APPDATA_PATH}/zurg:/app/data
+      - ${MEDIA_PATH}/zurg-config:/app/config
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9999/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - media
+
+  # ─── RClone — mounts Zurg/Real-Debrid content as a local filesystem ─────────
+  rclone-zurg:
+    image: rclone/rclone:latest
+    container_name: rclone-zurg
+    restart: unless-stopped
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse:/dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    environment:
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - ${APPDATA_PATH}/rclone:/config/rclone
+      - ${MEDIA_PATH}/realdebrid:/mnt/realdebrid:shared
+    command: >
+      mount zurg: /mnt/realdebrid
+      --allow-other
+      --allow-non-empty
+      --poll-interval 15s
+      --dir-cache-time 1000h
+      --vfs-read-chunk-size 128M
+    depends_on:
+      zurg:
+        condition: service_healthy
+    networks:
+      - media
+
+  # ─── RDT Client — Real-Debrid torrent/magnet manager ───────────────────────
+  rdt-client:
+    image: rogerfar/rdtclient:latest
+    container_name: rdt-client
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+    ports:
+      - "6500:6500"
+    volumes:
+      - ${APPDATA_PATH}/rdtclient:/data/db
+      - ${MEDIA_PATH}:/mnt/user/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6500 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - media
+
+  # ─── qBittorrent — torrent client (traffic goes through Gluetun VPN) ────────
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    # Route all qBittorrent traffic through the Gluetun VPN container.
+    # Because this container shares Gluetun's network stack it cannot define
+    # its own ports or healthcheck — monitor it via Gluetun's control port
+    # (http://192.168.1.222:8090) or check Dozzle for its logs.
+    network_mode: "service:gluetun"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+      - WEBUI_PORT=8080
+    volumes:
+      - ${APPDATA_PATH}/qbittorrent:/config
+      - ${MEDIA_PATH}/downloads:/downloads
+    depends_on:
+      gluetun:
+        condition: service_healthy
+
+  # ─── Prowlarr — indexer / torrent-site manager ──────────────────────────────
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "9696:9696"
+    volumes:
+      - ${APPDATA_PATH}/prowlarr:/config
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9696/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - media
+
+  # ─── Sonarr — TV show automation ────────────────────────────────────────────
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "8989:8989"
+    volumes:
+      - ${APPDATA_PATH}/sonarr:/config
+      - ${MEDIA_PATH}:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8989/api/v3/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - prowlarr
+    networks:
+      - media
+
+  # ─── Radarr — movie automation ──────────────────────────────────────────────
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "7878:7878"
+    volumes:
+      - ${APPDATA_PATH}/radarr:/config
+      - ${MEDIA_PATH}:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7878/api/v3/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - prowlarr
+    networks:
+      - media
+
+  # ─── Lidarr — music automation ──────────────────────────────────────────────
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "8686:8686"
+    volumes:
+      - ${APPDATA_PATH}/lidarr:/config
+      - ${MEDIA_PATH}:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8686/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - prowlarr
+    networks:
+      - media
+
+  # ─── Bazarr — subtitle manager (AI Whisper support) ─────────────────────────
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "6767:6767"
+    volumes:
+      - ${APPDATA_PATH}/bazarr:/config
+      - ${MEDIA_PATH}:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6767/api/system/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - sonarr
+      - radarr
+    networks:
+      - media
+
+  # ─── Overseerr — media request portal for users ─────────────────────────────
+  overseerr:
+    image: sctx/overseerr:develop
+    container_name: overseerr
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - LOG_LEVEL=info
+    ports:
+      - "5055:5055"
+    volumes:
+      - ${APPDATA_PATH}/overseerr:/app/config
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5055/api/v1/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - media
+
+  # ─── Tautulli — Jellyfin/Plex watch analytics ───────────────────────────────
+  tautulli:
+    image: lscr.io/linuxserver/tautulli:latest
+    container_name: tautulli
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "8181:8181"
+    volumes:
+      - ${APPDATA_PATH}/tautulli:/config
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8181/api/v2?apikey=${TAUTULLI_API_KEY}&cmd=arnold || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - media
+
+  # ─── Jellyfin — media server (AI-enhanced via Intro Skipper plugin) ──────────
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+      # NVIDIA GPU hardware transcoding
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
+    ports:
+      - "8096:8096"
+      - "8920:8920"    # HTTPS
+    volumes:
+      - ${APPDATA_PATH}/jellyfin:/config
+      - ${MEDIA_PATH}/tv:/data/tv
+      - ${MEDIA_PATH}/movies:/data/movies
+      - ${MEDIA_PATH}/music:/data/music
+      - ${MEDIA_PATH}/realdebrid:/data/realdebrid:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8096/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      rclone-zurg:
+        condition: service_started
+    networks:
+      - media
+
+networks:
+  media:
+    name: media
+    driver: bridge

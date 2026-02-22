@@ -1,0 +1,52 @@
+# Grand Unified AI Home Lab - Agentic Stack
+# Node B (Brawn) - Unraid at 192.168.1.222
+#
+# Provides AI browser automation and secure external access via Cloudflare tunnel.
+#
+#   browserless:  Headless Chrome used by AI agents for web scraping / form fill
+#   cloudflared:  Cloudflare Zero-Trust tunnel — exposes services to internet
+#                 without opening firewall ports (no port-forwarding needed)
+#
+# AI Integration:
+#   OpenClaw / AI agents → browserless (port 3005) for web automation
+#   cloudflared tunnel → exposes Open WebUI, Overseerr, etc. externally
+#
+# Usage:
+#   cp stacks/.env.example stacks/.env
+#   docker compose -f stacks/agentic-stack.yml up -d
+
+services:
+
+  # ─── Browserless — headless Chrome for AI agent web automation ─────────────
+  browserless:
+    image: browserless/chrome:latest
+    container_name: browserless
+    restart: unless-stopped
+    environment:
+      - MAX_CONCURRENT_SESSIONS=5
+      - MAX_QUEUE_LENGTH=20
+      - TOKEN=${BROWSERLESS_TOKEN:-your-secret-token}
+      - TIMEOUT=30000
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "3005:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/pressure || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ─── Cloudflared — Cloudflare Zero-Trust tunnel ─────────────────────────────
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    # CLOUDFLARE_TUNNEL_TOKEN: get this from dash.cloudflare.com → Zero Trust → Tunnels
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    environment:
+      - TZ=${TZ:-America/New_York}
+    healthcheck:
+      test: ["CMD-SHELL", "cloudflared tunnel info || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3

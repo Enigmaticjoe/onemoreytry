@@ -826,6 +826,126 @@ grep -q "HACS\|automation\|Automation\|voice\|Voice" docs/23_HOME_ASSISTANT_LAYM
 test_result $? "HA guide covers HACS, automations, and voice control"
 
 echo ""
+
+# Test 13: Validate Node B full stack files
+echo "13. Validating Node B full stack files..."
+echo "------------------------------------------"
+
+[ -d "node-b-litellm/stacks" ]
+test_result $? "node-b-litellm/stacks/ directory exists"
+
+[ -f "node-b-litellm/stacks/.env.example" ]
+test_result $? "node-b-litellm/stacks/.env.example exists"
+
+grep -q "VPN_USER\|VPN_PASSWORD" node-b-litellm/stacks/.env.example
+test_result $? ".env.example documents VPN credentials"
+
+grep -q "LITELLM_MASTER_KEY" node-b-litellm/stacks/.env.example
+test_result $? ".env.example documents LITELLM_MASTER_KEY"
+
+[ -f "node-b-litellm/stacks/media-stack.yml" ]
+test_result $? "node-b-litellm/stacks/media-stack.yml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('node-b-litellm/stacks/media-stack.yml'))"
+test_result $? "media-stack.yml YAML syntax valid"
+
+grep -q "container_name: jellyfin" node-b-litellm/stacks/media-stack.yml
+test_result $? "media-stack.yml defines jellyfin"
+
+grep -q "container_name: sonarr" node-b-litellm/stacks/media-stack.yml
+test_result $? "media-stack.yml defines sonarr"
+
+grep -q "container_name: radarr" node-b-litellm/stacks/media-stack.yml
+test_result $? "media-stack.yml defines radarr"
+
+grep -q "container_name: gluetun" node-b-litellm/stacks/media-stack.yml
+test_result $? "media-stack.yml defines gluetun VPN"
+
+grep -q "healthcheck:" node-b-litellm/stacks/media-stack.yml
+test_result $? "media-stack.yml has healthchecks defined"
+
+[ -f "node-b-litellm/stacks/ai-orchestration-stack.yml" ]
+test_result $? "node-b-litellm/stacks/ai-orchestration-stack.yml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('node-b-litellm/stacks/ai-orchestration-stack.yml'))"
+test_result $? "ai-orchestration-stack.yml YAML syntax valid"
+
+grep -q "container_name: hf-openwebui" node-b-litellm/stacks/ai-orchestration-stack.yml
+test_result $? "ai-orchestration-stack.yml defines hf-openwebui"
+
+grep -q "container_name: hf-qdrant" node-b-litellm/stacks/ai-orchestration-stack.yml
+test_result $? "ai-orchestration-stack.yml defines hf-qdrant"
+
+grep -q "192.168.1.222:4000" node-b-litellm/stacks/ai-orchestration-stack.yml
+test_result $? "ai-orchestration-stack.yml connects to LiteLLM gateway"
+
+[ -f "node-b-litellm/stacks/vllm-stack.yml" ]
+test_result $? "node-b-litellm/stacks/vllm-stack.yml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('node-b-litellm/stacks/vllm-stack.yml'))"
+test_result $? "vllm-stack.yml YAML syntax valid"
+
+grep -q "container_name: hf-vllm" node-b-litellm/stacks/vllm-stack.yml
+test_result $? "vllm-stack.yml defines hf-vllm"
+
+grep -q "8880:8000" node-b-litellm/stacks/vllm-stack.yml
+test_result $? "vllm-stack.yml exposes port 8880"
+
+[ -f "node-b-litellm/stacks/agentic-stack.yml" ]
+test_result $? "node-b-litellm/stacks/agentic-stack.yml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('node-b-litellm/stacks/agentic-stack.yml'))"
+test_result $? "agentic-stack.yml YAML syntax valid"
+
+grep -q "container_name: cloudflared" node-b-litellm/stacks/agentic-stack.yml
+test_result $? "agentic-stack.yml defines cloudflared"
+
+[ -f "node-b-litellm/stacks/media-expansion-stack.yml" ]
+test_result $? "node-b-litellm/stacks/media-expansion-stack.yml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('node-b-litellm/stacks/media-expansion-stack.yml'))"
+test_result $? "media-expansion-stack.yml YAML syntax valid"
+
+grep -q "container_name: audiobookshelf" node-b-litellm/stacks/media-expansion-stack.yml
+test_result $? "media-expansion-stack.yml defines audiobookshelf"
+
+[ -f "node-b-litellm/stacks/nextcloud-stack.yml" ]
+test_result $? "node-b-litellm/stacks/nextcloud-stack.yml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('node-b-litellm/stacks/nextcloud-stack.yml'))"
+test_result $? "nextcloud-stack.yml YAML syntax valid"
+
+grep -q "container_name: nextcloud" node-b-litellm/stacks/nextcloud-stack.yml
+test_result $? "nextcloud-stack.yml defines nextcloud"
+
+[ -f "node-b-litellm/stacks/stremio-stack.yml" ]
+test_result $? "node-b-litellm/stacks/stremio-stack.yml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('node-b-litellm/stacks/stremio-stack.yml'))"
+test_result $? "stremio-stack.yml YAML syntax valid"
+
+[ -f "node-b-litellm/stacks/openclaw-stack.yml" ]
+test_result $? "node-b-litellm/stacks/openclaw-stack.yml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('node-b-litellm/stacks/openclaw-stack.yml'))"
+test_result $? "openclaw-stack.yml YAML syntax valid"
+
+grep -q "container_name: openclaw-gateway" node-b-litellm/stacks/openclaw-stack.yml
+test_result $? "openclaw-stack.yml defines openclaw-gateway"
+
+[ -f "docs/24_NODE_B_FULL_STACK_GUIDE.md" ]
+test_result $? "docs/24_NODE_B_FULL_STACK_GUIDE.md (Node B full stack guide) exists"
+
+grep -q "192.168.1.222\|Jellyfin\|LiteLLM" docs/24_NODE_B_FULL_STACK_GUIDE.md
+test_result $? "Node B full stack guide references IP, Jellyfin, LiteLLM"
+
+grep -q "Real-Debrid\|AI Orchestration\|Open WebUI" docs/24_NODE_B_FULL_STACK_GUIDE.md
+test_result $? "Node B full stack guide covers Real-Debrid and AI Orchestration"
+
+grep -q "Overseerr\|Sonarr\|Radarr" docs/24_NODE_B_FULL_STACK_GUIDE.md
+test_result $? "Node B full stack guide covers the *arr media suite"
+
+echo ""
 echo "================================================================================"
 echo "  TEST RESULTS"
 echo "================================================================================"

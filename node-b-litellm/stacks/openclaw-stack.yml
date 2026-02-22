@@ -1,0 +1,37 @@
+# Grand Unified AI Home Lab - OpenClaw Stack
+# Node B (Brawn) - Unraid at 192.168.1.222
+#
+# OpenClaw is the AI deployment assistant — it manages Docker services
+# across all nodes using natural language commands via the LiteLLM gateway.
+#
+# AI Integration:
+#   OpenClaw → LiteLLM (port 4000) for AI-assisted deployments
+#   OpenClaw → Docker socket for container management
+#
+# Usage:
+#   cp stacks/.env.example stacks/.env
+#   docker compose -f stacks/openclaw-stack.yml up -d
+
+services:
+
+  # ─── OpenClaw Gateway — AI deployment assistant ────────────────────────────
+  openclaw-gateway:
+    image: ghcr.io/openclaw/openclaw:latest
+    container_name: openclaw-gateway
+    restart: unless-stopped
+    environment:
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-change-me}
+      - LITELLM_BASE_URL=http://192.168.1.222:4000
+      - LITELLM_API_KEY=${LITELLM_MASTER_KEY:-sk-master-key}
+      - NODE_NAME=node-b-brawn
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "18789:18789"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${APPDATA_PATH}/openclaw:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:18789/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

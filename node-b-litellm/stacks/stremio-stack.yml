@@ -1,0 +1,37 @@
+# Grand Unified AI Home Lab - Stremio Stack
+# Node B (Brawn) - Unraid at 192.168.1.222
+#
+# Self-hosted Stremio server for streaming Real-Debrid and torrent content.
+# Works alongside Jellyfin as a lightweight streaming alternative.
+#
+# Usage:
+#   cp stacks/.env.example stacks/.env
+#   docker compose -f stacks/stremio-stack.yml up -d
+
+services:
+
+  # ─── Stremio Server — local streaming server ───────────────────────────────
+  stremio-server:
+    image: stremio/server:latest
+    container_name: stremio-server
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - NO_CORS=1
+    ports:
+      - "11470:11470"
+      - "12470:12470"
+    volumes:
+      - ${APPDATA_PATH}/stremio-server:/root/.stremio-server
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:11470/settings || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - stremio
+
+networks:
+  stremio:
+    name: stremio
+    driver: bridge
