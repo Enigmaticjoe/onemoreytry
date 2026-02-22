@@ -1600,11 +1600,11 @@ async function handleAudit(req, res) {
     const invScript = [
       'OUT=""',
       'command -v docker &>/dev/null && { DVER=$(docker --version 2>/dev/null | grep -oP "\\d+\\.\\d+\\.\\d+" | head -1); OUT="${OUT}docker=${DVER}|"; }',
-      'docker compose version &>/dev/null 2>&1 && { DCV=$(docker compose version 2>/dev/null | grep -oP "\\d+\\.\\d+\\.\\d+" | head-1 || echo plugin); OUT="${OUT}docker_compose=${DCV}|"; }',
+      'docker compose version &>/dev/null 2>&1 && { DCV=$(docker compose version 2>/dev/null | grep -oP "\\d+\\.\\d+\\.\\d+" | head -1 || echo plugin); OUT="${OUT}docker_compose=${DCV}|"; }',
       'command -v docker &>/dev/null && { for c in portainer portainer-ce; do ST=$(docker inspect --format "{{.State.Status}}" "$c" 2>/dev/null||true); [ -n "$ST" ] && OUT="${OUT}portainer=${ST}|" && break; done; }',
       'command -v docker &>/dev/null && { for c in litellm_gateway ollama_intel_arc chimera_face openclaw-gateway; do ST=$(docker inspect --format "{{.State.Status}}" "$c" 2>/dev/null||true); [ -n "$ST" ] && OUT="${OUT}${c}=${ST}|"; done; }',
       'OS=$(grep -oP \'(?<=^PRETTY_NAME=").*(?=")\' /etc/os-release 2>/dev/null || echo unknown); OUT="${OUT}os=${OS}|"',
-      'command -v tailscale &>/dev/null && { TSIP=$(tailscale ip -4 2>/dev/null|head-1||true); [ -n "$TSIP" ] && OUT="${OUT}tailscale_ip=${TSIP}|"; }',
+      'command -v tailscale &>/dev/null && { TSIP=$(tailscale ip -4 2>/dev/null | head -1 || true); [ -n "$TSIP" ] && OUT="${OUT}tailscale_ip=${TSIP}|"; }',
       'FW=none; command -v ufw &>/dev/null && ufw status 2>/dev/null|grep -q active && FW=ufw; command -v firewall-cmd &>/dev/null && firewall-cmd --state 2>/dev/null|grep -q running && FW=firewalld; OUT="${OUT}firewall=${FW}|"',
       'command -v node &>/dev/null && OUT="${OUT}nodejs=$(node --version|tr -d v)|"',
       'command -v python3 &>/dev/null && OUT="${OUT}python3=$(python3 --version 2>/dev/null|awk "{print $2}")|"',
