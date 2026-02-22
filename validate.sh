@@ -393,6 +393,63 @@ grep -q "ssh-auditor" docs/12_INSTALL_WIZARD_GUIDE.md
 test_result $? "Install wizard guide references ssh-auditor.sh"
 
 echo ""
+
+# Test 9: Validate Node C OpenClaw files
+echo "9. Validating Node C OpenClaw files..."
+echo "---------------------------------------"
+
+[ -f "node-c-arc/openclaw.yml" ]
+test_result $? "node-c-arc/openclaw.yml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('node-c-arc/openclaw.yml'))"
+test_result $? "node-c-arc/openclaw.yml YAML syntax valid"
+
+grep -q "/opt/openclaw" node-c-arc/openclaw.yml
+test_result $? "node-c-arc/openclaw.yml uses Linux /opt/openclaw paths (not Unraid)"
+
+grep -q "host.docker.internal:host-gateway" node-c-arc/openclaw.yml
+test_result $? "node-c-arc/openclaw.yml has host.docker.internal for Ollama access"
+
+grep -q "OLLAMA_API_KEY" node-c-arc/openclaw.yml
+test_result $? "node-c-arc/openclaw.yml has OLLAMA_API_KEY env var"
+
+grep -q "LITELLM_API_KEY" node-c-arc/openclaw.yml
+test_result $? "node-c-arc/openclaw.yml has LITELLM_API_KEY for Node B fallback"
+
+[ -f "node-c-arc/openclaw.json" ]
+test_result $? "node-c-arc/openclaw.json exists"
+
+grep -q "host.docker.internal:11434" node-c-arc/openclaw.json
+test_result $? "node-c-arc/openclaw.json points Ollama to host.docker.internal:11434"
+
+grep -q "192.168.1.222:4000" node-c-arc/openclaw.json
+test_result $? "node-c-arc/openclaw.json points LiteLLM to Node B (192.168.1.222:4000)"
+
+grep -q "ollama/your-ollama-model-here" node-c-arc/openclaw.json
+test_result $? "node-c-arc/openclaw.json has Ollama primary model placeholder"
+
+[ -f "node-c-arc/.env.openclaw.example" ]
+test_result $? "node-c-arc/.env.openclaw.example exists"
+
+grep -q "OPENCLAW_GATEWAY_TOKEN" node-c-arc/.env.openclaw.example
+test_result $? ".env.openclaw.example has OPENCLAW_GATEWAY_TOKEN"
+
+grep -q "KVM_OPERATOR_URL" node-c-arc/.env.openclaw.example
+test_result $? ".env.openclaw.example has KVM_OPERATOR_URL"
+
+[ -f "scripts/install-openclaw-node-c.sh" ]
+test_result $? "scripts/install-openclaw-node-c.sh exists"
+
+[ -x "scripts/install-openclaw-node-c.sh" ]
+test_result $? "scripts/install-openclaw-node-c.sh is executable"
+
+grep -q "NODE_C_IP" scripts/install-openclaw-node-c.sh
+test_result $? "install-openclaw-node-c.sh references NODE_C_IP from inventory"
+
+grep -q "/opt/openclaw" scripts/install-openclaw-node-c.sh
+test_result $? "install-openclaw-node-c.sh uses /opt/openclaw data path"
+
+echo ""
 echo "================================================================================"
 echo "  TEST RESULTS"
 echo "================================================================================"
