@@ -945,6 +945,57 @@ test_result $? "Node B full stack guide covers Real-Debrid and AI Orchestration"
 grep -q "Overseerr\|Sonarr\|Radarr" docs/24_NODE_B_FULL_STACK_GUIDE.md
 test_result $? "Node B full stack guide covers the *arr media suite"
 
+# Test 14: Validate env setup wizard
+echo "14. Validating env setup wizard..."
+echo "-----------------------------------"
+
+[ -f "scripts/setup-env.sh" ]
+test_result $? "scripts/setup-env.sh exists"
+
+[ -x "scripts/setup-env.sh" ]
+test_result $? "scripts/setup-env.sh is executable"
+
+bash -n scripts/setup-env.sh
+test_result $? "scripts/setup-env.sh has valid bash syntax"
+
+grep -q "node-inventory.env" scripts/setup-env.sh
+test_result $? "setup-env.sh generates config/node-inventory.env"
+
+grep -q "kvm-operator/.env" scripts/setup-env.sh
+test_result $? "setup-env.sh generates kvm-operator/.env"
+
+grep -q "node-a-vllm/.env" scripts/setup-env.sh
+test_result $? "setup-env.sh generates node-a-vllm/.env"
+
+grep -q "node-a-command-center/.env" scripts/setup-env.sh
+test_result $? "setup-env.sh generates node-a-command-center/.env"
+
+grep -q "node-b-litellm/stacks/.env" scripts/setup-env.sh
+test_result $? "setup-env.sh generates node-b-litellm/stacks/.env"
+
+grep -q "node-c-arc/.env.openclaw" scripts/setup-env.sh
+test_result $? "setup-env.sh generates node-c-arc/.env.openclaw"
+
+grep -q "node-d-home-assistant/.env" scripts/setup-env.sh
+test_result $? "setup-env.sh generates node-d-home-assistant/.env"
+
+grep -q "unraid/.env" scripts/setup-env.sh
+test_result $? "setup-env.sh generates unraid/.env"
+
+grep -q "gen_token\|openssl rand" scripts/setup-env.sh
+test_result $? "setup-env.sh auto-generates random tokens"
+
+grep -q "REQUIRE_APPROVAL=true" scripts/setup-env.sh
+test_result $? "setup-env.sh preserves REQUIRE_APPROVAL=true for KVM Operator"
+
+[ -f "node-a-command-center/.env.example" ]
+test_result $? "node-a-command-center/.env.example exists"
+
+grep -q "LITELLM_API_KEY\|LITELLM_BASE_URL" node-a-command-center/.env.example
+test_result $? "node-a-command-center/.env.example documents LiteLLM settings"
+
+echo ""
+
 echo ""
 echo "================================================================================"
 echo "  TEST RESULTS"
