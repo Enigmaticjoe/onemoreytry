@@ -883,7 +883,7 @@ function renderMobilePage() {
           const icon = s.ok ? '✅' : '❌';
           return '<div class="tile ' + esc(cls) + '">' +
             '<div class="tile-name">' + esc(s.label) + '</div>' +
-            '<div class="tile-status ' + esc(cls) + '">' + icon + ' ' + (s.ok ? 'Online' : (s.error || 'Offline')) + '</div>' +
+            '<div class="tile-status ' + esc(cls) + '">' + icon + ' ' + esc(s.ok ? 'Online' : (s.error || 'Offline')) + '</div>' +
             '<div class="tile-latency">' + (s.ok ? esc(s.latencyMs) + ' ms' : 'HTTP ' + esc(s.status)) + '</div>' +
             '</div>';
         }).join('');
