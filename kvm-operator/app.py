@@ -57,11 +57,12 @@ NANOKVM_AUTH_MODE = os.getenv("NANOKVM_AUTH_MODE", "auto").lower()  # auto|encry
 REQUIRE_APPROVAL = os.getenv("REQUIRE_APPROVAL", "true").lower() in ("1", "true", "yes", "y")
 ALLOW_DANGEROUS = os.getenv("ALLOW_DANGEROUS", "false").lower() in ("1", "true", "yes", "y")
 MAX_STEPS_DEFAULT = int(os.getenv("MAX_STEPS_DEFAULT", "10"))
+MAX_PAYLOAD_LENGTH = int(os.getenv("MAX_PAYLOAD_LENGTH", "4096"))
 
 KVM_TARGETS_JSON = os.getenv("KVM_TARGETS_JSON", '{"kvm-d829":"192.168.1.130"}')
 try:
     KVM_TARGETS: Dict[str, str] = json.loads(KVM_TARGETS_JSON)
-except Exception as e:
+except json.JSONDecodeError as e:
     raise RuntimeError(f"Invalid KVM_TARGETS_JSON: {e}")
 
 # Blueprint auth constants (static across all NanoKVM firmware variants — GitHub Issue #270)
@@ -101,6 +102,8 @@ def extract_json_object(text: str) -> Optional[dict]:
 
 
 def is_payload_allowed(payload: str) -> tuple[bool, str]:
+    if len(payload) > MAX_PAYLOAD_LENGTH:
+        return False, f"Payload too long ({len(payload)} > {MAX_PAYLOAD_LENGTH} chars)"
     if ALLOW_DANGEROUS:
         return True, "ALLOW_DANGEROUS=true"
     low = payload.lower()
