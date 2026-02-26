@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.AISherpa" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@color/sherpa_primary_dark</item>
+        <item name="android:navigationBarColor">@color/sherpa_background</item>
+    </style>
+</resources>

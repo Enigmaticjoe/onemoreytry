@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="sherpa_primary">#1B5E20</color>
+    <color name="sherpa_primary_dark">#0D3B13</color>
+    <color name="sherpa_accent">#FF6F00</color>
+    <color name="sherpa_surface">#121212</color>
+    <color name="sherpa_background">#0A0A0A</color>
+    <color name="node_online">#4CAF50</color>
+    <color name="node_offline">#F44336</color>
+    <color name="node_warning">#FFC107</color>
+</resources>
