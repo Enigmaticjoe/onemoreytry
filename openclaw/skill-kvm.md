@@ -10,8 +10,11 @@ This skill lets agents observe and control remote computers over IP using NanoKV
 hardware. It routes requests through the `kvm-operator` FastAPI service, which enforces
 a **dual-path design**:
 
-- **Read path** — snapshot, status, power state: executed immediately, no approval gate.
-- **Write path** — power control, keyboard, mouse, vision tasks: gated by `REQUIRE_APPROVAL`.
+- **Read path** — snapshot, status, power state, targets list: executed immediately, no approval gate.
+- **Write path** — power control, keyboard, mouse, paste, vision tasks: gated by `REQUIRE_APPROVAL`.
+
+Sessions are cached for 5 minutes (configurable via `SESSION_TTL`) to avoid re-login
+on every request.
 
 ## Prerequisites
 
@@ -36,7 +39,15 @@ All requests use: `Authorization: Bearer $KVM_OPERATOR_TOKEN`
 ```
 GET $KVM_OPERATOR_URL/health
 ```
-Returns service status and list of configured KVM targets.
+Returns service status, version, list of configured KVM targets, and current settings
+(`require_approval`, `allow_dangerous`).
+
+#### List targets
+```
+GET $KVM_OPERATOR_URL/kvm/targets
+```
+Returns all configured KVM targets with their IPs:
+`{ "targets": { "kvm-d829": { "ip": "192.168.1.130" } } }`
 
 #### Capture screenshot
 ```
@@ -73,7 +84,13 @@ Content-Type: application/json
 }
 ```
 Repeatedly captures a screenshot, asks the vision LLM what action to take, and
-executes it (type/wait/abort/success). Useful for multi-step automation.
+executes it. The vision model can choose from these actions:
+- `type` — paste text via HID
+- `key` — send a key combo (e.g. `Return`, `ctrl+c`, `Tab`)
+- `click` — click at absolute coordinates `{"x": N, "y": N}`
+- `wait` — pause and re-check the screen
+- `abort` — stop, something is wrong
+- `success` — task is complete
 
 #### Power control
 ```
@@ -105,17 +122,22 @@ Content-Type: application/json
 
 #### Text paste (fastest way to type a string)
 ```
-POST $KVM_OPERATOR_URL/kvm/task/{target}    ← vision loop
+POST $KVM_OPERATOR_URL/kvm/paste/{target}
+Content-Type: application/json
+
+{ "content": "docker ps -a" }
 ```
-Or use HID paste directly via `POST /api/hid/paste` if the operator exposes it.
+Pastes text via HID — much faster than typing individual keys. Subject to
+policy denylist checking and payload length limits.
 
 ## Example Workflow
 
 ```
-1. GET /kvm/power/node-c          → check if machine is on
-2. GET /kvm/snapshot/node-c       → see current screen
-3. POST /kvm/task/node-c          → ask vision AI to complete a task
-4. GET /kvm/snapshot/node-c       → verify the result
+1. GET /kvm/targets              → list available KVM devices
+2. GET /kvm/power/node-c         → check if machine is on
+3. GET /kvm/snapshot/node-c      → see current screen
+4. POST /kvm/task/node-c         → ask vision AI to complete a task
+5. GET /kvm/snapshot/node-c      → verify the result
 ```
 
 ## Security Notes
@@ -125,3 +147,5 @@ Or use HID paste directly via `POST /api/hid/paste` if the operator exposes it.
   (hardcoded key — see GitHub Issue #270 for security implications).
 - Keep `REQUIRE_APPROVAL=true` unless running fully automated pipelines.
 - The `policy_denylist.txt` blocks destructive commands even in headless mode.
+- Sessions are cached for `SESSION_TTL` seconds (default 300) to minimize
+  login round-trips; set to 0 to disable caching.

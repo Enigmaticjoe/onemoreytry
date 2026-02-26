@@ -1,14 +1,48 @@
 # Case-insensitive substrings. Refuse typing these unless ALLOW_DANGEROUS=true.
+# One pattern per line. Lines starting with # are ignored.
+
+# Disk destruction
 mkfs
 dd if=
-rm -rf
+wipefs
+fdisk
+parted
+cryptsetup
+> /dev/sd
+> /dev/nvme
+sgdisk
+blkdiscard
+
+# Recursive deletion
+rm -rf /
+rm -rf /*
+rm -rf ~
+
+# Fork bomb
 :(){ :|:& };:
+
+# System shutdown/reboot
 shutdown -h now
 reboot -f
 poweroff
 halt
 init 0
-wipefs
-fdisk
-parted
-cryptsetup
+systemctl poweroff
+systemctl halt
+
+# Permission escalation / dangerous chmod
+chmod 777
+chmod -R 777
+chown -R root
+
+# Dangerous network operations
+iptables -F
+iptables --flush
+ufw disable
+firewall-cmd --panic-on
+
+# Kernel / boot destruction
+dd of=/dev/sd
+dd of=/dev/nvme
+rm -rf /boot
+rm -rf /etc

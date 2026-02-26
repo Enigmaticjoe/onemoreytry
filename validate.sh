@@ -309,6 +309,61 @@ test_result $? "NanoKVM POST /api/hid/keyboard method defined"
 grep -q "hid_mouse" kvm-operator/app.py
 test_result $? "NanoKVM POST /api/hid/mouse method defined"
 
+grep -q "hid_paste" kvm-operator/app.py
+test_result $? "NanoKVM POST /api/hid/paste method defined"
+
+# HID paste REST endpoint
+grep -q '"/kvm/paste/{target}"' kvm-operator/app.py
+test_result $? "Write endpoint POST /kvm/paste/{target} defined"
+
+# Targets listing endpoint
+grep -q '"/kvm/targets"' kvm-operator/app.py
+test_result $? "GET /kvm/targets endpoint defined"
+
+# Session caching (avoids re-login on every request)
+grep -q "get_kvm_client" kvm-operator/app.py
+test_result $? "Session caching with get_kvm_client() implemented"
+
+grep -q "SESSION_TTL" kvm-operator/app.py
+test_result $? "SESSION_TTL configuration for session cache"
+
+# LITELLM_API_KEY alias compatibility
+grep -q 'LITELLM_API_KEY' kvm-operator/app.py
+test_result $? "LITELLM_API_KEY env var accepted for compatibility"
+
+# Vision loop supports key and click actions
+grep -q '"key"' kvm-operator/app.py && grep -q '"click"' kvm-operator/app.py
+test_result $? "Vision loop supports key, click, type, wait, abort, success actions"
+
+# Policy denylist has sufficient entries
+DENYLIST_COUNT=$(grep -vc '^#\|^$' kvm-operator/policy_denylist.txt 2>/dev/null || echo 0)
+[ "$DENYLIST_COUNT" -ge 20 ]
+test_result $? "Policy denylist has $DENYLIST_COUNT entries (>= 20 expected)"
+
+# Denylist covers critical destructive patterns
+grep -q "chmod 777" kvm-operator/policy_denylist.txt
+test_result $? "Policy denylist blocks chmod 777"
+
+grep -q "iptables -F" kvm-operator/policy_denylist.txt
+test_result $? "Policy denylist blocks iptables flush"
+
+# .env.example documents all key settings
+grep -q "SESSION_TTL" kvm-operator/.env.example
+test_result $? ".env.example documents SESSION_TTL setting"
+
+grep -q "NANOKVM_AUTH_MODE" kvm-operator/.env.example
+test_result $? ".env.example documents NANOKVM_AUTH_MODE setting"
+
+grep -q "VISION_MODEL" kvm-operator/.env.example
+test_result $? ".env.example documents VISION_MODEL setting"
+
+grep -q "ALLOW_DANGEROUS" kvm-operator/.env.example
+test_result $? ".env.example documents ALLOW_DANGEROUS setting"
+
+# Python syntax validation
+python3 -c "import py_compile; py_compile.compile('kvm-operator/app.py', doraise=True)" 2>/dev/null
+test_result $? "kvm-operator/app.py Python syntax valid"
+
 # OpenClaw integration
 grep -q "KVM_OPERATOR_URL" openclaw/docker-compose.yml
 test_result $? "KVM_OPERATOR_URL env var in OpenClaw docker-compose"

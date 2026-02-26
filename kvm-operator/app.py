@@ -27,8 +27,9 @@ import json
 import logging
 import os
 import re
+import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -47,7 +48,8 @@ logger = logging.getLogger("kvm-operator")
 
 KVM_OPERATOR_TOKEN = os.getenv("KVM_OPERATOR_TOKEN", "")
 LITELLM_URL = os.getenv("LITELLM_URL", "http://localhost:4000/v1/chat/completions")
-LITELLM_KEY = os.getenv("LITELLM_KEY", "")
+# Accept both LITELLM_KEY and LITELLM_API_KEY for compatibility
+LITELLM_KEY = os.getenv("LITELLM_KEY", "") or os.getenv("LITELLM_API_KEY", "")
 VISION_MODEL = os.getenv("VISION_MODEL", "kvm-vision")
 
 NANOKVM_USERNAME = os.getenv("NANOKVM_USERNAME", "admin")
@@ -58,6 +60,7 @@ REQUIRE_APPROVAL = os.getenv("REQUIRE_APPROVAL", "true").lower() in ("1", "true"
 ALLOW_DANGEROUS = os.getenv("ALLOW_DANGEROUS", "false").lower() in ("1", "true", "yes", "y")
 MAX_STEPS_DEFAULT = int(os.getenv("MAX_STEPS_DEFAULT", "10"))
 MAX_PAYLOAD_LENGTH = int(os.getenv("MAX_PAYLOAD_LENGTH", "4096"))
+SESSION_TTL = int(os.getenv("SESSION_TTL", "300"))  # seconds before re-login
 
 KVM_TARGETS_JSON = os.getenv("KVM_TARGETS_JSON", '{"kvm-d829":"192.168.1.130"}')
 try:
@@ -124,6 +127,45 @@ def require_auth(authorization: Optional[str] = Header(default=None)) -> None:
         raise HTTPException(status_code=403, detail="Invalid token.")
 
 
+def _validate_target(target: str) -> str:
+    """Validate target name and return the IP. Raises HTTPException on unknown target."""
+    if target not in KVM_TARGETS:
+        raise HTTPException(status_code=404, detail=f"Unknown target '{target}'. Known: {list(KVM_TARGETS)}")
+    return KVM_TARGETS[target]
+
+
+# ── Session cache — avoid re-login on every request ──────────────────────────
+
+@dataclass
+class _CachedSession:
+    client: NanoKVMClient
+    login_time: float = 0.0
+    lock: threading.Lock = field(default_factory=threading.Lock)
+
+_session_cache: Dict[str, _CachedSession] = {}
+_cache_lock = threading.Lock()
+
+
+def get_kvm_client(target: str) -> NanoKVMClient:
+    """Return an authenticated NanoKVMClient, reusing sessions within SESSION_TTL."""
+    ip = _validate_target(target)
+
+    with _cache_lock:
+        cached = _session_cache.get(target)
+        if cached is None:
+            cached = _CachedSession(
+                client=NanoKVMClient(ip=ip, username=NANOKVM_USERNAME, password=NANOKVM_PASSWORD, auth_mode=NANOKVM_AUTH_MODE)
+            )
+            _session_cache[target] = cached
+
+    with cached.lock:
+        now = time.time()
+        if now - cached.login_time > SESSION_TTL or cached.client.token is None:
+            cached.client.login()
+            cached.login_time = now
+        return cached.client
+
+
 @dataclass
 class NanoKVMClient:
     ip: str
@@ -158,13 +200,17 @@ class NanoKVMClient:
                 if data.get("code") == 0 and "data" in data and "token" in data["data"]:
                     self.token = data["data"]["token"]
                     self.session.cookies.set("nano-kvm-token", self.token)
-                    logger.info("NanoKVM login OK (%s)", mode)
+                    logger.info("NanoKVM login OK (%s) for %s", mode, self.ip)
                     return
                 last_err = f"Bad response: {data}"
+            except requests.ConnectionError:
+                last_err = f"Connection refused: {self.base_url}"
+            except requests.Timeout:
+                last_err = f"Timeout connecting to {self.base_url}"
             except Exception as e:
                 last_err = str(e)
 
-        raise RuntimeError(f"NanoKVM login failed: {last_err}")
+        raise RuntimeError(f"NanoKVM login failed for {self.ip}: {last_err}")
 
     def get_snapshot_jpeg(self) -> bytes:
         r = self.session.get(f"{self.base_url}/api/stream/mjpeg", stream=True, timeout=15)
@@ -239,8 +285,15 @@ class LiteLLMVision:
     def decide(self, instruction: str, jpeg: bytes) -> dict:
         b64 = base64.b64encode(jpeg).decode("utf-8")
         system_prompt = (
-            "Return ONLY JSON with keys screen_state, action, payload. "
-            'action ∈ ["type","wait","abort","success"]. '
+            "You are a KVM automation assistant. Analyze the screen and decide the next action.\n"
+            "Return ONLY JSON with keys: screen_state, action, payload.\n"
+            'action must be one of: "type", "key", "click", "wait", "abort", "success".\n'
+            "  type  — payload is text to paste via HID\n"
+            "  key   — payload is a key combo like 'Return', 'ctrl+c', 'Tab'\n"
+            "  click — payload is {\"x\": N, \"y\": N} for absolute mouse click\n"
+            "  wait  — no payload, wait and re-check the screen\n"
+            "  abort — stop, something is wrong\n"
+            "  success — task is complete\n"
             "If unsure, abort. Never suggest destructive commands."
         )
 
@@ -252,11 +305,11 @@ class LiteLLMVision:
                     "role": "user",
                     "content": [
                         {"type": "text", "text": instruction},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}" }},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
                     ],
                 },
             ],
-            "max_tokens": 250,
+            "max_tokens": 300,
             "temperature": 0.1,
         }
 
@@ -281,13 +334,14 @@ class Operator:
 
     def run_task(self, instruction: str, max_steps: int) -> dict:
         self.kvm.login()
-        history = []
+        history: list[dict] = []
         for step in range(1, max_steps + 1):
             jpeg = self.kvm.get_snapshot_jpeg()
             decision = self.llm.decide(instruction, jpeg)
 
             action = str(decision.get("action", "")).strip().lower()
-            payload = str(decision.get("payload", "") if decision.get("payload") is not None else "")
+            payload = decision.get("payload")
+            payload_str = str(payload) if payload is not None else ""
             history.append({"step": step, "decision": decision})
 
             if action in ("success", "abort"):
@@ -298,13 +352,33 @@ class Operator:
                 continue
 
             if action == "type":
-                ok, why = is_payload_allowed(payload)
+                ok, why = is_payload_allowed(payload_str)
                 if not ok:
                     return {"status": "abort", "history": history, "error": why}
                 if REQUIRE_APPROVAL:
-                    raise RuntimeError("REQUIRE_APPROVAL=true (disable for headless automation).")
-                self.kvm.hid_paste(payload)
+                    return {"status": "blocked", "history": history, "error": "REQUIRE_APPROVAL=true — set to false for headless automation"}
+                self.kvm.hid_paste(payload_str)
                 time.sleep(1.5)
+                continue
+
+            if action == "key":
+                ok, why = is_payload_allowed(payload_str)
+                if not ok:
+                    return {"status": "abort", "history": history, "error": why}
+                if REQUIRE_APPROVAL:
+                    return {"status": "blocked", "history": history, "error": "REQUIRE_APPROVAL=true — set to false for headless automation"}
+                self.kvm.hid_key(payload_str)
+                time.sleep(0.5)
+                continue
+
+            if action == "click":
+                if REQUIRE_APPROVAL:
+                    return {"status": "blocked", "history": history, "error": "REQUIRE_APPROVAL=true — set to false for headless automation"}
+                coords = payload if isinstance(payload, dict) else {}
+                x = int(coords.get("x", 0))
+                y = int(coords.get("y", 0))
+                self.kvm.hid_mouse(x, y, button=1)
+                time.sleep(0.5)
                 continue
 
             return {"status": "abort", "history": history, "error": f"Unknown action: {action}"}
@@ -312,7 +386,7 @@ class Operator:
         return {"status": "abort", "history": history, "error": "Max steps reached"}
 
 
-app = FastAPI(title="AI KVM Operator", version="1.0.0")
+app = FastAPI(title="AI KVM Operator", version="1.1.0")
 
 
 class TaskRequest(BaseModel):
@@ -336,16 +410,30 @@ class MouseRequest(BaseModel):
     wheel: int = Field(default=0, description="Scroll wheel delta")
 
 
+class PasteRequest(BaseModel):
+    content: str = Field(..., min_length=1, max_length=4096, description="Text to paste via HID")
+
+
 @app.get("/health")
 def health():
-    return {"ok": True, "targets": list(KVM_TARGETS.keys())}
+    return {
+        "ok": True,
+        "version": "1.1.0",
+        "targets": list(KVM_TARGETS.keys()),
+        "require_approval": REQUIRE_APPROVAL,
+        "allow_dangerous": ALLOW_DANGEROUS,
+    }
+
+
+@app.get("/kvm/targets")
+def kvm_targets(_auth: None = Depends(require_auth)):
+    """List all configured KVM targets with their IPs."""
+    return {"targets": {name: {"ip": ip} for name, ip in KVM_TARGETS.items()}}
 
 
 @app.post("/kvm/task/{target}")
 def kvm_task(target: str, req: TaskRequest, _auth: None = Depends(require_auth)):
-    if target not in KVM_TARGETS:
-        raise HTTPException(status_code=404, detail=f"Unknown target '{target}'. Known: {list(KVM_TARGETS)}")
-
+    _validate_target(target)
     ip = KVM_TARGETS[target]
     kvm = NanoKVMClient(ip=ip, username=NANOKVM_USERNAME, password=NANOKVM_PASSWORD, auth_mode=NANOKVM_AUTH_MODE)
     llm = LiteLLMVision(url=LITELLM_URL, key=LITELLM_KEY, model=VISION_MODEL)
@@ -354,6 +442,7 @@ def kvm_task(target: str, req: TaskRequest, _auth: None = Depends(require_auth))
     try:
         return op.run_task(req.instruction, req.max_steps)
     except Exception as e:
+        logger.exception("Task failed for target %s", target)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -362,55 +451,40 @@ def kvm_task(target: str, req: TaskRequest, _auth: None = Depends(require_auth))
 @app.get("/kvm/snapshot/{target}")
 def kvm_snapshot(target: str, _auth: None = Depends(require_auth)):
     """Capture a single JPEG frame from the MJPEG stream (base64-encoded)."""
-    if target not in KVM_TARGETS:
-        raise HTTPException(status_code=404, detail=f"Unknown target '{target}'. Known: {list(KVM_TARGETS)}")
-    kvm = NanoKVMClient(
-        ip=KVM_TARGETS[target],
-        username=NANOKVM_USERNAME,
-        password=NANOKVM_PASSWORD,
-        auth_mode=NANOKVM_AUTH_MODE,
-    )
     try:
-        kvm.login()
+        kvm = get_kvm_client(target)
         jpeg = kvm.get_snapshot_jpeg()
         return {"ok": True, "jpeg_b64": base64.b64encode(jpeg).decode("utf-8")}
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.exception("Snapshot failed for target %s", target)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/kvm/status/{target}")
 def kvm_status(target: str, _auth: None = Depends(require_auth)):
     """Return VM info from GET /api/vm/info (OS, uptime, resources)."""
-    if target not in KVM_TARGETS:
-        raise HTTPException(status_code=404, detail=f"Unknown target '{target}'. Known: {list(KVM_TARGETS)}")
-    kvm = NanoKVMClient(
-        ip=KVM_TARGETS[target],
-        username=NANOKVM_USERNAME,
-        password=NANOKVM_PASSWORD,
-        auth_mode=NANOKVM_AUTH_MODE,
-    )
     try:
-        kvm.login()
+        kvm = get_kvm_client(target)
         return kvm.get_vm_info()
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.exception("Status failed for target %s", target)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/kvm/power/{target}")
 def kvm_power_status(target: str, _auth: None = Depends(require_auth)):
     """Return ATX power state from GET /api/vm/power."""
-    if target not in KVM_TARGETS:
-        raise HTTPException(status_code=404, detail=f"Unknown target '{target}'. Known: {list(KVM_TARGETS)}")
-    kvm = NanoKVMClient(
-        ip=KVM_TARGETS[target],
-        username=NANOKVM_USERNAME,
-        password=NANOKVM_PASSWORD,
-        auth_mode=NANOKVM_AUTH_MODE,
-    )
     try:
-        kvm.login()
+        kvm = get_kvm_client(target)
         return kvm.get_power_status()
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.exception("Power status failed for target %s", target)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -422,8 +496,7 @@ _VALID_POWER_ACTIONS = {"on", "off", "reset", "force-off"}
 @app.post("/kvm/power/{target}")
 def kvm_power_action(target: str, req: PowerRequest, _auth: None = Depends(require_auth)):
     """Send ATX power action (on|off|reset|force-off). Requires REQUIRE_APPROVAL=false."""
-    if target not in KVM_TARGETS:
-        raise HTTPException(status_code=404, detail=f"Unknown target '{target}'. Known: {list(KVM_TARGETS)}")
+    _validate_target(target)
     if req.action not in _VALID_POWER_ACTIONS:
         raise HTTPException(
             status_code=400,
@@ -434,24 +507,20 @@ def kvm_power_action(target: str, req: PowerRequest, _auth: None = Depends(requi
             status_code=202,
             detail="Approval required. Set REQUIRE_APPROVAL=false to enable headless power control.",
         )
-    kvm = NanoKVMClient(
-        ip=KVM_TARGETS[target],
-        username=NANOKVM_USERNAME,
-        password=NANOKVM_PASSWORD,
-        auth_mode=NANOKVM_AUTH_MODE,
-    )
     try:
-        kvm.login()
+        kvm = get_kvm_client(target)
         return kvm.power_action(req.action)
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.exception("Power action failed for target %s", target)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/kvm/keyboard/{target}")
 def kvm_keyboard(target: str, req: KeyboardRequest, _auth: None = Depends(require_auth)):
     """Send a raw key event via POST /api/hid/keyboard. Requires REQUIRE_APPROVAL=false."""
-    if target not in KVM_TARGETS:
-        raise HTTPException(status_code=404, detail=f"Unknown target '{target}'. Known: {list(KVM_TARGETS)}")
+    _validate_target(target)
     ok, why = is_payload_allowed(req.key)
     if not ok:
         raise HTTPException(status_code=403, detail=why)
@@ -460,37 +529,52 @@ def kvm_keyboard(target: str, req: KeyboardRequest, _auth: None = Depends(requir
             status_code=202,
             detail="Approval required. Set REQUIRE_APPROVAL=false to enable headless keyboard control.",
         )
-    kvm = NanoKVMClient(
-        ip=KVM_TARGETS[target],
-        username=NANOKVM_USERNAME,
-        password=NANOKVM_PASSWORD,
-        auth_mode=NANOKVM_AUTH_MODE,
-    )
     try:
-        kvm.login()
+        kvm = get_kvm_client(target)
         return kvm.hid_key(req.key, req.modifiers or None)
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.exception("Keyboard action failed for target %s", target)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/kvm/mouse/{target}")
 def kvm_mouse(target: str, req: MouseRequest, _auth: None = Depends(require_auth)):
     """Send a mouse move/click/scroll event via POST /api/hid/mouse. Requires REQUIRE_APPROVAL=false."""
-    if target not in KVM_TARGETS:
-        raise HTTPException(status_code=404, detail=f"Unknown target '{target}'. Known: {list(KVM_TARGETS)}")
+    _validate_target(target)
     if REQUIRE_APPROVAL:
         raise HTTPException(
             status_code=202,
             detail="Approval required. Set REQUIRE_APPROVAL=false to enable headless mouse control.",
         )
-    kvm = NanoKVMClient(
-        ip=KVM_TARGETS[target],
-        username=NANOKVM_USERNAME,
-        password=NANOKVM_PASSWORD,
-        auth_mode=NANOKVM_AUTH_MODE,
-    )
     try:
-        kvm.login()
+        kvm = get_kvm_client(target)
         return kvm.hid_mouse(req.x, req.y, req.button, req.wheel)
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.exception("Mouse action failed for target %s", target)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/kvm/paste/{target}")
+def kvm_paste(target: str, req: PasteRequest, _auth: None = Depends(require_auth)):
+    """Paste text via HID (fastest way to type a string). Requires REQUIRE_APPROVAL=false."""
+    _validate_target(target)
+    ok, why = is_payload_allowed(req.content)
+    if not ok:
+        raise HTTPException(status_code=403, detail=why)
+    if REQUIRE_APPROVAL:
+        raise HTTPException(
+            status_code=202,
+            detail="Approval required. Set REQUIRE_APPROVAL=false to enable headless paste control.",
+        )
+    try:
+        kvm = get_kvm_client(target)
+        return kvm.hid_paste(req.content)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Paste action failed for target %s", target)
         raise HTTPException(status_code=500, detail=str(e))

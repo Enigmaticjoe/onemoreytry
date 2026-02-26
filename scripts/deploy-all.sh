@@ -599,6 +599,20 @@ else
   info "See GUIDEBOOK.md Chapter 6 for KVM Operator setup"
 fi
 
+# Verify NanoKVM device is reachable from the operator
+if [ -n "${KVM_IP:-}" ] && ! is_missing_or_placeholder_ip "$KVM_IP"; then
+  info "Verifying NanoKVM device at ${KVM_IP} is reachable..."
+  kvm_http=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://${KVM_IP}" 2>/dev/null || echo "000")
+  if [[ "$kvm_http" =~ ^[23] ]]; then
+    ok "NanoKVM device at ${KVM_IP} is responding (HTTP ${kvm_http})"
+  elif ping -c1 -W2 "$KVM_IP" &>/dev/null; then
+    warn "NanoKVM at ${KVM_IP} is pingable but web UI not responding (may need power-on)"
+  else
+    warn "NanoKVM at ${KVM_IP} is not reachable — check network connection"
+    info "  The KVM Operator will still start, but KVM commands will fail until the device is online"
+  fi
+fi
+
 # ── Step 6: OpenClaw (Node B) ─────────────────────────────────────────────────
 DEPLOY_STATE[phase]="openclaw"; DEPLOY_STATE[node]="Node B (Unraid)"; DEPLOY_STATE[container]=""
 step "Step 6 — OpenClaw AI Gateway (Node B)"
