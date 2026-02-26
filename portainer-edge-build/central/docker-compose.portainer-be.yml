@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  portainer:
+    image: portainer/portainer-ee:latest
+    container_name: portainer-be
+    restart: unless-stopped
+    ports:
+      - "8000:8000"   # Edge tunnel server
+      - "9000:9000"   # HTTP UI (optional)
+      - "9443:9443"   # HTTPS UI (recommended)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    environment:
+      - LICENSE_KEY=${PORTAINER_LICENSE_KEY}
+
+volumes:
+  portainer_data:
