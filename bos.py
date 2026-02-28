@@ -1109,10 +1109,24 @@ the Boss will search the web for fixes and offer a retry.
     parser.add_argument("--config-file", help="Path to a JSON or .env config file for non-interactive mode.")
     parser.add_argument("--auto-start-chat", action="store_true", help="Automatically start the chat server after unattended installation.")
     parser.add_argument("--help", action="store_true", help="Show this help message and exit.")
+    parser.add_argument(
+        "--brothers-keeper",
+        action="store_true",
+        help="Use the Brothers Keeper orchestrator (state-persistent, API-enabled).",
+    )
     args, unknown = parser.parse_known_args()
     if args.help:
         parser.print_help()
         sys.exit(0)
+    if args.brothers_keeper:
+        # Delegate entirely to the Brothers Keeper core orchestrator.
+        import importlib.util, os as _os
+        _bk_path = _os.path.join(_os.path.dirname(__file__), "brothers-keeper", "core_orchestrator.py")
+        _spec = importlib.util.spec_from_file_location("core_orchestrator", _bk_path)
+        _mod  = importlib.util.module_from_spec(_spec)  # type: ignore[arg-type]
+        _spec.loader.exec_module(_mod)  # type: ignore[union-attr]
+        _mod.main_cli()
+        return
     ensure_root()
     # Determine repository URL and destination depending on interactive or non‑interactive mode
     default_repo = "https://github.com/Enigmaticjoe/onemoreytry.git"

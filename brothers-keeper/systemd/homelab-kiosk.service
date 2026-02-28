@@ -1,0 +1,25 @@
+[Unit]
+Description=Brothers Keeper — Kiosk Browser (Chromium in kiosk mode)
+After=graphical-session.target homelab-api.service
+Wants=homelab-api.service
+
+[Service]
+Type=simple
+User=kiosk
+Environment=DISPLAY=:0
+ExecStartPre=/bin/sleep 3
+# NOTE: --no-sandbox is needed only on embedded/container systems where the
+# kernel user-namespace sandbox is unavailable.  Remove it on standard desktops.
+ExecStart=/usr/bin/chromium-browser \
+  --kiosk \
+  --no-sandbox \
+  --disable-infobars \
+  --disable-session-crashed-bubble \
+  --disable-restore-session-state \
+  --noerrdialogs \
+  http://localhost:7070
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

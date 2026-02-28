@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brothers Keeper — Home Lab Setup</title>
+  <style>
+    /* ===== Reset & base ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --border:    #30363d;
+      --accent:    #00d4ff;
+      --accent2:   #7c3aed;
+      --green:     #3fb950;
+      --yellow:    #d29922;
+      --red:       #f85149;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --radius:    12px;
+      --transition: 0.25s ease;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ===== Layout ===== */
+    #sidebar {
+      width: 320px;
+      min-width: 320px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 24px 0;
+    }
+
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #header {
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    #header h1 {
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    #header .subtitle { color: var(--muted); font-size: 0.9rem; }
+
+    #content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* ===== Sidebar — progress ===== */
+    .sidebar-title {
+      padding: 0 20px 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+
+    .task-list {
+      list-style: none;
+      padding: 0 12px;
+      flex: 1;
+    }
+
+    .task-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin-bottom: 4px;
+      transition: background var(--transition);
+      cursor: default;
+    }
+
+    .task-item.active { background: rgba(0, 212, 255, 0.08); }
+
+    .task-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+    .task-icon.pending  { border: 2px solid var(--border); }
+    .task-icon.running  { border: 2px solid var(--accent); animation: pulse 1.2s infinite; }
+    .task-icon.done     { background: var(--green); color: #000; }
+    .task-icon.failed   { background: var(--red);   color: #fff; }
+    .task-icon.skipped  { background: var(--yellow); color: #000; }
+
+    .task-label { font-size: 0.88rem; }
+    .task-label .task-name { display: block; }
+    .task-label .task-msg  { display: block; font-size: 0.75rem; color: var(--muted); margin-top: 1px; }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(0,212,255,.4); }
+      50%       { box-shadow: 0 0 0 5px rgba(0,212,255,0); }
+    }
+
+    /* ===== Phase banner ===== */
+    #phase-banner {
+      padding: 14px 20px;
+      margin: 0 12px;
+      border-radius: var(--radius);
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-align: center;
+      letter-spacing: 0.05em;
+      background: rgba(0,212,255,0.08);
+      border: 1px solid rgba(0,212,255,0.3);
+      color: var(--accent);
+      margin-top: auto;
+    }
+
+    /* ===== Task tiles ===== */
+    .tile-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+    }
+
+    .tile {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: border-color var(--transition), box-shadow var(--transition);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .tile:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+    .tile.status-running {
+      border-color: var(--accent);
+      box-shadow: 0 0 12px rgba(0,212,255,0.15);
+    }
+
+    .tile.status-done    { border-color: var(--green); }
+    .tile.status-failed  { border-color: var(--red); }
+    .tile.status-skipped { border-color: var(--yellow); }
+
+    .tile-name {
+      font-weight: 600;
+      font-size: 0.95rem;
+      text-transform: capitalize;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tile-status {
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .tile-status.running { color: var(--accent); }
+    .tile-status.done    { color: var(--green); }
+    .tile-status.failed  { color: var(--red); }
+    .tile-status.skipped { color: var(--yellow); }
+
+    /* ===== Buttons ===== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: var(--radius);
+      font-size: 0.95rem;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: opacity var(--transition), box-shadow var(--transition);
+      text-decoration: none;
+    }
+
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary  { background: var(--accent); color: #000; }
+    .btn-primary:hover:not(:disabled)  { box-shadow: 0 0 16px rgba(0,212,255,0.4); }
+    .btn-danger   { background: var(--red); color: #fff; }
+    .btn-success  { background: var(--green); color: #000; }
+    .btn-ghost    { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .btn-ghost:hover:not(:disabled) { border-color: var(--accent); }
+
+    /* ===== Start panel ===== */
+    #start-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 60px 32px;
+      text-align: center;
+    }
+
+    #start-panel h2 { font-size: 1.8rem; font-weight: 700; }
+    #start-panel p  { color: var(--muted); max-width: 480px; line-height: 1.6; }
+
+    /* ===== Log panel ===== */
+    #log-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0;
+      overflow: hidden;
+    }
+
+    #log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    #log-header span { font-size: 0.85rem; font-weight: 600; }
+
+    #log-body {
+      height: 200px;
+      overflow-y: auto;
+      padding: 12px 16px;
+      font-family: 'Consolas', 'Fira Code', monospace;
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    #log-body .log-line { white-space: pre-wrap; word-break: break-all; }
+    #log-body .log-line:nth-child(odd) { color: #9ca3af; }
+
+    /* ===== Modal ===== */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-backdrop.visible { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      width: 100%;
+      max-width: 440px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .modal h3 { font-size: 1.2rem; font-weight: 600; }
+    .modal p  { color: var(--muted); font-size: 0.9rem; line-height: 1.6; }
+
+    .pin-dots {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      padding: 8px 0;
+    }
+
+    .pin-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      background: transparent;
+      transition: background var(--transition), border-color var(--transition);
+    }
+
+    .pin-dot.filled { background: var(--accent); border-color: var(--accent); }
+
+    .pin-keypad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .pin-key {
+      padding: 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background var(--transition);
+      color: var(--text);
+    }
+
+    .pin-key:hover  { background: rgba(255,255,255,0.05); }
+    .pin-key:active { background: rgba(0,212,255,0.1); }
+
+    .modal-actions { display: flex; gap: 8px; }
+    .modal-actions .btn { flex: 1; }
+
+    .modal-error {
+      color: var(--red);
+      font-size: 0.85rem;
+      min-height: 1.2em;
+      text-align: center;
+    }
+
+    /* ===== Voice btn ===== */
+    #voice-btn {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: var(--accent2);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 4px 16px rgba(124,58,237,0.4);
+      transition: transform var(--transition), box-shadow var(--transition);
+      z-index: 50;
+    }
+
+    #voice-btn:hover { transform: scale(1.1); }
+    #voice-btn.listening { animation: voicePulse 1s infinite; }
+
+    @keyframes voicePulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(124,58,237,.6); }
+      50%       { box-shadow: 0 0 0 14px rgba(124,58,237,0); }
+    }
+
+    #voice-feedback {
+      position: fixed;
+      bottom: 92px;
+      right: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      font-size: 0.85rem;
+      max-width: 260px;
+      display: none;
+      z-index: 50;
+    }
+
+    /* ===== Confirm panel ===== */
+    #confirm-bar {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: rgba(210, 153, 34, 0.12);
+      border: 1px solid var(--yellow);
+      border-radius: var(--radius);
+      padding: 14px 20px;
+    }
+
+    #confirm-bar.visible { display: flex; }
+    #confirm-bar p { color: var(--yellow); font-size: 0.9rem; }
+
+    .confirm-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 768px) {
+      #sidebar { display: none; }
+      #content { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ===================== SIDEBAR ===================== -->
+<aside id="sidebar">
+  <div class="sidebar-title">Installation Progress</div>
+  <ul class="task-list" id="task-list">
+    <!-- populated by JS -->
+  </ul>
+  <div id="phase-banner">IDLE</div>
+</aside>
+
+<!-- ===================== MAIN ===================== -->
+<main id="main">
+  <header id="header">
+    <span style="font-size:28px">🏠</span>
+    <div>
+      <h1>Brothers Keeper</h1>
+      <div class="subtitle">Homelab Install Assistant</div>
+    </div>
+  </header>
+
+  <div id="content">
+    <!-- Confirm bar (shown when a task needs approval) -->
+    <div id="confirm-bar">
+      <p id="confirm-msg">Action requires caregiver approval.</p>
+      <div class="confirm-actions">
+        <button class="btn btn-success" id="confirm-approve-btn" onclick="openPinModal('approve')">✓ Approve</button>
+        <button class="btn btn-danger"  id="confirm-reject-btn"  onclick="openPinModal('reject')">✗ Reject</button>
+      </div>
+    </div>
+
+    <!-- Start panel (shown when phase=idle) -->
+    <div id="start-panel">
+      <div style="font-size:64px">🤖</div>
+      <h2>Ready to Set Up Your Home Lab?</h2>
+      <p>
+        This wizard will guide you through installing all the software
+        your smart home lab needs. Tap <strong>Start Setup</strong> when
+        you're ready — the assistant will handle the rest.
+      </p>
+      <button class="btn btn-primary" id="start-btn" onclick="startSetup()" style="font-size:1.1rem; padding:16px 40px;">
+        🚀 Start Setup
+      </button>
+    </div>
+
+    <!-- Task tiles (shown after start) -->
+    <div id="tile-section" style="display:none;">
+      <div class="tile-grid" id="tile-grid">
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+    <!-- Log panel -->
+    <div id="log-panel" style="display:none;">
+      <div id="log-header">
+        <span>📋 Installation Log</span>
+        <button class="btn btn-ghost" style="padding:4px 12px; font-size:0.8rem;" onclick="clearLog()">Clear</button>
+      </div>
+      <div id="log-body"><!-- log lines --></div>
+    </div>
+  </div>
+</main>
+
+<!-- ===================== CAREGIVER PIN MODAL ===================== -->
+<div class="modal-backdrop" id="pin-modal">
+  <div class="modal">
+    <h3>🔒 Caregiver Verification</h3>
+    <p>Enter your 4-digit caregiver PIN to <span id="pin-action-label">approve</span> this action.</p>
+    <div class="pin-dots" id="pin-dots">
+      <div class="pin-dot" id="dot-0"></div>
+      <div class="pin-dot" id="dot-1"></div>
+      <div class="pin-dot" id="dot-2"></div>
+      <div class="pin-dot" id="dot-3"></div>
+    </div>
+    <div class="pin-keypad">
+      <button class="pin-key" onclick="pinKey('1')">1</button>
+      <button class="pin-key" onclick="pinKey('2')">2</button>
+      <button class="pin-key" onclick="pinKey('3')">3</button>
+      <button class="pin-key" onclick="pinKey('4')">4</button>
+      <button class="pin-key" onclick="pinKey('5')">5</button>
+      <button class="pin-key" onclick="pinKey('6')">6</button>
+      <button class="pin-key" onclick="pinKey('7')">7</button>
+      <button class="pin-key" onclick="pinKey('8')">8</button>
+      <button class="pin-key" onclick="pinKey('9')">9</button>
+      <button class="pin-key" onclick="pinKey('backspace')" style="font-size:1.4rem;">⌫</button>
+      <button class="pin-key" onclick="pinKey('0')">0</button>
+      <button class="pin-key" onclick="pinKey('clear')" style="font-size:0.8rem;">CLR</button>
+    </div>
+    <div class="modal-error" id="pin-error"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closePinModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitPin()" id="pin-submit">Submit</button>
+    </div>
+  </div>
+</div>
+
+<!-- Voice onboarding feedback bubble -->
+<div id="voice-feedback"></div>
+<button id="voice-btn" title="Voice command" onclick="toggleVoice()">🎙️</button>
+
+<script>
+  // =========================================================
+  // Config
+  // =========================================================
+  const API_BASE = '';                     // same origin
+  const POLL_INTERVAL_MS  = 2000;          // state polling
+  const KNOWN_STATUSES = new Set(['pending','running','done','failed','skipped']);
+  // Caregiver PIN — stored in localStorage.  On first load, prompt to set it.
+  function getCaregiverPin() {
+    let pin = localStorage.getItem('bk_pin');
+    if (!pin) {
+      pin = prompt('Set a 4-digit caregiver PIN (you will need this to approve installs):', '');
+      if (pin && /^\d{4}$/.test(pin)) {
+        localStorage.setItem('bk_pin', pin);
+      } else {
+        pin = null;
+        alert('Invalid PIN. A PIN is required to approve protected actions. Reload the page to set one.');
+      }
+    }
+    return pin || '';
+  }
+  const CAREGIVER_PIN = getCaregiverPin();
+  const TASK_LABELS = {
+    check_network:  'Network Check',
+    install_deps:   'Install Dependencies',
+    clone_repo:     'Clone Repository',
+    generate_env:   'Generate Env Files',
+    start_services: 'Start Services',
+    verify:         'Verify Installation',
+  };
+  const TASK_SEQUENCE = Object.keys(TASK_LABELS);
+
+  // =========================================================
+  // State
+  // =========================================================
+  let state = { phase: 'idle', tasks: [], log: [], pending_confirm: null, error: '' };
+  let pollTimer = null;
+  let pinIntent = null;   // 'approve' | 'reject'
+  let pinBuffer  = '';
+
+  // =========================================================
+  // HTML escaping (XSS prevention)
+  // =========================================================
+  function esc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // =========================================================
+  // API helpers
+  // =========================================================
+  async function apiGet(path) {
+    const r = await fetch(API_BASE + path);
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  }
+
+  async function apiPost(path, body) {
+    const r = await fetch(API_BASE + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  }
+
+  // =========================================================
+  // State polling
+  // =========================================================
+  async function fetchState() {
+    try {
+      state = await apiGet('/state');
+      render();
+    } catch (e) {
+      console.warn('State fetch failed:', e);
+    }
+  }
+
+  function startPolling() {
+    if (pollTimer) return;
+    fetchState();
+    pollTimer = setInterval(fetchState, POLL_INTERVAL_MS);
+  }
+
+  // =========================================================
+  // Render
+  // =========================================================
+  function render() {
+    renderPhase();
+    renderSidebar();
+    renderTiles();
+    renderLog();
+    renderConfirmBar();
+    renderStartPanel();
+  }
+
+  function renderPhase() {
+    const b = document.getElementById('phase-banner');
+    const phase = (state.phase || 'idle').toUpperCase();
+    b.textContent = phase;
+    b.style.color = phase === 'DONE' ? 'var(--green)' : phase === 'ERROR' ? 'var(--red)' : '';
+  }
+
+  function safeStatus(status) {
+    return KNOWN_STATUSES.has(status) ? status : 'pending';
+  }
+
+  function renderSidebar() {
+    const ul = document.getElementById('task-list');
+    ul.innerHTML = '';
+    TASK_SEQUENCE.forEach(name => {
+      const t = (state.tasks || []).find(x => x.name === name);
+      const status = safeStatus(t ? t.status : 'pending');
+      const label  = TASK_LABELS[name] || name;
+      const msg    = t ? t.message : '';
+      const li = document.createElement('li');
+      li.className = 'task-item' + (state.current_task === name ? ' active' : '');
+      li.innerHTML = `
+        <div class="task-icon ${esc(status)}">${iconFor(status)}</div>
+        <div class="task-label">
+          <span class="task-name">${esc(label)}</span>
+          ${msg ? `<span class="task-msg">${esc(msg)}</span>` : ''}
+        </div>`;
+      ul.appendChild(li);
+    });
+  }
+
+  function iconFor(status) {
+    return { done:'✓', failed:'✗', running:'…', skipped:'–', pending:'' }[status] || '';
+  }
+
+  function renderTiles() {
+    const grid = document.getElementById('tile-grid');
+    grid.innerHTML = '';
+    TASK_SEQUENCE.forEach(name => {
+      const t = (state.tasks || []).find(x => x.name === name);
+      const status = safeStatus(t ? t.status : 'pending');
+      const label  = TASK_LABELS[name] || name;
+      const div = document.createElement('div');
+      div.className = `tile status-${status}`;
+      div.onclick = () => runAction(name);
+      div.innerHTML = `
+        <div class="tile-name">${esc(label)}</div>
+        <div class="tile-status ${status}">${esc(status)}</div>`;
+      grid.appendChild(div);
+    });
+  }
+
+  function renderLog() {
+    const body = document.getElementById('log-body');
+    const lines = (state.log || []).slice(-200);
+    body.innerHTML = lines.map(l => `<div class="log-line">${esc(l)}</div>`).join('');
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function renderConfirmBar() {
+    const bar  = document.getElementById('confirm-bar');
+    const msg  = document.getElementById('confirm-msg');
+    const pend = state.pending_confirm;
+    if (pend) {
+      const label = TASK_LABELS[pend] || pend;
+      msg.textContent = `'${label}' requires caregiver approval before running.`;
+      bar.classList.add('visible');
+      document.getElementById('confirm-approve-btn').dataset.action = pend;
+      document.getElementById('confirm-reject-btn').dataset.action  = pend;
+    } else {
+      bar.classList.remove('visible');
+    }
+  }
+
+  function renderStartPanel() {
+    const sp = document.getElementById('start-panel');
+    const ts = document.getElementById('tile-section');
+    const lp = document.getElementById('log-panel');
+    const idle = state.phase === 'idle';
+    sp.style.display = idle ? 'flex' : 'none';
+    ts.style.display = idle ? 'none' : 'block';
+    lp.style.display = idle ? 'none' : 'block';
+  }
+
+  // =========================================================
+  // Actions
+  // =========================================================
+  async function startSetup() {
+    document.getElementById('start-btn').disabled = true;
+    try {
+      await apiPost('/action', { action: 'full_install' });
+      startPolling();
+    } catch (e) {
+      alert('Could not start setup: ' + e.message);
+      document.getElementById('start-btn').disabled = false;
+    }
+  }
+
+  async function runAction(action) {
+    try {
+      await apiPost('/action', { action });
+      startPolling();
+    } catch (e) {
+      alert('Action failed: ' + e.message);
+    }
+  }
+
+  function clearLog() {
+    document.getElementById('log-body').innerHTML = '';
+  }
+
+  // =========================================================
+  // Confirm / PIN modal
+  // =========================================================
+  function openPinModal(intent) {
+    pinIntent  = intent;
+    pinBuffer  = '';
+    document.getElementById('pin-action-label').textContent = intent;
+    document.getElementById('pin-error').textContent = '';
+    updatePinDots();
+    document.getElementById('pin-modal').classList.add('visible');
+  }
+
+  function closePinModal() {
+    pinBuffer = '';
+    updatePinDots();
+    document.getElementById('pin-error').textContent = '';
+    document.getElementById('pin-modal').classList.remove('visible');
+  }
+
+  function pinKey(k) {
+    if (k === 'backspace') {
+      pinBuffer = pinBuffer.slice(0, -1);
+    } else if (k === 'clear') {
+      pinBuffer = '';
+    } else if (pinBuffer.length < 4) {
+      pinBuffer += k;
+    }
+    updatePinDots();
+    if (pinBuffer.length === 4) {
+      setTimeout(submitPin, 80);  // small delay so last dot is visible
+    }
+  }
+
+  function updatePinDots() {
+    for (let i = 0; i < 4; i++) {
+      const dot = document.getElementById(`dot-${i}`);
+      if (i < pinBuffer.length) {
+        dot.classList.add('filled');
+      } else {
+        dot.classList.remove('filled');
+      }
+    }
+  }
+
+  async function submitPin() {
+    if (pinBuffer.length < 4) {
+      document.getElementById('pin-error').textContent = 'Please enter all 4 digits.';
+      return;
+    }
+    if (pinBuffer !== CAREGIVER_PIN) {
+      document.getElementById('pin-error').textContent = 'Incorrect PIN. Try again.';
+      pinBuffer = '';
+      updatePinDots();
+      return;
+    }
+    const action   = state.pending_confirm;
+    const approved = pinIntent === 'approve';
+    closePinModal();
+    try {
+      await apiPost('/confirm', { action, approved });
+      if (approved) startPolling();
+    } catch (e) {
+      alert('Confirm failed: ' + e.message);
+    }
+  }
+
+  // =========================================================
+  // Voice onboarding (Web Speech API)
+  // =========================================================
+  let recognition = null;
+  let listening    = false;
+
+  function toggleVoice() {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      showVoiceFeedback('Voice not supported in this browser.');
+      return;
+    }
+    if (listening) {
+      recognition && recognition.stop();
+      return;
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SR();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      listening = true;
+      document.getElementById('voice-btn').classList.add('listening');
+      showVoiceFeedback('Listening…');
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript.toLowerCase().trim();
+      showVoiceFeedback(`"${transcript}"`);
+      handleVoiceCommand(transcript);
+    };
+
+    recognition.onerror = (e) => {
+      showVoiceFeedback('Voice error: ' + e.error);
+    };
+
+    recognition.onend = () => {
+      listening = false;
+      document.getElementById('voice-btn').classList.remove('listening');
+      setTimeout(() => hideVoiceFeedback(), 3000);
+    };
+
+    recognition.start();
+  }
+
+  function handleVoiceCommand(cmd) {
+    if (cmd.includes('start') || cmd.includes('begin') || cmd.includes('setup')) {
+      startSetup();
+    } else if (cmd.includes('approve') || cmd.includes('yes')) {
+      if (state.pending_confirm) openPinModal('approve');
+    } else if (cmd.includes('reject') || cmd.includes('deny') || cmd.includes('no')) {
+      if (state.pending_confirm) openPinModal('reject');
+    } else if (cmd.includes('status') || cmd.includes('progress')) {
+      speak(`Current phase is ${state.phase}. ${completedCount()} of ${TASK_SEQUENCE.length} tasks complete.`);
+    } else {
+      showVoiceFeedback('Command not recognised. Try "start setup" or "status".');
+    }
+  }
+
+  function completedCount() {
+    return (state.tasks || []).filter(t => t.status === 'done').length;
+  }
+
+  function speak(text) {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 0.95;
+    window.speechSynthesis.speak(u);
+  }
+
+  function showVoiceFeedback(msg) {
+    const el = document.getElementById('voice-feedback');
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+
+  function hideVoiceFeedback() {
+    document.getElementById('voice-feedback').style.display = 'none';
+  }
+
+  // =========================================================
+  // Keyboard shortcut: Escape closes modal
+  // =========================================================
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closePinModal();
+  });
+
+  // =========================================================
+  // Boot
+  // =========================================================
+  startPolling();
+</script>
+</body>
+</html>
