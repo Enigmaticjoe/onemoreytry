@@ -4,7 +4,81 @@ A multi-node homelab with unified LLM access, vision AI, KVM automation,
 and a web-based control panel. Portainer is installed on every node first
 to give you full visibility and control before deploying application stacks.
 
-## Quick Start
+## New-User Quickstart — BOS Installer
+
+For a guided, OS-like installation experience run `bos.py`:
+
+```bash
+# Requires Python 3.8+. No extra packages needed to launch the menu.
+python3 bos.py
+```
+
+The menu-driven TUI gives you:
+
+| Option | What it does |
+|--------|-------------|
+| **[1] System Health Check** | Checks Docker, Python, Node.js, .venv, Ollama, network |
+| **[2] Install Prerequisites** | Installs Docker, Node.js, Git, pip (Fedora/dnf based) |
+| **[3] Setup Virtual Environment** | Creates `.venv` and installs all Python requirements |
+| **[4] Configure Environment Files** | Collects node IPs/tokens and writes all `.env` files |
+| **[5] Node / Service Operations** | Start · Stop · Status · Restart any homelab node |
+| **[6] AI Assistant Setup & Test** | Tests local Ollama and LiteLLM gateway connectivity |
+| **[7] Help Assistant (chat)** | Interactive chat with local AI (Ollama) or web fallback |
+| **[8] Logs & Troubleshooting** | Show docker ps / docker info / systemd journal |
+| **[9] Full Guided Install** | Runs all steps above in order with prompts |
+
+### Virtual environment
+
+```bash
+# Option A – let bos.py create and populate .venv (menu option [3])
+python3 bos.py   # then choose [3]
+
+# Option B – manual
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r kvm-operator/requirements.txt
+```
+
+### Local AI assistant prerequisites
+
+The chat assistant (menu option [7]) uses [Ollama](https://ollama.ai) for
+fully-local AI responses with no cloud API required.
+
+```bash
+# Install Ollama (Linux one-liner)
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Pull a model (e.g. llama3.2 ~2 GB)
+ollama pull llama3.2
+
+# Override the default URL or model via environment variables
+export OLLAMA_URL=http://localhost:11434
+export OLLAMA_MODEL=llama3.2
+python3 bos.py
+```
+
+If Ollama is not available the assistant automatically falls back to a
+DuckDuckGo web-search answer.
+
+### Unattended / CI mode
+
+```bash
+# Run fully non-interactive using env vars or a config file
+python3 bos.py --non-interactive [--config-file path/to/config.env]
+
+# Unattended install then auto-start the Flask chat server
+python3 bos.py --non-interactive --auto-start-chat
+
+# Use the Brothers Keeper API orchestrator instead
+python3 bos.py --brothers-keeper
+
+# Use the original sequential installer (pre-v2 behaviour)
+sudo python3 bos.py --legacy
+```
+
+---
+
+## Quick Start (advanced / Portainer-first)
 
 ```bash
 # 1 — Set your node IPs and SSH users
@@ -13,13 +87,11 @@ nano config/node-inventory.env
 
 # 2 — Audit SSH connectivity and hardware on all nodes
 ./scripts/ssh-auditor.sh
-#     ↳ fixes SSH issues, checks firewalls, inventories GPUs/RAM/containers
 #     ↳ add --fix-firewall to auto-open ports
-#     ↳ add --install-keys to push SSH keys (prompts passwords once)
+#     ↳ add --install-keys to push SSH keys
 
 # 3 — Install Portainer on every reachable node
 ./scripts/portainer-install.sh
-#     ↳ installs Docker if missing, opens firewall ports, waits for healthy
 
 # 4 — Deploy application stacks
 ./scripts/deploy-all.sh
@@ -28,8 +100,6 @@ nano config/node-inventory.env
 Full guide: **[PORTAINER_GUIDE.md](PORTAINER_GUIDE.md)**
 
 ---
-
-## Node Architecture
 
 | Node | Role                  | Hardware          | Key Services           |
 |------|-----------------------|-------------------|------------------------|
