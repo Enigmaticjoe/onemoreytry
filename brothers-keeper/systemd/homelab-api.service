@@ -1,0 +1,22 @@
+[Unit]
+Description=Brothers Keeper — Homelab Install API Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/brothers-keeper
+EnvironmentFile=-/opt/brothers-keeper/.env
+ExecStart=/opt/brothers-keeper/.venv/bin/uvicorn api_server:app --host 0.0.0.0 --port 7070
+Restart=on-failure
+RestartSec=3
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/brothers-keeper /tmp
+
+[Install]
+WantedBy=multi-user.target
