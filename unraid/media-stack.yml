@@ -1,0 +1,236 @@
+# Grand Unified AI Home Lab - Unraid DUMB AIO Media Stack
+# Deploy on Unraid (192.168.1.222) — the Media Server + AI Machine
+#
+# Services:
+#   Zurg          — Real-Debrid WebDAV bridge (mounts /mnt/debrid inside containers)
+#   rclone        — FUSE-mounts the Zurg WebDAV share as a local path
+#   Riven         — Instant cloud streaming engine (Real-Debrid symlink manager)
+#   Riven Frontend — React UI for Riven
+#   Decypharr     — Search/grab agent (Prowlarr-style, Real-Debrid aware)
+#   Zilean        — DMM time-based search API (feeds Riven with cached hashes)
+#   PostgreSQL    — Shared database for Riven and Zilean
+#   Plex          — Media frontend (optional; comment out if you prefer Jellyfin)
+#
+# DUMB AIO conventions (all apply here):
+#   PUID=99  PGID=100  (Unraid nobody:users)
+#   Config/Appdata : /mnt/user/appdata/DUMB
+#   Main Storage   : /mnt/user/DUMB
+#   Symlinks       : /mnt/debrid/riven_symlinks  (mapped as /data inside containers)
+#   Cached-only Real-Debrid results are strongly preferred.
+#
+# Usage:
+#   cp .env.example .env   # fill in REAL_DEBRID_API_KEY and other required values
+#   docker compose -f media-stack.yml up -d
+
+services:
+
+  # ─── PostgreSQL — shared database for Riven + Zilean ─────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: dumb-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-riven}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-riven}
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - ${APPDATA_PATH}/DUMB/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-riven}"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dumb-media
+
+  # ─── Zurg — Real-Debrid WebDAV server ────────────────────────────────────
+  zurg:
+    image: ghcr.io/debridmediamanager/zurg-testing:latest
+    container_name: dumb-zurg
+    restart: unless-stopped
+    environment:
+      - ZURG_TOKEN=${REAL_DEBRID_API_KEY}
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - ${APPDATA_PATH}/DUMB/zurg:/app/data
+    ports:
+      - "9999:9999"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9999/dav/ | head -c 1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - dumb-media
+
+  # ─── rclone — mounts Zurg WebDAV as FUSE filesystem ──────────────────────
+  rclone:
+    image: rclone/rclone:latest
+    container_name: dumb-rclone
+    restart: unless-stopped
+    user: "${PUID:-99}:${PGID:-100}"
+    environment:
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - ${APPDATA_PATH}/DUMB/rclone:/config/rclone
+      - /mnt/debrid:/mnt/debrid:shared
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse:/dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    command: >
+      mount zurg: /mnt/debrid/real_debrid
+      --config /config/rclone/rclone.conf
+      --allow-other
+      --allow-non-empty
+      --dir-cache-time 10s
+      --vfs-cache-mode off
+    depends_on:
+      zurg:
+        condition: service_healthy
+    networks:
+      - dumb-media
+
+  # ─── Zilean — DMM time-based search API ──────────────────────────────────
+  zilean:
+    image: ipromknight/zilean:latest
+    container_name: dumb-zilean
+    restart: unless-stopped
+    environment:
+      - ZILEAN__DATABASE__CONNECTIONSTRING=Host=dumb-postgres;Port=5432;Database=${POSTGRES_DB:-riven};Username=${POSTGRES_USER:-riven};Password=${POSTGRES_PASSWORD}
+      - TZ=${TZ:-America/Chicago}
+    ports:
+      - "8182:8182"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8182/healthcheck || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - dumb-media
+
+  # ─── Riven — instant cloud streaming engine ───────────────────────────────
+  riven:
+    image: spoked/riven:latest
+    container_name: dumb-riven
+    restart: unless-stopped
+    user: "${PUID:-99}:${PGID:-100}"
+    environment:
+      - RIVEN_FORCE_ENV=true
+      - RIVEN_DATABASE_HOST=postgresql+psycopg2://${POSTGRES_USER:-riven}:${POSTGRES_PASSWORD}@dumb-postgres:5432/${POSTGRES_DB:-riven}
+      - RIVEN_SYMLINK_LIBRARY_PATH=/mnt/debrid/riven_symlinks
+      - RIVEN_REAL_DEBRID_API_KEY=${REAL_DEBRID_API_KEY}
+      - RIVEN_DOWNLOADERS_REAL_DEBRID_ENABLED=true
+      - RIVEN_DOWNLOADERS_REAL_DEBRID_CACHED_ONLY=true
+      - RIVEN_UPDATERS_PLEX_ENABLED=${PLEX_ENABLED:-false}
+      - RIVEN_UPDATERS_PLEX_URL=http://dumb-plex:32400
+      - RIVEN_UPDATERS_PLEX_TOKEN=${PLEX_TOKEN:-}
+      - RIVEN_CONTENT_ZILEAN_ENABLED=true
+      - RIVEN_CONTENT_ZILEAN_URL=http://dumb-zilean:8182
+      - ORIGIN=http://0.0.0.0:3000
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - ${APPDATA_PATH}/DUMB/riven:/riven/data
+      - /mnt/debrid/riven_symlinks:/mnt/debrid/riven_symlinks
+      - /mnt/debrid/real_debrid:/mnt/debrid/real_debrid:shared
+    ports:
+      - "3005:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      zilean:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - dumb-media
+
+  # ─── Riven Frontend — React dashboard for Riven ──────────────────────────
+  riven-frontend:
+    image: spoked/riven-frontend:latest
+    container_name: dumb-riven-frontend
+    restart: unless-stopped
+    environment:
+      - ORIGIN=http://0.0.0.0:3000
+      - BACKEND_URL=http://dumb-riven:3000
+      - TZ=${TZ:-America/Chicago}
+    ports:
+      - "3006:3000"
+    depends_on:
+      riven:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ | head -c 1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - dumb-media
+
+  # ─── Decypharr — search/grab agent (Prowlarr-compatible, RD-aware) ────────
+  decypharr:
+    image: cy01/blackhole:latest
+    container_name: dumb-decypharr
+    restart: unless-stopped
+    environment:
+      - API_KEY=${REAL_DEBRID_API_KEY}
+      - DEBRID_SERVICE=realdebrid
+      - QBIT_URL=http://localhost
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - ${APPDATA_PATH}/DUMB/decypharr:/config
+      - /mnt/user/DUMB/blackhole:/blackhole
+    ports:
+      - "8787:8787"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8787/api/v1/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - dumb-media
+
+  # ─── Plex — media frontend (comment out if not using Plex) ───────────────
+  # host networking is required for Plex network discovery (GDM broadcast on UDP 32412-32414)
+  # and DLNA/UPnP multicast. Bridge mode breaks automatic client discovery on the LAN.
+  plex:
+    image: plexinc/pms-docker:latest
+    container_name: dumb-plex
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PLEX_UID=${PUID:-99}
+      - PLEX_GID=${PGID:-100}
+      - TZ=${TZ:-America/Chicago}
+      - PLEX_CLAIM=${PLEX_CLAIM_TOKEN:-}
+    volumes:
+      - ${APPDATA_PATH}/DUMB/plex:/config
+      - /mnt/debrid/riven_symlinks:/data/symlinks:ro
+      - /mnt/user/DUMB/media:/data/media:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:32400/identity || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+
+networks:
+  dumb-media:
+    name: dumb-media
+    driver: bridge
