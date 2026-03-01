@@ -1,66 +1,357 @@
-# Grand Unified AI Home Lab — Node A (Brain / Deep Thought)
-# Deploy on the same machine as the Command Center (192.168.1.9)
+###############################################################################
+# Brain Project - Complete Self-Evolving AI System
+# Hardware: AMD Radeon RX 7900 XT (20GB) | Intel i9-265F | 128GB RAM
+# Base Model: Dolphin 2.9.3 Llama 3.1 8B AWQ (uncensored)
 #
-# Hardware: Core Ultra 7 265KF, 128 GB DDR5, AMD RX 7900 XT (20 GB)
-# Role:     Heavy reasoning / brain-heavy model via vLLM OpenAI-compatible API
+# Services:
+#   - vLLM: GPU-accelerated inference (ROCm)
+#   - OpenWebUI: Chat interface with custom personality
+#   - SearXNG: Private search engine
+#   - Qdrant: Vector database for RAG
+#   - Embeddings: Text embedding service
+#   - Coding Agent: Code execution sandbox (JupyterLab)
+#   - Hardware Agent: System monitoring and GPU control
+#   - Dashboard: Web dashboard for all services
 #
-# ROCm notes for RX 7900 XT (RDNA 3 / gfx1100):
-#   HSA_OVERRIDE_GFX_VERSION=11.0.0 tells ROCm the exact GPU ISA
-#   /dev/kfd  — ROCm kernel fusion driver (required)
-#   /dev/dri  — DRM render node (required)
-#
-# Usage:
-#   cp .env.example .env          # fill in HUGGINGFACE_TOKEN and MODEL
-#   docker compose up -d
-#   curl http://localhost:8000/health
+# Usage: docker compose up -d
+# Setup: Run ./setup.sh before first deployment
+###############################################################################
+
+version: '3.8'
+
+networks:
+  brain_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+
+volumes:
+  vllm_models:
+    driver: local
+  qdrant_storage:
+    driver: local
+  qdrant_snapshots:
+    driver: local
+  openwebui_data:
+    driver: local
+  embeddings_cache:
+    driver: local
+  searxng_data:
+    driver: local
+  coding_agent_workspace:
+    driver: local
+  dashboard_data:
+    driver: local
 
 services:
-  vllm_brain:
-    image: rocm/vllm-openai:latest
-    container_name: vllm_brain
+  ###########################################################################
+  # vLLM - GPU-Accelerated Inference (AMD ROCm)
+  ###########################################################################
+  vllm:
+    image: vllm/vllm-openai:v0.6.4.post1
+    container_name: brain-vllm
     restart: unless-stopped
-    network_mode: host
-
+    environment:
+      - HF_HOME=/root/.cache/huggingface
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
+      - HSA_OVERRIDE_GFX_VERSION=11.0.0
+      - ROCM_PATH=/opt/rocm
+      - PYTORCH_ROCM_ARCH=gfx1100
+      - HIP_VISIBLE_DEVICES=0
+      - VLLM_ROCM_USE_AITER=1
+      - VLLM_ROCM_USE_AITER_RMSNORM=1
+      - VLLM_ROCM_USE_AITER_MOE=1
+      - VLLM_USE_TRITON_FLASH_ATTN=0
+      - HIP_FORCE_DEV_KERNARG=1
+      - VLLM_ATTENTION_BACKEND=ROCM_FLASH
+    volumes:
+      - vllm_models:/root/.cache/huggingface
+      - ./services/vllm/config.yaml:/config/config.yaml:ro
+    ports:
+      - "8000:8000"
+    command:
+      - --model
+      - cognitivecomputations/dolphin-2.9.3-llama-3.1-8b-AWQ
+      - --quantization
+      - awq
+      - --dtype
+      - half
+      - --gpu-memory-utilization
+      - "0.90"
+      - --max-model-len
+      - "16384"
+      - --max-num-seqs
+      - "32"
+      - --port
+      - "8000"
+      - --host
+      - "0.0.0.0"
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - hermes
+      - --served-model-name
+      - dolphin-2.9.3-llama-3.1-8b
+      - --max-logprobs
+      - "20"
+      - --disable-log-requests
+      - --trust-remote-code
+    networks:
+      brain_network:
+        ipv4_address: 172.30.0.10
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
-
     group_add:
       - video
       - render
-
     ipc: host
-
-    volumes:
-      - vllm-models:/root/.cache/huggingface
-
-    environment:
-      # RX 7900 XT (gfx1100 / RDNA 3) — REQUIRED for ROCm to recognise the GPU
-      HSA_OVERRIDE_GFX_VERSION: "11.0.0"
-      HIP_VISIBLE_DEVICES: "0"
-
-      # HuggingFace token — required for gated models (e.g. Llama-3)
-      HUGGINGFACE_TOKEN: "${HUGGINGFACE_TOKEN:-}"
-
-      # Served model name (set in .env)
-      VLLM_MODEL: "${VLLM_MODEL:-meta-llama/Llama-3.1-8B-Instruct}"
-
-    # vLLM entrypoint — arguments control the model and API settings
-    command: >
-      --model ${VLLM_MODEL:-meta-llama/Llama-3.1-8B-Instruct}
-      --host 0.0.0.0
-      --port 8000
-      --dtype float16
-      --max-model-len 8192
-      --served-model-name brain-heavy
-
+    shm_size: 8gb
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
-      timeout: 15s
+      timeout: 10s
       retries: 5
-      start_period: 120s
+      start_period: 300s
 
-volumes:
-  vllm-models:
-    name: node-a-vllm-models
+  ###########################################################################
+  # Qdrant - Vector Database for RAG
+  ###########################################################################
+  qdrant:
+    image: qdrant/qdrant:v1.11.3
+    container_name: brain-qdrant
+    restart: unless-stopped
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__LOG_LEVEL=INFO
+    volumes:
+      - qdrant_storage:/qdrant/storage
+      - qdrant_snapshots:/qdrant/snapshots
+      - ./services/qdrant/config.yaml:/qdrant/config/config.yaml:ro
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    networks:
+      brain_network:
+        ipv4_address: 172.30.0.20
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  ###########################################################################
+  # Embeddings - Text Embedding Inference
+  ###########################################################################
+  embeddings:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
+    container_name: brain-embeddings
+    restart: unless-stopped
+    environment:
+      - MODEL_ID=nomic-ai/nomic-embed-text-v1.5
+      - REVISION=main
+      - MAX_BATCH_TOKENS=16384
+      - MAX_CLIENT_BATCH_SIZE=32
+    volumes:
+      - embeddings_cache:/data
+      - ./services/embeddings/model-config.json:/config/model-config.json:ro
+    ports:
+      - "8001:80"
+    command:
+      - --model-id
+      - nomic-ai/nomic-embed-text-v1.5
+      - --port
+      - "80"
+      - --max-batch-tokens
+      - "16384"
+      - --max-client-batch-size
+      - "32"
+    networks:
+      brain_network:
+        ipv4_address: 172.30.0.30
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
+
+  ###########################################################################
+  # SearXNG - Privacy-Respecting Search Engine
+  ###########################################################################
+  searxng:
+    image: searxng/searxng:latest
+    container_name: brain-searxng
+    restart: unless-stopped
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8888/
+      - SEARXNG_SECRET=${SEARXNG_SECRET}
+      - SEARXNG_PORT=8080
+    volumes:
+      - searxng_data:/etc/searxng
+      - ./services/searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - ./services/searxng/limiter.toml:/etc/searxng/limiter.toml:ro
+    ports:
+      - "8888:8080"
+    networks:
+      brain_network:
+        ipv4_address: 172.30.0.40
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+
+  ###########################################################################
+  # OpenWebUI - Chat Interface with Custom Personality
+  ###########################################################################
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: brain-openwebui
+    restart: unless-stopped
+    environment:
+      # LLM Backend
+      - OPENAI_API_BASE_URLS=http://172.30.0.10:8000/v1
+      - OPENAI_API_KEYS=${OPENAI_API_KEY:-sk-brain-local}
+
+      # Authentication
+      - WEBUI_AUTH=true
+      - WEBUI_NAME=Brain AI
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+
+      # RAG - Embeddings
+      - RAG_EMBEDDING_ENGINE=openai
+      - RAG_OPENAI_API_BASE_URL=http://172.30.0.30:80
+      - RAG_OPENAI_API_KEY=sk-local
+      - RAG_EMBEDDING_MODEL=nomic-ai/nomic-embed-text-v1.5
+      - RAG_EMBEDDING_MODEL_AUTO_UPDATE=true
+      - ENABLE_RAG_HYBRID_SEARCH=true
+      - CHUNK_SIZE=1500
+      - CHUNK_OVERLAP=100
+
+      # RAG - Vector Database (Qdrant)
+      - VECTOR_DB=qdrant
+      - QDRANT_URL=http://172.30.0.20:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+
+      # RAG - Web Search (SearXNG)
+      - ENABLE_RAG_WEB_SEARCH=true
+      - RAG_WEB_SEARCH_ENGINE=searxng
+      - SEARXNG_QUERY_URL=http://172.30.0.40:8080/search?q=<query>
+
+      # Features
+      - ENABLE_SIGNUP=true
+      - DEFAULT_USER_ROLE=user
+      - ENABLE_COMMUNITY_SHARING=false
+      - ENABLE_MESSAGE_RATING=true
+    volumes:
+      - openwebui_data:/app/backend/data
+    ports:
+      - "3000:8080"
+    networks:
+      brain_network:
+        ipv4_address: 172.30.0.50
+    depends_on:
+      vllm:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      embeddings:
+        condition: service_healthy
+      searxng:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  ###########################################################################
+  # Coding Agent - JupyterLab Code Execution Sandbox
+  ###########################################################################
+  coding-agent:
+    image: jupyter/minimal-notebook:latest
+    container_name: brain-coding-agent
+    restart: unless-stopped
+    environment:
+      - JUPYTER_TOKEN=${JUPYTER_TOKEN:-brain-notebook}
+      - JUPYTER_ENABLE_LAB=yes
+      - GRANT_SUDO=no
+    volumes:
+      - coding_agent_workspace:/home/jovyan/work
+    ports:
+      - "8899:8888"
+    networks:
+      brain_network:
+        ipv4_address: 172.30.0.60
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/api"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  ###########################################################################
+  # Hardware Agent - System Monitoring and GPU Control
+  ###########################################################################
+  hardware-agent:
+    image: python:3.12-slim
+    container_name: brain-hardware-agent
+    restart: unless-stopped
+    environment:
+      - PORT=8090
+      - VLLM_URL=http://172.30.0.10:8000
+      - QDRANT_URL=http://172.30.0.20:6333
+    volumes:
+      - ./services/hardware-agent:/app:ro
+    ports:
+      - "8090:8090"
+    command: ["python", "/app/agent.py"]
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    networks:
+      brain_network:
+        ipv4_address: 172.30.0.70
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  ###########################################################################
+  # Dashboard - Web Dashboard for All Services
+  ###########################################################################
+  dashboard:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: brain-dashboard
+    restart: unless-stopped
+    volumes:
+      - dashboard_data:/app/config
+      - ./services/dashboard:/app/config:ro
+    ports:
+      - "8080:3000"
+    networks:
+      brain_network:
+        ipv4_address: 172.30.0.80
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

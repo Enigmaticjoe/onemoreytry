@@ -1,0 +1,17 @@
+---
+# Homepage dashboard global settings for Brain Project
+# https://gethomepage.dev/configs/settings/
+
+title: Brain AI Dashboard
+description: Node A — Self-Evolving AI System (AMD RX 7900 XT)
+
+theme: dark
+color: slate
+
+target: _blank
+
+headerStyle: clean
+columns: 4
+language: en
+
+favicon: https://cdn.jsdelivr.net/npm/@mdi/svg@7/svg/brain.svg

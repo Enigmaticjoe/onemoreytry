@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # Grand Unified AI Home Lab — Node A Setup Script
-# Configures ROCm for the AMD RX 7900 XT and deploys vLLM on port 8000.
+# Configures ROCm for the AMD RX 7900 XT and deploys the Brain Project stack.
 #
-# Hardware: Core Ultra 7 265KF, 128 GB DDR5, AMD RX 7900 XT (20 GB)
+# Hardware: Intel i9-265F, 128 GB RAM, AMD RX 7900 XT (20 GB)
 # IP:       192.168.1.9
 #
+# Brain Project services (all started by this script):
+#   vLLM (8000), OpenWebUI (3000), Qdrant (6333), Embeddings (8001),
+#   SearXNG (8888), Coding Agent (8899), Hardware Agent (8090), Dashboard (8080)
+#
 # Usage:
-#   ./scripts/setup-node-a.sh              # full ROCm install + vLLM deploy
+#   ./scripts/setup-node-a.sh              # full ROCm install + Brain Project deploy
 #   ./scripts/setup-node-a.sh --no-deploy  # install ROCm only, skip compose up
-#   ./scripts/setup-node-a.sh --status     # check GPU and vLLM health
+#   ./scripts/setup-node-a.sh --status     # check GPU and service health
 
 set -euo pipefail
 
@@ -35,7 +39,7 @@ step() { echo ""; echo -e "${BOLD}$1${NC}"; echo ""; }
 # ── Status check ──────────────────────────────────────────────────────────────
 if [ "$STATUS_ONLY" = true ]; then
   echo ""
-  echo "Node A vLLM status (${NODE_A_IP:-192.168.1.9})"
+  echo "Brain Project status (${NODE_A_IP:-192.168.1.9})"
   echo ""
 
   # GPU visibility
@@ -58,24 +62,38 @@ if [ "$STATUS_ONLY" = true ]; then
 
   # Docker container status
   if command -v docker &>/dev/null; then
-    if docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null | grep -q vllm_brain; then
-      STATUS=$(docker ps --format '{{.Status}}' --filter name=vllm_brain 2>/dev/null)
-      ok "Container vllm_brain: ${STATUS}"
-    else
-      warn "Container vllm_brain is not running"
-    fi
+    for svc in brain-vllm brain-qdrant brain-embeddings brain-searxng brain-openwebui brain-coding-agent brain-hardware-agent brain-dashboard; do
+      if docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null | grep -q "^${svc} "; then
+        STATUS=$(docker ps --format '{{.Status}}' --filter "name=^${svc}$" 2>/dev/null || echo "unknown")
+        ok "Container ${svc}: ${STATUS}"
+      else
+        warn "Container ${svc} is not running"
+      fi
+    done
   fi
 
-  # HTTP health
-  VLLM_URL="http://${NODE_A_IP:-192.168.1.9}:8000"
-  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "${VLLM_URL}/health" 2>/dev/null || echo "000")
-  if [[ "$code" =~ ^2 ]]; then
-    ok "vLLM API is healthy (HTTP ${code}) at ${VLLM_URL}"
-  elif [ "$code" = "000" ]; then
-    warn "vLLM not reachable at ${VLLM_URL}/health (container may still be loading)"
-  else
-    warn "vLLM returned HTTP ${code} at ${VLLM_URL}/health"
-  fi
+  # HTTP health checks
+  NODE_A="${NODE_A_IP:-192.168.1.9}"
+  for label_url in \
+    "vLLM API|http://${NODE_A}:8000/health" \
+    "OpenWebUI|http://${NODE_A}:3000/health" \
+    "Qdrant|http://${NODE_A}:6333/healthz" \
+    "Embeddings|http://${NODE_A}:8001/health" \
+    "SearXNG|http://${NODE_A}:8888/healthz" \
+    "Coding Agent|http://${NODE_A}:8899/api" \
+    "Hardware Agent|http://${NODE_A}:8090/health" \
+    "Dashboard|http://${NODE_A}:8080/api/healthcheck"; do
+    label="${label_url%%|*}"
+    url="${label_url##*|}"
+    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null || echo "000")
+    if [[ "$code" =~ ^2 ]]; then
+      ok "${label} healthy (HTTP ${code})"
+    elif [ "$code" = "000" ]; then
+      warn "${label} not reachable at ${url}"
+    else
+      warn "${label} returned HTTP ${code}"
+    fi
+  done
 
   exit 0
 fi
@@ -83,12 +101,13 @@ fi
 # ── Main flow ─────────────────────────────────────────────────────────────────
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║   Node A — ROCm + vLLM Setup (AMD RX 7900 XT)           ║"
+echo "║   Node A — Brain Project Setup (AMD RX 7900 XT)         ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
-echo "  Node A IP : ${NODE_A_IP:-192.168.1.9}"
-echo "  GPU       : AMD RX 7900 XT (gfx1100 / RDNA 3, 20 GB)"
-echo "  vLLM port : 8000"
+echo "  Node A IP  : ${NODE_A_IP:-192.168.1.9}"
+echo "  GPU        : AMD RX 7900 XT (gfx1100 / RDNA 3, 20 GB)"
+echo "  Model      : dolphin-2.9.3-llama-3.1-8b (AWQ)"
+echo "  Stack dir  : node-a-vllm/"
 echo ""
 
 ERRORS=0
@@ -228,7 +247,20 @@ if [ -f "node-a-vllm/.env" ]; then
 elif [ -f "node-a-vllm/.env.example" ]; then
   cp node-a-vllm/.env.example node-a-vllm/.env
   ok "Created node-a-vllm/.env from .env.example"
-  warn "Set HUGGINGFACE_TOKEN in node-a-vllm/.env before running gated models"
+
+  # Auto-generate secrets
+  if command -v openssl &>/dev/null; then
+    WEBUI_SECRET=$(openssl rand -hex 32)
+    SEARXNG_SECRET=$(openssl rand -hex 32)
+    JUPYTER_TOKEN=$(openssl rand -hex 16)
+    sed -i "s/^WEBUI_SECRET_KEY=.*/WEBUI_SECRET_KEY=${WEBUI_SECRET}/" node-a-vllm/.env
+    sed -i "s/^SEARXNG_SECRET=.*/SEARXNG_SECRET=${SEARXNG_SECRET}/" node-a-vllm/.env
+    sed -i "s/^JUPYTER_TOKEN=.*/JUPYTER_TOKEN=${JUPYTER_TOKEN}/" node-a-vllm/.env
+    ok "Auto-generated WEBUI_SECRET_KEY, SEARXNG_SECRET, JUPYTER_TOKEN"
+  fi
+
+  warn "Set HUGGING_FACE_HUB_TOKEN in node-a-vllm/.env before deploying"
+  info "  Get a token: https://huggingface.co/settings/tokens"
   info "  Edit: \$EDITOR node-a-vllm/.env"
 else
   err "node-a-vllm/.env.example not found"
@@ -241,8 +273,7 @@ set -o allexport
 source node-a-vllm/.env 2>/dev/null || true
 set +o allexport
 
-MODEL="${VLLM_MODEL:-meta-llama/Llama-3.1-8B-Instruct}"
-info "Model: ${MODEL}"
+info "Model: cognitivecomputations/dolphin-2.9.3-llama-3.1-8b-AWQ"
 
 # Rough VRAM check
 VRAM_MB=0
@@ -257,29 +288,29 @@ if [ "$VRAM_MB" -gt 0 ] 2>/dev/null; then
   fi
 fi
 
-# ── Step 4: Pull vLLM ROCm image ─────────────────────────────────────────────
-step "Step 4 — Pull vLLM ROCm Docker image"
+# ── Step 4: Pull Brain Project images ─────────────────────────────────────────
+step "Step 4 — Pull Brain Project Docker images"
 
-info "Pulling rocm/vllm-openai:latest (this may take several minutes on first run)..."
-$SUDO docker compose -f node-a-vllm/docker-compose.yml pull 2>&1 | tail -5
-ok "Image ready"
+info "Pulling all Brain Project images (this may take several minutes on first run)..."
+$SUDO docker compose -f node-a-vllm/docker-compose.yml pull 2>&1 | tail -10
+ok "Images ready"
 
 # ── Step 5: Deploy ────────────────────────────────────────────────────────────
-step "Step 5 — Deploy vLLM"
+step "Step 5 — Deploy Brain Project"
 
 if [ "$NO_DEPLOY" = true ]; then
   echo ""
   echo "  --no-deploy flag set. To deploy manually:"
   echo ""
-  echo "    cd ${REPO_ROOT}"
-  echo "    docker compose -f node-a-vllm/docker-compose.yml up -d"
+  echo "    cd ${REPO_ROOT}/node-a-vllm"
+  echo "    docker compose up -d"
   echo ""
 else
-  info "Starting vLLM container..."
+  info "Starting Brain Project containers..."
   $SUDO docker compose -f node-a-vllm/docker-compose.yml up -d
-  ok "Container vllm_brain started"
+  ok "Brain Project containers started"
 
-  info "Waiting for vLLM to load the model (can take 2-5 min on first run)..."
+  info "Waiting for vLLM to load the model (can take 3-5 min on first run)..."
   MAX_RETRIES=20
   RETRY=0
   DELAY=15
@@ -297,32 +328,39 @@ else
 
   if [ $RETRY -ge $MAX_RETRIES ]; then
     warn "vLLM did not respond in time — it may still be downloading the model"
-    info "  Check logs: docker logs vllm_brain --tail 30 -f"
+    info "  Check logs: docker logs brain-vllm --tail 30 -f"
     info "  Health:     curl http://localhost:8000/health"
   fi
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
-echo "═══════════════════════════════════════════════════════"
-echo -e "  ${GREEN}Node A — ROCm + vLLM setup complete!${NC}"
-echo "═══════════════════════════════════════════════════════"
+echo "═══════════════════════════════════════════════════════════════"
+echo -e "  ${GREEN}Node A — Brain Project setup complete!${NC}"
+echo "═══════════════════════════════════════════════════════════════"
 echo ""
-echo "  vLLM API:  http://${NODE_A_IP:-192.168.1.9}:8000"
-echo "  Health:    http://${NODE_A_IP:-192.168.1.9}:8000/health"
-echo "  Models:    http://${NODE_A_IP:-192.168.1.9}:8000/v1/models"
-echo "  Model ID:  brain-heavy"
+NODE_A="${NODE_A_IP:-192.168.1.9}"
+echo "  Service        URL"
+echo "  ─────────────────────────────────────────────────────────"
+echo "  vLLM API       http://${NODE_A}:8000/v1"
+echo "  OpenWebUI      http://${NODE_A}:3000"
+echo "  Qdrant         http://${NODE_A}:6333/dashboard"
+echo "  Embeddings     http://${NODE_A}:8001/health"
+echo "  SearXNG        http://${NODE_A}:8888"
+echo "  Coding Agent   http://${NODE_A}:8899"
+echo "  Hardware Agent http://${NODE_A}:8090/status"
+echo "  Dashboard      http://${NODE_A}:8080"
+echo ""
+echo "  Model alias:  brain-heavy → dolphin-2.9.3-llama-3.1-8b"
 echo ""
 echo "  Quick test:"
-echo "    curl -X POST http://${NODE_A_IP:-192.168.1.9}:8000/v1/chat/completions \\"
-echo "      -H 'Content-Type: application/json' \\"
-echo "      -d '{\"model\":\"brain-heavy\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}'"
+echo "    curl http://\${NODE_A}:8000/health"
 echo ""
 echo "  Container logs:"
-echo "    docker logs vllm_brain --tail 30 -f"
+echo "    docker logs brain-vllm --tail 30 -f"
 echo ""
 echo "  Re-check status at any time:"
 echo "    ./scripts/setup-node-a.sh --status"
 echo ""
-echo "  Full docs: DEPLOYMENT_GUIDE.md"
+echo "  Full docs: docs/03_DEPLOY_NODE_A_BRAIN.md"
 echo ""

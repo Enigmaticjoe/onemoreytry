@@ -1,0 +1,9 @@
+{
+  "model_id": "nomic-ai/nomic-embed-text-v1.5",
+  "revision": "main",
+  "max_batch_tokens": 16384,
+  "max_client_batch_size": 32,
+  "dtype": "float32",
+  "pooling": "mean",
+  "normalize": true
+}
