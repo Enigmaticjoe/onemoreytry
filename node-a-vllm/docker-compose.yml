@@ -41,8 +41,6 @@ volumes:
     driver: local
   coding_agent_workspace:
     driver: local
-  dashboard_data:
-    driver: local
 
 services:
   ###########################################################################
@@ -342,7 +340,6 @@ services:
     container_name: brain-dashboard
     restart: unless-stopped
     volumes:
-      - dashboard_data:/app/config
       - ./services/dashboard:/app/config:ro
     ports:
       - "8080:3000"

@@ -23,7 +23,7 @@ search:
 server:
   port: 8080
   bind_address: "0.0.0.0"
-  secret_key: "${SEARXNG_SECRET}"
+  # secret_key is set via SEARXNG_SECRET environment variable in docker-compose.yml
   base_url: "http://localhost:8888/"
   limiter: true
   public_instance: false

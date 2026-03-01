@@ -253,9 +253,9 @@ elif [ -f "node-a-vllm/.env.example" ]; then
     WEBUI_SECRET=$(openssl rand -hex 32)
     SEARXNG_SECRET=$(openssl rand -hex 32)
     JUPYTER_TOKEN=$(openssl rand -hex 16)
-    sed -i "s/^WEBUI_SECRET_KEY=.*/WEBUI_SECRET_KEY=${WEBUI_SECRET}/" node-a-vllm/.env
-    sed -i "s/^SEARXNG_SECRET=.*/SEARXNG_SECRET=${SEARXNG_SECRET}/" node-a-vllm/.env
-    sed -i "s/^JUPYTER_TOKEN=.*/JUPYTER_TOKEN=${JUPYTER_TOKEN}/" node-a-vllm/.env
+    sed -i "s|^WEBUI_SECRET_KEY=.*|WEBUI_SECRET_KEY=${WEBUI_SECRET}|" node-a-vllm/.env
+    sed -i "s|^SEARXNG_SECRET=.*|SEARXNG_SECRET=${SEARXNG_SECRET}|" node-a-vllm/.env
+    sed -i "s|^JUPYTER_TOKEN=.*|JUPYTER_TOKEN=${JUPYTER_TOKEN}|" node-a-vllm/.env
     ok "Auto-generated WEBUI_SECRET_KEY, SEARXNG_SECRET, JUPYTER_TOKEN"
   fi
 

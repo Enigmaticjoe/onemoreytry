@@ -109,7 +109,7 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send_json(404, {"error": "not found"})
 
-    def log_message(self, format, *args):  # noqa: A002
+    def log_message(self, msg_format, *args):  # noqa: A002
         pass  # suppress default access log noise
 
 
