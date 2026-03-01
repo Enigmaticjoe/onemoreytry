@@ -62,8 +62,10 @@ import shutil
 import time
 import textwrap
 import argparse
+import json
+import platform
 from pathlib import Path
-from typing import Callable, Dict, Any, Optional, List
+from typing import Callable, Dict, Any, Optional, List, Tuple
 
 try:
     import urllib.parse as urlparse
@@ -781,37 +783,20 @@ def create_chat_html(boss: BossAI, dist: Path, commands: Optional[List[str]] = N
             shown.
     """
     # Build a JavaScript snippet to send an initial message on page load
-    # Compose the welcome message.  The first message introduces the assistant
-    # with a friendly, neutral personality and explains its role.  Subsequent
-    # lines list available commands and encourage the user to either click a
-    # button or type a question.  Plain language and short sentences improve
-    # comprehension for users with cognitive impairments【131686025932182†L263-L265】.
-    # Compose a cyberpunk‑inspired welcome.  Use short sentences and plain language
-    # to remain accessible to users with cognitive impairments【131686025932182†L263-L265】.  A
-    # friendly tone invites the user into a neon‑lit world while
-    # reassuring them of step‑by‑step guidance.
     welcome_lines = [
-        "Greetings, traveller of the neon grid. I’m your cyberpunk AI companion.",
-        "I’m here to guide you, step by step, through the homelab installation.",
+        "Greetings! I'm your Homelab AI assistant.",
+        "I'm here to guide you step by step through the homelab installation.",
     ]
     if commands:
-        # Create a user‑friendly list of commands.  List them in a single
-        # sentence so the user knows what’s possible at a glance【740382120809859†L86-L90】.
         cmd_list = ', '.join(commands)
         welcome_lines.append(
             "You can click a button or type one of these commands: " + cmd_list + "."
         )
         welcome_lines.append(
-            "If you’re not sure, type ‘help’ to see your options."
+            "If you're not sure, type 'help' to see your options."
         )
-    # Provide reassurance and guidance on how to restart or seek help.  This
-    # follows conversational design best practices: remind the user they can
-    # restart and that support is available【740382120809859†L95-L104】.
     welcome_lines.append(
         "You can restart the session at any time by refreshing the page."
-    )
-    welcome_lines.append(
-        "If you need extra help, ask a caregiver or reach out to support."
     )
     welcome_js = "\n".join([
         "window.addEventListener('load', function() {",
@@ -845,49 +830,28 @@ def create_chat_html(boss: BossAI, dist: Path, commands: Optional[List[str]] = N
                 input[type="text"] {{ width: calc(100% - 90px); padding: 12px; background: #0a1432; color: #e0eaff; border: 1px solid #00ffc8; border-radius: 4px; font-size: 1em; }}
                 button {{ background-color: #00ffc8; color: #0a0e1a; border: none; border-radius: 4px; padding: 10px 14px; font-size: 1em; cursor: pointer; transition: background-color 0.2s; }}
                 button:hover {{ background-color: #0efbff; }}
-                /* Voice toggle styling */
-                #voice-toggle label {{ color: #e0eaff; font-size: 0.9em; }}
-                #voice-toggle input[type="checkbox"] {{ margin-right: 6px; }}
                 /* Command buttons area */
                 #command-buttons button {{ margin-right: 6px; margin-bottom: 6px; }}
             </style>
         </head>
         <body>
             <div id="chat-container">
-                <!-- Avatar with descriptive alt text for screen readers【131686025932182†L220-L222】 -->
+                <!-- Avatar -->
                 <img id="avatar" src="{AVATAR_DATA_URI}" alt="Cyberpunk AI avatar">
                 <h2 style="margin-top: 0; color: #00ffc8;">Homelab Assistant</h2>
                 <div id="messages"></div>
-                <!-- Voice feedback toggle -->
-                <div id="voice-toggle" style="margin-bottom:10px;">
-                    <label>
-                        <input type="checkbox" id="voiceToggle" onchange="toggleVoice()"> Enable voice feedback
-                    </label>
-                </div>
                 <!-- Command buttons will be injected here by JS -->
                 <div id="command-buttons" style="margin-bottom:10px;"></div>
                 <input type="text" id="user-input" placeholder="Enter a command or ask a question..." onkeydown="if(event.key==='Enter') send();">
                 <button onclick="send()">Send</button>
             </div>
             <script>
-                // Voice settings
-                let voiceEnabled = false;
-                function toggleVoice() {{
-                    voiceEnabled = document.getElementById('voiceToggle').checked;
-                }}
-                function speak(text) {{
-                    if (!voiceEnabled) return;
-                    if (!('speechSynthesis' in window)) return;
-                    const utter = new SpeechSynthesisUtterance(text);
-                    speechSynthesis.speak(utter);
-                }}
                 function appendMessage(text, cls) {{
                     const div = document.createElement('div');
                     div.className = 'msg ' + cls;
                     div.textContent = text;
                     document.getElementById('messages').appendChild(div);
                     document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
-                    if (cls === 'bot') {{ speak(text); }}
                 }}
                 function send() {{
                     const input = document.getElementById('user-input');
@@ -1088,219 +1052,925 @@ def ensure_root() -> None:
         sys.exit(1)
 
 
-def main() -> None:
-    print(
-        """
-╔═══════════════════════════════════════════════════════════════╗
-║   Cyberpunk Homelab Install Companion – Boss‑Driven Edition    ║
-╚═══════════════════════════════════════════════════════════════╝
+# =============================================================================
+# OS-like TUI / Menu-Driven Interface (Section B, C, D requirements)
+# =============================================================================
 
-Welcome to the neon‑lit world of your homelab.
-This AI will orchestrate the installation of your stack on Fedora 43
-using multiple agents.  It will install Docker, Node.js and Python
-dependencies, clone your repository, collect configuration, generate
-environment files and launch a web‑based interface.  If a step fails,
-the Boss will search the web for fixes and offer a retry.
-"""
+#: Absolute path to the repository root (directory containing this file).
+REPO_ROOT: Path = Path(__file__).parent
+
+#: Mapping from human-readable node name to compose file path and node IP.
+#: Used by the Node Operations menu.
+NODE_COMPOSE_MAP: Dict[str, Dict[str, Any]] = {
+    "Node A – vLLM Brain": {
+        "compose": REPO_ROOT / "node-a-vllm" / "docker-compose.yml",
+        "ip": "192.168.1.9",
+    },
+    "Node A – Ollama Brain (ROCm)": {
+        "compose": REPO_ROOT / "node-a-vllm" / "docker-compose.ollama.yml",
+        "ip": "192.168.1.9",
+    },
+    "Node B – LiteLLM Gateway": {
+        "compose": REPO_ROOT / "node-b-litellm" / "litellm-stack.yml",
+        "ip": "192.168.1.222",
+    },
+    "Node B – AI Orchestration Stack": {
+        "compose": REPO_ROOT / "node-b-litellm" / "stacks" / "ai-orchestration-stack.yml",
+        "ip": "192.168.1.222",
+    },
+    "Node B – Media Stack": {
+        "compose": REPO_ROOT / "node-b-litellm" / "stacks" / "media-stack.yml",
+        "ip": "192.168.1.222",
+    },
+    "Node C – Intel Arc (Ollama + WebUI)": {
+        "compose": REPO_ROOT / "node-c-arc" / "docker-compose.yml",
+        "ip": "192.168.1.6",
+    },
+    "Node C – OpenClaw Agent": {
+        "compose": REPO_ROOT / "node-c-arc" / "openclaw.yml",
+        "ip": "192.168.1.6",
+    },
+    "Node D – Home Assistant": {
+        "compose": REPO_ROOT / "node-d-home-assistant" / "docker-compose.yml",
+        "ip": "192.168.1.149",
+    },
+    "Node E – Sentinel (Frigate/NVR)": {
+        "compose": REPO_ROOT / "node-e-sentinel" / "docker-compose.yml",
+        "ip": "192.168.1.116",
+    },
+    "Unraid Management Stack": {
+        "compose": REPO_ROOT / "unraid" / "docker-compose.yml",
+        "ip": "192.168.1.222",
+    },
+    "Deploy GUI": {
+        "compose": REPO_ROOT / "deploy-gui" / "docker-compose.yml",
+        "ip": "localhost:9999",
+    },
+}
+
+# ANSI colour helpers
+_GREEN = "\033[0;32m"
+_RED = "\033[0;31m"
+_YELLOW = "\033[1;33m"
+_RESET = "\033[0m"
+
+
+def _c(text: str, colour: str) -> str:
+    """Wrap *text* in *colour* escape codes (safe to disable if not a TTY)."""
+    if not sys.stdout.isatty():
+        return text
+    return f"{colour}{text}{_RESET}"
+
+
+def clear_screen() -> None:
+    """Clear the terminal screen."""
+    os.system("cls" if os.name == "nt" else "clear")
+
+
+def print_banner() -> None:
+    """Print the installer welcome banner."""
+    print(_c(
+        "╔══════════════════════════════════════════════════════════════════╗\n"
+        "║      GRAND UNIFIED AI HOMELAB — BOS INSTALLER v2.0              ║\n"
+        "║           OS-Like Guided Installation Experience                 ║\n"
+        "╚══════════════════════════════════════════════════════════════════╝",
+        _GREEN,
+    ))
+
+
+def print_section(title: str) -> None:
+    """Print a formatted section header."""
+    width = 66
+    print(f"\n{'═' * width}")
+    print(f"  {title}")
+    print(f"{'═' * width}")
+
+
+def _health_line(label: str, ok: bool, detail: str = "") -> None:
+    """Print a single ✓/✗ health-check result line."""
+    icon = _c("✓", _GREEN) if ok else _c("✗", _RED)
+    suffix = f"  ({detail})" if detail else ""
+    print(f"  [{icon}] {label}{suffix}")
+
+
+def _health_warn(label: str, detail: str = "") -> None:
+    """Print a ⚠ (warning/unknown) health-check result line."""
+    icon = _c("?", _YELLOW)
+    suffix = f"  ({detail})" if detail else ""
+    print(f"  [{icon}] {label}{suffix}")
+
+
+def _check_ollama(base_url: str) -> Tuple[bool, str]:
+    """Return (reachable, detail_string) for a local Ollama instance."""
+    try:
+        req = urlrequest.Request(
+            f"{base_url}/api/tags",
+            headers={"User-Agent": "bos-installer/2"},
+        )
+        with urlrequest.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode())
+            models = [m.get("name", "") for m in data.get("models", [])]
+            detail = (
+                f"{len(models)} model(s): {', '.join(models[:3])}"
+                if models
+                else "running, no models loaded"
+            )
+            return True, detail
+    except Exception as exc:
+        return False, str(exc)[:80]
+
+
+def run_health_checks(boss: Optional["BossAI"] = None) -> Dict[str, bool]:
+    """Run comprehensive system health checks and display results.
+
+    Returns a dict mapping check-name to bool (True = passed).
+    """
+    print_section("SYSTEM HEALTH CHECK")
+    results: Dict[str, bool] = {}
+
+    # Python version
+    py_ver = platform.python_version()
+    py_ok = sys.version_info >= (3, 8)
+    _health_line(f"Python {py_ver}", py_ok, "" if py_ok else "need 3.8+")
+    results["python"] = py_ok
+
+    # Virtual environment
+    venv_path = REPO_ROOT / ".venv"
+    venv_ok = venv_path.exists() and (venv_path / "bin" / "python").exists()
+    _health_line(
+        f".venv ({venv_path})",
+        venv_ok,
+        "found" if venv_ok else "run menu option [3] to create",
     )
-    # Parse command‑line arguments for unattended mode
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--non-interactive", action="store_true", help="Run unattended installation using defaults or environment variables.")
-    parser.add_argument("--config-file", help="Path to a JSON or .env config file for non-interactive mode.")
-    parser.add_argument("--auto-start-chat", action="store_true", help="Automatically start the chat server after unattended installation.")
-    parser.add_argument("--help", action="store_true", help="Show this help message and exit.")
-    parser.add_argument(
-        "--brothers-keeper",
-        action="store_true",
-        help="Use the Brothers Keeper orchestrator (state-persistent, API-enabled).",
+    results["venv"] = venv_ok
+
+    # Docker
+    code, docker_out = run_command(["docker", "--version"])
+    docker_ok = code == 0
+    _health_line(
+        "Docker",
+        docker_ok,
+        docker_out.strip().split("\n")[0] if docker_ok else "install via menu option [2]",
     )
-    args, unknown = parser.parse_known_args()
-    if args.help:
-        parser.print_help()
-        sys.exit(0)
-    if args.brothers_keeper:
-        # Delegate entirely to the Brothers Keeper core orchestrator.
-        import importlib.util, os as _os
-        _bk_path = _os.path.join(_os.path.dirname(__file__), "brothers-keeper", "core_orchestrator.py")
-        _spec = importlib.util.spec_from_file_location("core_orchestrator", _bk_path)
-        _mod  = importlib.util.module_from_spec(_spec)  # type: ignore[arg-type]
-        _spec.loader.exec_module(_mod)  # type: ignore[union-attr]
-        _mod.main_cli()
-        return
-    ensure_root()
-    # Determine repository URL and destination depending on interactive or non‑interactive mode
-    default_repo = "https://github.com/Enigmaticjoe/onemoreytry.git"
-    default_dest = str(Path.home() / "onemoreytry")
-    if args.non_interactive:
-        repo_url = os.environ.get("REPOSITORY_URL", default_repo)
-        dest_dir = os.environ.get("DESTINATION_DIR", default_dest)
+    results["docker"] = docker_ok
+
+    # Docker Compose v2
+    code, dc_out = run_command(["docker", "compose", "version"])
+    dc_ok = code == 0
+    _health_line(
+        "Docker Compose v2",
+        dc_ok,
+        dc_out.strip().split("\n")[0] if dc_ok else "upgrade Docker (>=23) to get Compose v2",
+    )
+    results["docker_compose"] = dc_ok
+
+    # Docker daemon running
+    code, _ = run_command(["docker", "info"])
+    docker_svc_ok = code == 0
+    _health_line(
+        "Docker daemon running",
+        docker_svc_ok,
+        "" if docker_svc_ok else "run: systemctl start docker",
+    )
+    results["docker_running"] = docker_svc_ok
+
+    # Node.js (optional for command center)
+    code, node_out = run_command(["node", "--version"])
+    node_ok = code == 0
+    _health_line(
+        "Node.js",
+        node_ok,
+        node_out.strip() if node_ok else "optional – needed for command-center only",
+    )
+    results["node"] = node_ok
+
+    # Git
+    code, git_out = run_command(["git", "--version"])
+    git_ok = code == 0
+    _health_line(
+        "Git",
+        git_ok,
+        git_out.strip().split("\n")[0] if git_ok else "install git",
+    )
+    results["git"] = git_ok
+
+    # Local Ollama
+    ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+    ollama_ok, ollama_detail = _check_ollama(ollama_url)
+    if ollama_ok:
+        _health_line(f"Ollama ({ollama_url})", True, ollama_detail)
     else:
-        repo_url = prompt_input(
-            "Repository URL to clone", default_repo
+        _health_warn(
+            f"Ollama ({ollama_url})",
+            ollama_detail or "not reachable – local AI unavailable",
         )
-        dest_dir = prompt_input(
-            "Destination directory", default_dest
-        )
-    clone_path = Path(dest_dir).expanduser()
-    # Create the boss and minions
-    boss: BossAI
-    # To capture configuration across minions, we use a dictionary
-    config: Dict[str, Any] = {}
+    results["ollama"] = ollama_ok
 
-    def minion_deps(boss: BossAI) -> None:
+    # Network connectivity
+    code, _ = run_command(
+        ["curl", "-s", "--head", "--max-time", "3", "https://github.com"]
+    )
+    net_ok = code == 0
+    _health_line("Network (github.com)", net_ok, "" if net_ok else "check network")
+    results["network"] = net_ok
+
+    # config/node-inventory.env
+    inv_path = REPO_ROOT / "config" / "node-inventory.env"
+    inv_ok = inv_path.exists()
+    _health_line(
+        "config/node-inventory.env",
+        inv_ok,
+        "found" if inv_ok else "run menu option [4] to generate",
+    )
+    results["inventory"] = inv_ok
+
+    ok_count = sum(1 for v in results.values() if v)
+    total = len(results)
+    print(f"\n  Summary: {ok_count}/{total} checks passed\n")
+    return results
+
+
+def setup_venv(boss: Optional["BossAI"] = None) -> None:
+    """Create and populate a .venv virtual environment in the repo root."""
+    print_section("VIRTUAL ENVIRONMENT SETUP")
+    venv_path = REPO_ROOT / ".venv"
+
+    if venv_path.exists():
+        print(f"  .venv already exists at {venv_path}")
+        ans = input("  Recreate from scratch? (y/N): ").strip().lower()
+        if ans != "y":
+            print("  Using existing .venv.")
+            return
+        shutil.rmtree(venv_path)
+
+    print("  Creating .venv …")
+    code, out = run_command([sys.executable, "-m", "venv", str(venv_path)])
+    if code != 0:
+        print(_c(f"  ✗ Failed to create venv:\n{out}", _RED))
+        return
+    print(_c(f"  ✓ .venv created at {venv_path}", _GREEN))
+
+    pip = str(venv_path / "bin" / "pip")
+    req_files = [
+        REPO_ROOT / "kvm-operator" / "requirements.txt",
+        REPO_ROOT / "brothers-keeper" / "requirements.txt",
+    ]
+    for req in req_files:
+        if req.exists():
+            rel = req.relative_to(REPO_ROOT)
+            print(f"  Installing {rel} …")
+            code, out = run_command([pip, "install", "-q", "-r", str(req)], timeout=300)
+            if code != 0:
+                print(_c(f"  ✗ pip install failed: {out[:200]}", _RED))
+            else:
+                print(_c(f"  ✓ {rel} installed", _GREEN))
+
+    # Optional helper packages for bos.py chat server
+    optional = ["flask", "requests", "beautifulsoup4"]
+    print(f"  Installing optional packages: {', '.join(optional)} …")
+    code, out = run_command([pip, "install", "-q"] + optional, timeout=120)
+    if code == 0:
+        print(_c("  ✓ Optional packages installed", _GREEN))
+    else:
+        print(_c(f"  ✗ Optional packages failed: {out[:120]}", _RED))
+
+    print(f"\n  Activate with:  source {venv_path}/bin/activate")
+
+
+def query_ollama(prompt: str, model: str = "", base_url: str = "") -> str:
+    """Send a prompt to a local Ollama instance and return the response text.
+
+    Returns an empty string on any failure so callers can fall back gracefully.
+    """
+    if not base_url:
+        base_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+    if not model:
+        model = os.environ.get("OLLAMA_MODEL", "llama3.2")
+    payload = json.dumps({
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "system": (
+            "You are a helpful homelab installation assistant. "
+            "Answer concisely and clearly, focusing on practical guidance."
+        ),
+    }).encode()
+    try:
+        req = urlrequest.Request(
+            f"{base_url}/api/generate",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "bos-installer/2",
+            },
+            method="POST",
+        )
+        with urlrequest.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode())
+            return data.get("response", "").strip()
+    except Exception:
+        return ""
+
+
+def _get_ai_response(prompt: str) -> str:
+    """Return an AI response, trying Ollama first then DuckDuckGo web-search."""
+    response = query_ollama(prompt)
+    if response:
+        return response
+    result = answer_query(prompt)
+    return result.get("summary") or "I couldn't find an answer to that question."
+
+
+def test_ai_assistant(boss: Optional["BossAI"] = None) -> None:
+    """Test the local AI assistant and display availability information."""
+    print_section("AI ASSISTANT SETUP & TEST")
+
+    ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+    print(f"  Checking Ollama at {ollama_url} …")
+    ok, detail = _check_ollama(ollama_url)
+    if ok:
+        print(_c(f"  ✓ Ollama is running — {detail}", _GREEN))
+        test_prompt = "In one sentence, what is Ollama and why is it useful for a homelab?"
+        print(f"\n  Test prompt: {test_prompt!r}")
+        print("  Waiting for response …", end="", flush=True)
+        response = query_ollama(test_prompt, base_url=ollama_url)
+        if response:
+            print(_c("\n  ✓ AI Response:", _GREEN))
+            for line in textwrap.wrap(response, 66):
+                print(f"    {line}")
+        else:
+            print(_c("\n  ? No response — is a model loaded?", _YELLOW))
+            print("     Try:  ollama pull llama3.2")
+    else:
+        print(_c(f"  ✗ Ollama not reachable ({detail})", _RED))
+        print("     Install Ollama: https://ollama.ai/download")
+        print("     Start locally:  ollama serve")
+
+    # Check LiteLLM gateway
+    inv_path = REPO_ROOT / "config" / "node-inventory.env"
+    node_b_ip = "192.168.1.222"
+    if inv_path.exists():
+        for line in inv_path.read_text().splitlines():
+            if line.startswith("NODE_B_IP="):
+                node_b_ip = line.split("=", 1)[1].strip()
+    litellm_url = f"http://{node_b_ip}:4000/health"
+    print(f"\n  Checking LiteLLM Gateway at {litellm_url} …")
+    code, _ = run_command(
+        ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "3", litellm_url]
+    )
+    if code == 0:
+        print(_c("  ✓ LiteLLM Gateway reachable", _GREEN))
+    else:
+        print(_c("  ? LiteLLM Gateway not reachable (deploy Node B first)", _YELLOW))
+
+    print()
+    input("  Press Enter to continue…")
+
+
+def run_chat_session(boss: Optional["BossAI"] = None) -> None:
+    """Run an interactive terminal chat session with the AI assistant."""
+    clear_screen()
+    print_banner()
+    print_section("AI HELP ASSISTANT")
+
+    ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+    ollama_ok, _ = _check_ollama(ollama_url)
+
+    if ollama_ok:
+        print(_c("  ✓ Local AI (Ollama) is available.", _GREEN))
+    else:
+        print(_c("  ? Ollama not available — using web-search fallback.", _YELLOW))
+
+    print("""
+  I am your homelab installation assistant. Ask me anything about:
+    • Installing Docker, Node.js, or Python packages
+    • Setting up LiteLLM, Ollama, or Open WebUI
+    • Configuring Home Assistant or KVM Operator
+    • Troubleshooting service startup issues
+
+  Type 'quit' or 'exit' to return to the main menu.
+  Type 'help' to see suggested questions.
+""")
+
+    SUGGESTED = [
+        "How do I install Docker on Fedora?",
+        "How do I start the LiteLLM gateway?",
+        "How do I add a model to Ollama?",
+        "What is the default API key for LiteLLM?",
+        "How do I access the command center dashboard?",
+        "How do I create a virtual environment in Python?",
+    ]
+
+    while True:
+        try:
+            user_input = input("  You: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if not user_input:
+            continue
+        if user_input.lower() in ("quit", "exit", "q"):
+            break
+        if user_input.lower() == "help":
+            print("\n  Suggested questions:")
+            for q in SUGGESTED:
+                print(f"    • {q}")
+            print()
+            continue
+        print("  Assistant: ", end="", flush=True)
+        response = _get_ai_response(user_input)
+        print()
+        for line in textwrap.wrap(response, 68):
+            print(f"  {line}")
+        print()
+
+
+def _compose_action(compose_file: Optional[Path], action: str) -> None:
+    """Execute a docker compose subcommand against a given compose file."""
+    if compose_file is None:
+        print(_c("  ? Service not managed via docker compose.", _YELLOW))
+        return
+    compose_path = Path(compose_file)
+    if not compose_path.exists():
+        print(_c(f"  ✗ Compose file not found: {compose_path}", _RED))
+        return
+    cmd = ["docker", "compose", "-f", str(compose_path)] + action.split()
+    print(f"\n  Running: docker compose -f {compose_path.name} {action}")
+    print("  " + "─" * 60)
+    # Intentionally do NOT capture output: docker compose logs/ps/up stream live
+    # output to the terminal, which is what users expect when interacting with
+    # the node operations menu.
+    try:
+        proc = subprocess.run(cmd, text=True, timeout=300)
+        if proc.returncode != 0:
+            print(_c(f"\n  ✗ Command exited with code {proc.returncode}", _RED))
+        else:
+            print(_c("\n  ✓ Done", _GREEN))
+    except subprocess.TimeoutExpired:
+        print(_c("\n  ✗ Command timed out", _RED))
+    except FileNotFoundError:
+        print(_c("\n  ✗ docker not found — is Docker installed?", _RED))
+
+
+def _node_action_menu(node_name: str) -> None:
+    """Show start/stop/status/restart actions for a specific node."""
+    info = NODE_COMPOSE_MAP[node_name]
+    compose = info.get("compose")
+    while True:
+        compose_path = Path(compose) if compose else None
+        print(f"\n  Node: {_c(node_name, _GREEN)}")
+        if compose_path:
+            exists = compose_path.exists()
+            compose_label = _c("(found)", _GREEN) if exists else _c("(NOT FOUND)", _RED)
+            print(f"  Compose: {compose_path}  {compose_label}")
+        print()
+        print("  [1] Start    (docker compose up -d)")
+        print("  [2] Stop     (docker compose down)")
+        print("  [3] Status   (docker compose ps)")
+        print("  [4] Restart  (down then up -d)")
+        print("  [5] Logs     (last 50 lines)")
+        print("  [0] Back")
+        try:
+            act = input("\n  Action: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if act == "0":
+            break
+        elif act == "1":
+            _compose_action(compose_path, "up -d")
+        elif act == "2":
+            _compose_action(compose_path, "down")
+        elif act == "3":
+            _compose_action(compose_path, "ps")
+        elif act == "4":
+            _compose_action(compose_path, "down")
+            _compose_action(compose_path, "up -d")
+        elif act == "5":
+            _compose_action(compose_path, "logs --tail=50")
+        else:
+            print("  Invalid choice.")
+        input("  Press Enter to continue…")
+
+
+def show_node_menu(boss: Optional["BossAI"] = None) -> None:
+    """Show the interactive node/service operations submenu."""
+    nodes = list(NODE_COMPOSE_MAP.keys())
+    while True:
+        print_section("NODE / SERVICE OPERATIONS")
+        for i, name in enumerate(nodes, 1):
+            info = NODE_COMPOSE_MAP[name]
+            compose = info.get("compose")
+            ip = info.get("ip", "")
+            if compose and Path(compose).exists():
+                mark = _c("✓", _GREEN)
+            elif compose:
+                mark = _c("✗", _RED)
+            else:
+                mark = _c("~", _YELLOW)
+            print(f"  [{i:2d}] [{mark}] {name}  ({ip})")
+        print("  [ 0] Back to main menu")
+        try:
+            choice = input("\n  Select node: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if choice == "0":
+            break
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(nodes):
+                _node_action_menu(nodes[idx])
+        except ValueError:
+            print("  Invalid choice.")
+
+
+def show_logs_panel(boss: Optional["BossAI"] = None) -> None:
+    """Show a quick logs and troubleshooting panel."""
+    print_section("LOGS & TROUBLESHOOTING")
+    print("  [1] Running Docker containers   (docker ps)")
+    print("  [2] Docker system info          (docker info)")
+    print("  [3] systemd Docker service      (systemctl status docker)")
+    print("  [4] Recent Docker journal       (journalctl -u docker -n 30)")
+    print("  [0] Back")
+    try:
+        choice = input("\n  Choice: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return
+    cmds: Dict[str, List[str]] = {
+        "1": ["docker", "ps", "--format", "table {{.Names}}\t{{.Status}}\t{{.Ports}}"],
+        "2": ["docker", "info"],
+        "3": ["systemctl", "status", "docker", "--no-pager", "-l"],
+        "4": ["journalctl", "-u", "docker", "-n", "30", "--no-pager"],
+    }
+    if choice in cmds:
+        print()
+        code, out = run_command(cmds[choice], timeout=15)
+        print(out or "(no output)")
+        input("\n  Press Enter to continue…")
+
+
+def run_install_prerequisites(boss: Optional["BossAI"] = None) -> None:
+    """Guided prerequisite installer (Docker, Node.js, Python tools, Git)."""
+    print_section("INSTALL PREREQUISITES")
+    print("""
+  This step installs the following on your system:
+    • Docker Engine + Docker Compose (via the official docker-ce repo)
+    • Node.js (for the Node A command-center dashboard)
+    • Git, curl, Python pip & wheel
+    • Python packages: flask, requests, beautifulsoup4
+""")
+    confirm = input("  Proceed with installation? (y/N): ").strip().lower()
+    if confirm != "y":
+        print("  Skipped.")
+        return
+    if boss is None:
+        boss = BossAI([])
+    try:
+        check_network_connectivity(boss)
         install_nodejs_python(boss)
         set_up_docker_repository(boss)
         install_docker_engine(boss)
+        print(_c("\n  ✓ Prerequisites installed successfully!", _GREEN))
+    except Exception as exc:
+        print(_c(f"\n  ✗ Installation failed: {exc}", _RED))
+        print("  Check your network connection and try again.")
+    input("  Press Enter to continue…")
 
-    def minion_repo(boss: BossAI) -> None:
-        clone_repository(boss, repo_url, clone_path)
 
-    def minion_config(boss: BossAI) -> None:
-        nonlocal config
+def run_configure_env(boss: Optional["BossAI"] = None) -> None:
+    """Guided configuration collector and environment-file generator."""
+    print_section("CONFIGURE ENVIRONMENT FILES")
+    print("""
+  This step collects your network addresses and credentials, then
+  generates all .env files needed for the homelab nodes.
+  Press Enter at each prompt to accept the default value.
+""")
+    confirm = input("  Proceed? (y/N): ").strip().lower()
+    if confirm != "y":
+        print("  Skipped.")
+        return
+    if boss is None:
+        boss = BossAI([])
+    try:
         config = collect_configuration(boss)
+        generate_env_files(boss, config, REPO_ROOT)
+        print(_c("\n  ✓ Environment files generated!", _GREEN))
+    except Exception as exc:
+        print(_c(f"\n  ✗ Configuration failed: {exc}", _RED))
+    input("  Press Enter to continue…")
 
-    def minion_env(boss: BossAI) -> None:
-        generate_env_files(boss, config, clone_path)
 
-    # Build a dictionary of chat commands and their corresponding actions.  Each
-    # action returns a user‑facing summary string.  Commands are matched
-    # case‑insensitively.
-    def task_install_deps(b: BossAI) -> str:
-        install_nodejs_python(b)
-        set_up_docker_repository(b)
-        install_docker_engine(b)
-        return "Dependencies installed successfully."
+def run_portainer_on_all_nodes(boss: Optional["BossAI"] = None) -> None:
+    """Install Portainer CE on every homelab node via portainer-install.sh.
 
-    def task_clone_repo(b: BossAI) -> str:
-        clone_repository(b, repo_url, clone_path)
-        return f"Repository cloned or updated at {clone_path}."
+    Nodes that cannot be reached are skipped with a warning.  The script
+    is run locally (--local) for the current machine and remotely (--ip)
+    for every other node using the portainer-install.sh helper.
+    """
+    print_section("INSTALL PORTAINER ON ALL NODES")
+    portainer_script = REPO_ROOT / "scripts" / "portainer-install.sh"
+    if not portainer_script.exists():
+        print(_c(f"  ✗ portainer-install.sh not found at {portainer_script}", _RED))
+        input("  Press Enter to continue…")
+        return
 
-    def task_generate_env(b: BossAI) -> str:
-        # Ensure configuration exists
-        if not config:
-            return "No configuration loaded. Please run the CLI configuration step first."
-        generate_env_files(b, config, clone_path)
-        return "Environment files generated."
-
-    def task_configure_api_keys(b: BossAI) -> str:
-        if not config:
-            return "No configuration loaded. Please run the CLI configuration step first."
-        configure_api_keys(b, config, clone_path)
-        return "API tokens configured."
-
-    def task_verify(b: BossAI) -> str:
-        verify_installation(b)
-        return "Installation verification completed."
-
-    def task_help(b: BossAI) -> str:
-        return "Available commands: " + ", ".join(sorted(tasks.keys()))
-
-    def task_install_homeassistant(b: BossAI) -> str:
-        if not config:
-            return "No configuration loaded. Please run the configuration step first."
-        return install_homeassistant(b, clone_path, config)
-
-    def task_setup_cloudflare(b: BossAI) -> str:
-        if not config:
-            return "No configuration loaded. Please run the configuration step first."
-        return configure_cloudflare(b, clone_path, config)
-
-    def task_setup_nabucasa(b: BossAI) -> str:
-        if not config:
-            return "No configuration loaded. Please run the configuration step first."
-        return configure_nabu_casa(b, clone_path, config)
-
-    # Perform a full installation by sequentially executing the primary tasks.
-    def task_full_install(b: BossAI) -> str:
-        messages: List[str] = []
-        try:
-            messages.append(task_install_deps(b))
-            messages.append(task_clone_repo(b))
-            # Ensure configuration has been collected via CLI
-            if not config:
-                return "No configuration loaded. Please run the configuration step from the CLI before using full install."
-            messages.append(task_generate_env(b))
-            messages.append(task_configure_api_keys(b))
-            # Automatically install Home Assistant and Cloudflare after generating env
-            messages.append(task_install_homeassistant(b))
-            messages.append(task_setup_cloudflare(b))
-            messages.append(task_setup_nabucasa(b))
-            messages.append(task_verify(b))
-            return "\n".join(messages)
-        except Exception as exc:
-            return f"Error during full install: {exc}"
-
-    # Placeholder; will assign tasks mapping after definitions
-    tasks: Dict[str, Callable[[BossAI], str]] = {}
-
-    def minion_chat(boss: BossAI) -> None:
-        # Ask user if they want to start chat server now
-        start = prompt_input("Start chat server after installation? (y/N)", "N").lower()
-        if start == "y":
-            start_chat_server(boss, clone_path, tasks)
-
-    # Now assign tasks mapping (after functions are defined).
-    tasks = {
-        "install dependencies": task_install_deps,
-        "clone repository": task_clone_repo,
-        "generate env files": task_generate_env,
-        "configure api keys": task_configure_api_keys,
-        "verify installation": task_verify,
-        "install homeassistant": task_install_homeassistant,
-        "configure cloudflare": task_setup_cloudflare,
-        "configure nabu casa": task_setup_nabucasa,
-        "help": task_help,
-        "full install": task_full_install,
+    # Load IPs from node-inventory.env if present, else use defaults
+    inv = REPO_ROOT / "config" / "node-inventory.env"
+    node_ips: Dict[str, str] = {
+        "Node A (Brain)":       "192.168.1.9",
+        "Node B (Unraid/GW)":   "192.168.1.222",
+        "Node C (Intel Arc)":   "192.168.1.6",
+        "Node D (Home Asst.)":  "192.168.1.149",
+        "Node E (Sentinel)":    "192.168.1.116",
     }
+    node_users: Dict[str, str] = {k: "root" for k in node_ips}
+    if inv.exists():
+        for line in inv.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k, v = k.strip(), v.strip()
+            ip_map = {
+                "NODE_A_IP": "Node A (Brain)",
+                "NODE_B_IP": "Node B (Unraid/GW)",
+                "NODE_C_IP": "Node C (Intel Arc)",
+                "NODE_D_IP": "Node D (Home Asst.)",
+                "NODE_E_IP": "Node E (Sentinel)",
+            }
+            user_map = {
+                "NODE_A_SSH_USER": "Node A (Brain)",
+                "NODE_B_SSH_USER": "Node B (Unraid/GW)",
+                "NODE_C_SSH_USER": "Node C (Intel Arc)",
+                "NODE_D_SSH_USER": "Node D (Home Asst.)",
+                "NODE_E_SSH_USER": "Node E (Sentinel)",
+            }
+            if k in ip_map:
+                node_ips[ip_map[k]] = v
+            if k in user_map:
+                node_users[user_map[k]] = v
 
-    # Decide minions based on interactive or non‑interactive mode
+    print("  Will install Portainer CE on the following nodes:\n")
+    for name, ip in node_ips.items():
+        print(f"    • {name}  ({ip})")
+    print()
+    confirm = input("  Proceed? (y/N): ").strip().lower()
+    if confirm != "y":
+        print("  Skipped.")
+        return
+
+    for name, ip in node_ips.items():
+        user = node_users.get(name, "root")
+        print(f"\n  ── Installing on {name} ({ip}) ──")
+        cmd = [
+            "ssh", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new",
+            f"{user}@{ip}",
+            "bash -s --",
+        ]
+        print(f"  Running: ssh {user}@{ip} bash -s -- < {portainer_script.name}")
+        try:
+            with open(portainer_script, "rb") as fh:
+                script_data = fh.read()
+            proc = subprocess.run(
+                cmd,
+                input=script_data,
+                capture_output=False,
+                timeout=300,
+            )
+            if proc.returncode == 0:
+                print(_c(f"  ✓ Portainer installed on {name}", _GREEN))
+            else:
+                print(_c(f"  ✗ Portainer install failed on {name} (exit {proc.returncode})", _RED))
+                print("     Check SSH access and try manually:")
+                print(f"     ssh {user}@{ip} bash -s -- < scripts/portainer-install.sh")
+        except subprocess.TimeoutExpired:
+            print(_c(f"  ✗ Timed out on {name}", _RED))
+        except Exception as exc:
+            print(_c(f"  ✗ Error on {name}: {exc}", _RED))
+
+    print()
+    print(_c("  ✓ Portainer install pass complete.", _GREEN))
+    print("     Access each node's Portainer at http://<node-ip>:9000")
+    input("\n  Press Enter to continue…")
+
+
+def _run_full_guided_install(boss: "BossAI") -> None:
+    """Run the full guided install sequence (all steps in order)."""
+    print_section("FULL GUIDED INSTALL")
+    print("""
+  This runs all installation steps in order:
+    1. System health check
+    2. Install prerequisites (Docker, Node.js, Python tools)
+    3. Setup virtual environment (.venv)
+    4. Configure environment files
+    5. Install Portainer on all nodes
+    6. Deploy all node stacks via docker compose
+    7. Test AI assistant
+
+  You will be prompted before each step.
+""")
+    confirm = input("  Start full guided install? (y/N): ").strip().lower()
+    if confirm != "y":
+        return
+    run_health_checks(boss)
+    input("\n  Press Enter to continue to prerequisites installation…")
+    run_install_prerequisites(boss)
+    setup_venv(boss)
+    input("\n  Press Enter to continue to environment configuration…")
+    run_configure_env(boss)
+    input("\n  Press Enter to continue to Portainer installation…")
+    run_portainer_on_all_nodes(boss)
+    test_ai_assistant(boss)
+    print(_c("\n  ✓ Full guided install complete!", _GREEN))
+    input("  Press Enter to return to main menu…")
+
+
+def run_main_menu() -> None:
+    """Launch the main menu-driven TUI loop.
+
+    This is the primary entry point for interactive use.  The loop
+    continues until the user selects "Exit" (option 0) or sends an
+    interrupt signal.
+    """
+    boss = BossAI([])
+    while True:
+        clear_screen()
+        print_banner()
+        print(f"  {timestamp()}  |  Repo: {REPO_ROOT}\n")
+        print("  MAIN MENU")
+        print("  " + "─" * 52)
+        print("  [1]  System Health Check")
+        print("  [2]  Install Prerequisites")
+        print("  [3]  Setup Virtual Environment  (.venv)")
+        print("  [4]  Configure Environment Files")
+        print("  [5]  Node / Service Operations")
+        print("  [6]  AI Assistant Setup & Test")
+        print("  [7]  Help Assistant  (chat)")
+        print("  [8]  Logs & Troubleshooting")
+        print("  [9]  Full Guided Install  (all steps)")
+        print("  [p]  Install Portainer on All Nodes")
+        print("  [0]  Exit")
+        print()
+        try:
+            choice = input("  Enter choice [0-9, p]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            choice = "0"
+        if choice == "0":
+            print("\n  Goodbye!\n")
+            break
+        elif choice == "1":
+            run_health_checks(boss)
+            input("\n  Press Enter to continue…")
+        elif choice == "2":
+            run_install_prerequisites(boss)
+        elif choice == "3":
+            setup_venv(boss)
+            input("\n  Press Enter to continue…")
+        elif choice == "4":
+            run_configure_env(boss)
+        elif choice == "5":
+            show_node_menu(boss)
+        elif choice == "6":
+            test_ai_assistant(boss)
+        elif choice == "7":
+            run_chat_session(boss)
+        elif choice == "8":
+            show_logs_panel(boss)
+        elif choice == "9":
+            _run_full_guided_install(boss)
+        elif choice == "p":
+            run_portainer_on_all_nodes(boss)
+        else:
+            print(_c("  Invalid choice. Please enter 0–9 or p.", _YELLOW))
+            time.sleep(0.8)
+
+
+def main() -> None:
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--non-interactive", action="store_true",
+                        help="Run unattended installation using defaults or environment variables.")
+    parser.add_argument("--config-file",
+                        help="Path to a JSON or .env config file for non-interactive mode.")
+    parser.add_argument("--auto-start-chat", action="store_true",
+                        help="Automatically start the Flask chat server after unattended installation.")
+    parser.add_argument("--legacy", action="store_true",
+                        help="Run the original sequential (non-menu) interactive installer.")
+    parser.add_argument("--help", action="store_true",
+                        help="Show this help message and exit.")
+    parser.add_argument("--brothers-keeper", action="store_true",
+                        help="Use the Brothers Keeper orchestrator (state-persistent, API-enabled).")
+    args, unknown = parser.parse_known_args()
+
+    if args.help:
+        parser.print_help()
+        sys.exit(0)
+
+    if args.brothers_keeper:
+        import importlib.util as _ilu
+        _bk_path = os.path.join(os.path.dirname(__file__), "brothers-keeper", "core_orchestrator.py")
+        _spec = _ilu.spec_from_file_location("core_orchestrator", _bk_path)
+        _mod = _ilu.module_from_spec(_spec)  # type: ignore[arg-type]
+        _spec.loader.exec_module(_mod)  # type: ignore[union-attr]
+        _mod.main_cli()
+        return
+
+    # Non-interactive / unattended mode
     if args.non_interactive:
-        # Load configuration without prompting.  Use file if provided.
+        ensure_root()
+        default_repo = "https://github.com/Enigmaticjoe/onemoreytry.git"
+        default_dest = str(Path.home() / "onemoreytry")
+        repo_url = os.environ.get("REPOSITORY_URL", default_repo)
+        dest_dir = os.environ.get("DESTINATION_DIR", default_dest)
+        clone_path = Path(dest_dir).expanduser()
         config = load_non_interactive_config(args.config_file)
-        # Define minions for unattended mode
+
+        def _minion_deps(b: BossAI) -> None:
+            install_nodejs_python(b)
+            set_up_docker_repository(b)
+            install_docker_engine(b)
+
         unattended_minions = [
             Minion("Network Connectivity Check", lambda b: check_network_connectivity(b)),
-            Minion("Install Dependencies", minion_deps),
-            Minion("Clone Repository", minion_repo),
+            Minion("Install Dependencies", _minion_deps),
+            Minion("Clone Repository", lambda b: clone_repository(b, repo_url, clone_path)),
             Minion("Generate Env Files", lambda b: generate_env_files(b, config, clone_path)),
             Minion("Install Home Assistant", lambda b: install_homeassistant(b, clone_path, config)),
             Minion("Configure Cloudflare", lambda b: configure_cloudflare(b, clone_path, config)),
             Minion("Configure Nabu Casa", lambda b: configure_nabu_casa(b, clone_path, config)),
             Minion("Verification", lambda b: verify_installation(b)),
         ]
-        # Run unattended minions
         boss = BossAI(unattended_minions)
         boss.run_all()
-        # Optionally start the chat server if auto flag is set
         if args.auto_start_chat:
-            # Build tasks mapping for chat server
-            tasks = {
-                "install dependencies": task_install_deps,
-                "clone repository": task_clone_repo,
-                "generate env files": task_generate_env,
-                "configure api keys": task_configure_api_keys,
-                "verify installation": task_verify,
-                "install homeassistant": task_install_homeassistant,
-                "configure cloudflare": task_setup_cloudflare,
-                "configure nabu casa": task_setup_nabucasa,
-                "help": task_help,
-                "full install": task_full_install,
-            }
-            start_chat_server(boss, clone_path, tasks)
-    else:
-        # Interactive mode: gather configuration via prompts and run all minions
+            start_chat_server(boss, clone_path)
+        return
+
+    # Legacy sequential interactive mode (--legacy flag)
+    if args.legacy:
+        ensure_root()
+        print_banner()
+        default_repo = "https://github.com/Enigmaticjoe/onemoreytry.git"
+        default_dest = str(Path.home() / "onemoreytry")
+        repo_url = prompt_input("Repository URL to clone", default_repo)
+        dest_dir = prompt_input("Destination directory", default_dest)
+        clone_path = Path(dest_dir).expanduser()
+        config: Dict[str, Any] = {}
+        tasks: Dict[str, Callable[[BossAI], str]] = {}
+
+        def _legacy_deps(b: BossAI) -> None:
+            install_nodejs_python(b)
+            set_up_docker_repository(b)
+            install_docker_engine(b)
+
+        def _legacy_config(b: BossAI) -> None:
+            nonlocal config
+            config = collect_configuration(b)
+
+        def _legacy_env(b: BossAI) -> None:
+            generate_env_files(b, config, clone_path)
+
+        def _legacy_chat(b: BossAI) -> None:
+            start = prompt_input("Start chat server after installation? (y/N)", "N").lower()
+            if start == "y":
+                start_chat_server(b, clone_path, tasks)
+
+        tasks = {
+            "install dependencies": lambda b: (
+                (_legacy_deps(b), "Dependencies installed.")[1]  # type: ignore[func-returns-value]
+            ),
+            "clone repository": lambda b: (
+                clone_repository(b, repo_url, clone_path) or f"Repository at {clone_path}."
+            ),
+            "generate env files": lambda b: (
+                (generate_env_files(b, config, clone_path), "Environment files generated.")[1]  # type: ignore[func-returns-value]
+            ),
+            "configure api keys": lambda b: (
+                (configure_api_keys(b, config, clone_path), "API tokens configured.")[1]  # type: ignore[func-returns-value]
+            ),
+            "verify installation": lambda b: (
+                verify_installation(b) or "Verification complete."
+            ),
+            "install homeassistant": lambda b: install_homeassistant(b, clone_path, config),
+            "configure cloudflare": lambda b: configure_cloudflare(b, clone_path, config),
+            "configure nabu casa": lambda b: configure_nabu_casa(b, clone_path, config),
+            "help": lambda b: "Available commands: " + ", ".join(tasks.keys()),
+        }
         boss = BossAI([
             Minion("Network Connectivity Check", lambda b: check_network_connectivity(b)),
-            Minion("Install Dependencies", minion_deps),
-            Minion("Clone Repository", minion_repo),
-            Minion("Collect Configuration", minion_config),
-            # Configure API keys using the config and clone path captured above
+            Minion("Install Dependencies", _legacy_deps),
+            Minion("Clone Repository", lambda b: clone_repository(b, repo_url, clone_path)),
+            Minion("Collect Configuration", _legacy_config),
             Minion("Configure API Keys", lambda b: configure_api_keys(b, config, clone_path)),
-            Minion("Generate Env Files", minion_env),
-            Minion("Launch Chat Server", minion_chat),
+            Minion("Generate Env Files", _legacy_env),
+            Minion("Launch Chat Server", _legacy_chat),
             Minion("Verification", lambda b: verify_installation(b)),
         ])
         boss.run_all()
+        return
+
+    # Default: OS-like TUI menu
+    run_main_menu()
 
 
 if __name__ == "__main__":

@@ -1051,6 +1051,49 @@ test_result $? "node-a-command-center/.env.example documents LiteLLM settings"
 
 echo ""
 
+# Test 15: Validate bos.py OS-like installer
+echo "15. Validating bos.py OS-like installer..."
+echo "-------------------------------------------"
+
+[ -f "bos.py" ]
+test_result $? "bos.py exists"
+
+python3 -c "import py_compile; py_compile.compile('bos.py', doraise=True)" 2>/dev/null
+test_result $? "bos.py Python syntax valid"
+
+grep -q "run_main_menu" bos.py
+test_result $? "bos.py has menu-driven TUI (run_main_menu)"
+
+grep -q "run_health_checks" bos.py
+test_result $? "bos.py has system health checks (run_health_checks)"
+
+grep -q "setup_venv" bos.py
+test_result $? "bos.py has virtual environment setup (setup_venv)"
+
+grep -q "query_ollama" bos.py
+test_result $? "bos.py has local Ollama AI integration (query_ollama)"
+
+grep -q "NODE_COMPOSE_MAP" bos.py
+test_result $? "bos.py maps nodes to docker compose files (NODE_COMPOSE_MAP)"
+
+grep -q "show_node_menu\|_node_action_menu" bos.py
+test_result $? "bos.py has node operations menu"
+
+grep -q "test_ai_assistant" bos.py
+test_result $? "bos.py has AI assistant test function"
+
+grep -q "run_chat_session" bos.py
+test_result $? "bos.py has terminal chat session (run_chat_session)"
+
+grep -q "show_logs_panel" bos.py
+test_result $? "bos.py has logs/troubleshooting panel"
+
+grep -q "\-\-non-interactive" bos.py
+test_result $? "bos.py supports --non-interactive unattended mode"
+
+grep -q "OLLAMA_URL\|ollama_url" bos.py
+test_result $? "bos.py reads OLLAMA_URL environment variable"
+
 echo ""
 echo "================================================================================"
 echo "  TEST RESULTS"

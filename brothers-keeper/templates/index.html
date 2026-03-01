@@ -269,7 +269,7 @@
     #log-body .log-line { white-space: pre-wrap; word-break: break-all; }
     #log-body .log-line:nth-child(odd) { color: #9ca3af; }
 
-    /* ===== Modal ===== */
+    /* ===== Confirm dialog ===== */
     .modal-backdrop {
       display: none;
       position: fixed;
@@ -297,56 +297,10 @@
     .modal h3 { font-size: 1.2rem; font-weight: 600; }
     .modal p  { color: var(--muted); font-size: 0.9rem; line-height: 1.6; }
 
-    .pin-dots {
-      display: flex;
-      gap: 12px;
-      justify-content: center;
-      padding: 8px 0;
-    }
-
-    .pin-dot {
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      border: 2px solid var(--border);
-      background: transparent;
-      transition: background var(--transition), border-color var(--transition);
-    }
-
-    .pin-dot.filled { background: var(--accent); border-color: var(--accent); }
-
-    .pin-keypad {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-    }
-
-    .pin-key {
-      padding: 14px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      font-size: 1.1rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background var(--transition);
-      color: var(--text);
-    }
-
-    .pin-key:hover  { background: rgba(255,255,255,0.05); }
-    .pin-key:active { background: rgba(0,212,255,0.1); }
-
     .modal-actions { display: flex; gap: 8px; }
     .modal-actions .btn { flex: 1; }
 
-    .modal-error {
-      color: var(--red);
-      font-size: 0.85rem;
-      min-height: 1.2em;
-      text-align: center;
-    }
-
-    /* ===== Voice btn ===== */
+        /* ===== Voice btn ===== */
     #voice-btn {
       position: fixed;
       bottom: 24px;
@@ -436,10 +390,10 @@
   <div id="content">
     <!-- Confirm bar (shown when a task needs approval) -->
     <div id="confirm-bar">
-      <p id="confirm-msg">Action requires caregiver approval.</p>
+      <p id="confirm-msg">Action requires approval before running.</p>
       <div class="confirm-actions">
-        <button class="btn btn-success" id="confirm-approve-btn" onclick="openPinModal('approve')">✓ Approve</button>
-        <button class="btn btn-danger"  id="confirm-reject-btn"  onclick="openPinModal('reject')">✗ Reject</button>
+        <button class="btn btn-success" id="confirm-approve-btn" onclick="confirmAction(true)">✓ Approve</button>
+        <button class="btn btn-danger"  id="confirm-reject-btn"  onclick="confirmAction(false)">✗ Reject</button>
       </div>
     </div>
 
@@ -475,38 +429,7 @@
   </div>
 </main>
 
-<!-- ===================== CAREGIVER PIN MODAL ===================== -->
-<div class="modal-backdrop" id="pin-modal">
-  <div class="modal">
-    <h3>🔒 Caregiver Verification</h3>
-    <p>Enter your 4-digit caregiver PIN to <span id="pin-action-label">approve</span> this action.</p>
-    <div class="pin-dots" id="pin-dots">
-      <div class="pin-dot" id="dot-0"></div>
-      <div class="pin-dot" id="dot-1"></div>
-      <div class="pin-dot" id="dot-2"></div>
-      <div class="pin-dot" id="dot-3"></div>
-    </div>
-    <div class="pin-keypad">
-      <button class="pin-key" onclick="pinKey('1')">1</button>
-      <button class="pin-key" onclick="pinKey('2')">2</button>
-      <button class="pin-key" onclick="pinKey('3')">3</button>
-      <button class="pin-key" onclick="pinKey('4')">4</button>
-      <button class="pin-key" onclick="pinKey('5')">5</button>
-      <button class="pin-key" onclick="pinKey('6')">6</button>
-      <button class="pin-key" onclick="pinKey('7')">7</button>
-      <button class="pin-key" onclick="pinKey('8')">8</button>
-      <button class="pin-key" onclick="pinKey('9')">9</button>
-      <button class="pin-key" onclick="pinKey('backspace')" style="font-size:1.4rem;">⌫</button>
-      <button class="pin-key" onclick="pinKey('0')">0</button>
-      <button class="pin-key" onclick="pinKey('clear')" style="font-size:0.8rem;">CLR</button>
-    </div>
-    <div class="modal-error" id="pin-error"></div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closePinModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitPin()" id="pin-submit">Submit</button>
-    </div>
-  </div>
-</div>
+<!-- Approval handled inline — no PIN required -->
 
 <!-- Voice onboarding feedback bubble -->
 <div id="voice-feedback"></div>
@@ -519,28 +442,14 @@
   const API_BASE = '';                     // same origin
   const POLL_INTERVAL_MS  = 2000;          // state polling
   const KNOWN_STATUSES = new Set(['pending','running','done','failed','skipped']);
-  // Caregiver PIN — stored in localStorage.  On first load, prompt to set it.
-  function getCaregiverPin() {
-    let pin = localStorage.getItem('bk_pin');
-    if (!pin) {
-      pin = prompt('Set a 4-digit caregiver PIN (you will need this to approve installs):', '');
-      if (pin && /^\d{4}$/.test(pin)) {
-        localStorage.setItem('bk_pin', pin);
-      } else {
-        pin = null;
-        alert('Invalid PIN. A PIN is required to approve protected actions. Reload the page to set one.');
-      }
-    }
-    return pin || '';
-  }
-  const CAREGIVER_PIN = getCaregiverPin();
   const TASK_LABELS = {
-    check_network:  'Network Check',
-    install_deps:   'Install Dependencies',
-    clone_repo:     'Clone Repository',
-    generate_env:   'Generate Env Files',
-    start_services: 'Start Services',
-    verify:         'Verify Installation',
+    check_network:     'Network Check',
+    install_deps:      'Install Dependencies',
+    install_portainer: 'Install Portainer',
+    clone_repo:        'Clone Repository',
+    generate_env:      'Generate Env Files',
+    start_services:    'Start All Node Services',
+    verify:            'Verify Installation',
   };
   const TASK_SEQUENCE = Object.keys(TASK_LABELS);
 
@@ -549,8 +458,6 @@
   // =========================================================
   let state = { phase: 'idle', tasks: [], log: [], pending_confirm: null, error: '' };
   let pollTimer = null;
-  let pinIntent = null;   // 'approve' | 'reject'
-  let pinBuffer  = '';
 
   // =========================================================
   // HTML escaping (XSS prevention)
@@ -678,7 +585,7 @@
     const pend = state.pending_confirm;
     if (pend) {
       const label = TASK_LABELS[pend] || pend;
-      msg.textContent = `'${label}' requires caregiver approval before running.`;
+      msg.textContent = `Approve running '${label}'?`;
       bar.classList.add('visible');
       document.getElementById('confirm-approve-btn').dataset.action = pend;
       document.getElementById('confirm-reject-btn').dataset.action  = pend;
@@ -725,63 +632,11 @@
   }
 
   // =========================================================
-  // Confirm / PIN modal
+  // Confirm actions (direct — no PIN required)
   // =========================================================
-  function openPinModal(intent) {
-    pinIntent  = intent;
-    pinBuffer  = '';
-    document.getElementById('pin-action-label').textContent = intent;
-    document.getElementById('pin-error').textContent = '';
-    updatePinDots();
-    document.getElementById('pin-modal').classList.add('visible');
-  }
-
-  function closePinModal() {
-    pinBuffer = '';
-    updatePinDots();
-    document.getElementById('pin-error').textContent = '';
-    document.getElementById('pin-modal').classList.remove('visible');
-  }
-
-  function pinKey(k) {
-    if (k === 'backspace') {
-      pinBuffer = pinBuffer.slice(0, -1);
-    } else if (k === 'clear') {
-      pinBuffer = '';
-    } else if (pinBuffer.length < 4) {
-      pinBuffer += k;
-    }
-    updatePinDots();
-    if (pinBuffer.length === 4) {
-      setTimeout(submitPin, 80);  // small delay so last dot is visible
-    }
-  }
-
-  function updatePinDots() {
-    for (let i = 0; i < 4; i++) {
-      const dot = document.getElementById(`dot-${i}`);
-      if (i < pinBuffer.length) {
-        dot.classList.add('filled');
-      } else {
-        dot.classList.remove('filled');
-      }
-    }
-  }
-
-  async function submitPin() {
-    if (pinBuffer.length < 4) {
-      document.getElementById('pin-error').textContent = 'Please enter all 4 digits.';
-      return;
-    }
-    if (pinBuffer !== CAREGIVER_PIN) {
-      document.getElementById('pin-error').textContent = 'Incorrect PIN. Try again.';
-      pinBuffer = '';
-      updatePinDots();
-      return;
-    }
-    const action   = state.pending_confirm;
-    const approved = pinIntent === 'approve';
-    closePinModal();
+  async function confirmAction(approved) {
+    const action = state.pending_confirm;
+    if (!action) return;
     try {
       await apiPost('/confirm', { action, approved });
       if (approved) startPolling();
@@ -840,9 +695,9 @@
     if (cmd.includes('start') || cmd.includes('begin') || cmd.includes('setup')) {
       startSetup();
     } else if (cmd.includes('approve') || cmd.includes('yes')) {
-      if (state.pending_confirm) openPinModal('approve');
+      if (state.pending_confirm) confirmAction(true);
     } else if (cmd.includes('reject') || cmd.includes('deny') || cmd.includes('no')) {
-      if (state.pending_confirm) openPinModal('reject');
+      if (state.pending_confirm) confirmAction(false);
     } else if (cmd.includes('status') || cmd.includes('progress')) {
       speak(`Current phase is ${state.phase}. ${completedCount()} of ${TASK_SEQUENCE.length} tasks complete.`);
     } else {
@@ -871,13 +726,6 @@
   function hideVoiceFeedback() {
     document.getElementById('voice-feedback').style.display = 'none';
   }
-
-  // =========================================================
-  // Keyboard shortcut: Escape closes modal
-  // =========================================================
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closePinModal();
-  });
 
   // =========================================================
   // Boot

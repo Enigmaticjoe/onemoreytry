@@ -67,28 +67,20 @@ When you open the browser interface you will see:
 | **Left sidebar** | Shows every install step and whether it passed ✓, failed ✗, or is still waiting. |
 | **Main area** | Shows large "task tiles" — one tile per install step. Tap a tile to run just that step. |
 | **Log panel** | Shows a live scroll of every command Brothers Keeper runs. |
-| **Yellow approval bar** | Appears when a step needs your permission before it can proceed (see Caregiver PIN below). |
+| **Yellow approval bar** | Appears when a step needs your permission before it can proceed. Tap **Approve** or **Reject** — no PIN required. |
 | **Voice button** (bottom-right 🎙️) | Let you speak commands instead of tapping. Say "start setup", "status", "approve", or "reject". |
 
 ---
 
-## Caregiver PIN
+## Approving or Rejecting a Step
 
-Some steps — like installing system software or changing configuration files —
-are protected.  Before Brothers Keeper runs them, it pauses and shows a yellow
-bar asking for approval.
+Some steps — like installing system software or starting containers — pause
+and show a yellow bar before running.
 
 To approve or reject:
 1. Tap **Approve** or **Reject** in the yellow bar.
-2. A PIN keypad appears.  Enter the 4-digit caregiver PIN.
-3. The first time you open the HMI, you will be prompted to set your PIN.
 
-> **Changing the PIN:** Open the browser console (`F12`) and run:
-> ```javascript
-> localStorage.setItem('bk_pin', '5678');
-> location.reload();
-> ```
-> Replace `5678` with your preferred PIN.  The new PIN is saved in your browser.
+That's it — no PIN needed.
 
 ---
 
@@ -99,8 +91,8 @@ Tap the purple microphone button (🎙️) and speak:
 | What you say | What happens |
 |---|---|
 | "start setup" or "begin" | Starts the full install |
-| "approve" or "yes" | Opens the approval PIN modal |
-| "reject", "deny", or "no" | Opens the rejection PIN modal |
+| "approve" or "yes" | Approves the pending step (no PIN) |
+| "reject", "deny", or "no" | Rejects the pending step (no PIN) |
 | "status" or "progress" | Reads aloud how many steps are complete |
 
 ---
@@ -111,9 +103,10 @@ Tap the purple microphone button (🎙️) and speak:
 |------|--------------------------|
 | **check_network** | Pings Google to make sure the internet is reachable. |
 | **install_deps** | Installs Git, Docker, Python, and other required packages via `dnf`/`dnf5`. |
+| **install_portainer** | Installs Portainer CE on the local machine so you can manage all containers via a web UI. |
 | **clone_repo** | Downloads the home-lab code to `/opt/homelab` (or updates it if already present). |
 | **generate_env** | Runs the setup wizard that creates `.env` files for every service. |
-| **start_services** | Starts the LiteLLM gateway and Intel Arc containers with Docker Compose. |
+| **start_services** | Starts ALL node stacks (Node A–E, Unraid, Deploy GUI) with Docker Compose. |
 | **verify** | Lists running Docker containers so you can confirm everything is up. |
 
 ---
@@ -154,7 +147,7 @@ behaviour.  All variables are optional.
 | `BK_API_TOKEN` | *(none)* | If set, every API request must include `Authorization: Bearer <token>`. |
 | `BK_STATE_FILE` | `/tmp/bk_state.json` | Where install progress is saved. |
 | `BK_REPO_URL` | This repo on GitHub | Repository to clone during install. |
-| `REQUIRE_APPROVAL` | `true` | Set to `false` to skip the caregiver PIN prompt (not recommended). |
+| `REQUIRE_APPROVAL` | `true` | Set to `false` to skip the approval step entirely (installs run immediately). |
 | `LOG_LEVEL` | `INFO` | Set to `DEBUG` for verbose output. |
 | `BK_CORS_ORIGINS` | `*` | Comma-separated origins allowed to call the API (e.g. `http://192.168.1.9:7070`). |
 
@@ -180,20 +173,18 @@ The API server exposes these endpoints on port **7070**:
 |---|---|
 | "Network unreachable" | Check your internet connection and try again. |
 | "Package installation failed" | Make sure you are running as root (`sudo`). |
-| PIN keypad won't accept input | Tap inside the modal window first to give it focus. |
 | Tiles stay "pending" after pressing Start | Make sure the API server is running (`./run_dev.sh`) and reload the page. |
 | Browser shows "HMI template not found" | Make sure `templates/index.html` exists inside the `brothers-keeper/` folder. |
+| Approval bar doesn't appear | Check that `REQUIRE_APPROVAL=true` in your `.env` file. |
 
 ---
 
 ## Security Notes
 
-* The caregiver PIN protects destructive install steps.  Choose a PIN that
-  only the caregiver or administrator knows.
 * Set `BK_API_TOKEN` to a strong random string when exposing the API outside
   your home network.
 * `REQUIRE_APPROVAL=true` (the default) ensures no software is installed or
-  reconfigured without a human giving explicit approval.
+  reconfigured without a human tapping Approve.
 * The API server validates every action name against an allowlist before
   executing it — arbitrary commands cannot be injected through the API.
 
