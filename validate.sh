@@ -181,8 +181,8 @@ test_result $? "Ollama container named 'ollama_intel_arc'"
 grep -q "container_name: chimera_face" node-c-arc/docker-compose.yml
 test_result $? "Open WebUI container named 'chimera_face'"
 
-grep -q "container_name: vllm_brain" node-a-vllm/docker-compose.yml
-test_result $? "Node A vLLM container named 'vllm_brain'"
+grep -q "container_name: brain-vllm" node-a-vllm/docker-compose.yml
+test_result $? "Node A vLLM container named 'brain-vllm'"
 
 echo ""
 
@@ -647,6 +647,71 @@ test_result $? "DEPLOYMENT_GUIDE.md documents vLLM port 8000"
 # GUIDEBOOK.md has Chapter 2.5
 grep -q "Chapter 2.5" GUIDEBOOK.md
 test_result $? "GUIDEBOOK.md has Chapter 2.5 (Node A Brain)"
+
+# Brain Project compose YAML validation
+python3 -c "import yaml; yaml.safe_load(open('node-a-vllm/docker-compose.yml'))"
+test_result $? "node-a-vllm/docker-compose.yml YAML syntax valid"
+
+grep -q "container_name: brain-vllm" node-a-vllm/docker-compose.yml
+test_result $? "Brain Project compose defines brain-vllm service"
+
+grep -q "container_name: brain-qdrant" node-a-vllm/docker-compose.yml
+test_result $? "Brain Project compose defines brain-qdrant service"
+
+grep -q "container_name: brain-openwebui" node-a-vllm/docker-compose.yml
+test_result $? "Brain Project compose defines brain-openwebui service"
+
+grep -q "container_name: brain-searxng" node-a-vllm/docker-compose.yml
+test_result $? "Brain Project compose defines brain-searxng service"
+
+grep -q "container_name: brain-embeddings" node-a-vllm/docker-compose.yml
+test_result $? "Brain Project compose defines brain-embeddings service"
+
+grep -q "container_name: brain-coding-agent" node-a-vllm/docker-compose.yml
+test_result $? "Brain Project compose defines brain-coding-agent service"
+
+grep -q "container_name: brain-hardware-agent" node-a-vllm/docker-compose.yml
+test_result $? "Brain Project compose defines brain-hardware-agent service"
+
+grep -q "container_name: brain-dashboard" node-a-vllm/docker-compose.yml
+test_result $? "Brain Project compose defines brain-dashboard service"
+
+grep -q "HSA_OVERRIDE_GFX_VERSION" node-a-vllm/docker-compose.yml
+test_result $? "Brain Project compose sets HSA_OVERRIDE_GFX_VERSION for ROCm"
+
+grep -q "dolphin-2.9.3-llama-3.1-8b" node-a-vllm/docker-compose.yml
+test_result $? "Brain Project compose references Dolphin model"
+
+grep -q "brain_network" node-a-vllm/docker-compose.yml
+test_result $? "Brain Project compose defines brain_network"
+
+# Service config files exist
+[ -f "node-a-vllm/services/vllm/config.yaml" ]
+test_result $? "node-a-vllm/services/vllm/config.yaml exists"
+
+[ -f "node-a-vllm/services/qdrant/config.yaml" ]
+test_result $? "node-a-vllm/services/qdrant/config.yaml exists"
+
+[ -f "node-a-vllm/services/embeddings/model-config.json" ]
+test_result $? "node-a-vllm/services/embeddings/model-config.json exists"
+
+[ -f "node-a-vllm/services/searxng/settings.yml" ]
+test_result $? "node-a-vllm/services/searxng/settings.yml exists"
+
+[ -f "node-a-vllm/services/searxng/limiter.toml" ]
+test_result $? "node-a-vllm/services/searxng/limiter.toml exists"
+
+[ -f "node-a-vllm/services/hardware-agent/agent.py" ]
+test_result $? "node-a-vllm/services/hardware-agent/agent.py exists"
+
+[ -f "node-a-vllm/setup.sh" ]
+test_result $? "node-a-vllm/setup.sh exists"
+
+[ -x "node-a-vllm/setup.sh" ]
+test_result $? "node-a-vllm/setup.sh is executable"
+
+python3 -m py_compile node-a-vllm/services/hardware-agent/agent.py
+test_result $? "hardware-agent/agent.py Python syntax valid"
 
 echo ""
 

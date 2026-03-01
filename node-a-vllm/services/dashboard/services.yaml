@@ -1,0 +1,43 @@
+---
+# Homepage dashboard services configuration for Brain Project
+# https://gethomepage.dev/configs/services/
+
+- Brain AI:
+    - vLLM Inference:
+        href: http://192.168.1.9:8000/docs
+        description: OpenAI-compatible API (dolphin-2.9.3-llama-3.1-8b)
+        icon: mdi-brain
+        widget:
+          type: customapi
+          url: http://192.168.1.9:8000/health
+          display: text
+    - OpenWebUI:
+        href: http://192.168.1.9:3000
+        description: Brain AI chat interface
+        icon: mdi-chat
+    - Qdrant:
+        href: http://192.168.1.9:6333/dashboard
+        description: Vector database for RAG
+        icon: mdi-database
+    - Embeddings:
+        href: http://192.168.1.9:8001/health
+        description: nomic-embed-text-v1.5 embedding service
+        icon: mdi-text-box-search
+
+- Tools:
+    - SearXNG:
+        href: http://192.168.1.9:8888
+        description: Private search engine
+        icon: mdi-magnify
+    - Coding Agent:
+        href: http://192.168.1.9:8899
+        description: JupyterLab code execution sandbox
+        icon: mdi-code-braces
+    - Hardware Agent:
+        href: http://192.168.1.9:8090/status
+        description: GPU and system monitoring (AMD RX 7900 XT)
+        icon: mdi-gpu
+    - Command Center:
+        href: http://192.168.1.9:3099
+        description: Node A command center dashboard
+        icon: mdi-monitor-dashboard

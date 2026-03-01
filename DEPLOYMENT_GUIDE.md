@@ -35,7 +35,7 @@ API Key: `sk-master-key`
 
 ## Deployment Steps
 
-### Node A: Deploy vLLM Brain (AMD RX 7900 XT)
+### Node A: Deploy Brain Project (AMD RX 7900 XT)
 
 **Location:** `node-a-vllm/`  
 **Full guide:** [`docs/03_DEPLOY_NODE_A_BRAIN.md`](docs/03_DEPLOY_NODE_A_BRAIN.md)
@@ -60,35 +60,42 @@ API Key: `sk-master-key`
    # Expected: Radeon RX 7900 XT
    ```
 
-3. Configure the model:
+3. Configure the environment:
    ```bash
    cd node-a-vllm
    cp .env.example .env
-   # Edit .env: set HUGGINGFACE_TOKEN and VLLM_MODEL
+   # Edit .env: set HUGGING_FACE_HUB_TOKEN (secrets auto-generated)
    ```
 
-4. Deploy vLLM:
+4. Deploy the Brain Project stack:
    ```bash
-   docker compose up -d
+   ./setup.sh         # or: docker compose up -d
    ```
 
-5. Verify (may take 2–5 min on first start while the model downloads):
+5. Verify (vLLM may take 3–5 min on first start while the model downloads):
    ```bash
-   docker logs vllm_brain --tail 20 -f
+   docker logs brain-vllm --tail 20 -f
    curl http://localhost:8000/health
    curl http://localhost:8000/v1/models | jq '.data[].id'
    ```
 
 6. One-command setup alternative:
    ```bash
-   ./scripts/setup-node-a.sh        # full ROCm install + vLLM deploy
-   ./scripts/setup-node-a.sh --status   # check GPU + container health
+   ./scripts/setup-node-a.sh        # full ROCm check + Brain Project deploy
+   ./scripts/setup-node-a.sh --status   # check GPU + all service health
    ```
 
 **Port summary for Node A:**
 | Port | Service |
 |------|---------|
-| 8000 | vLLM OpenAI API (`brain-heavy` model) |
+| 8000 | vLLM OpenAI API (`dolphin-2.9.3-llama-3.1-8b` / `brain-heavy` alias) |
+| 3000 | OpenWebUI chat interface |
+| 6333 | Qdrant vector database |
+| 8001 | Embeddings service |
+| 8888 | SearXNG private search |
+| 8899 | Coding Agent (JupyterLab) |
+| 8090 | Hardware Agent (GPU monitoring) |
+| 8080 | Dashboard (Homepage) |
 | 11435 | Ollama + ROCm (alternative — see `node-a-vllm/docker-compose.ollama.yml`) |
 | 3099 | Command Center Dashboard (Node.js) |
 | 5000 | KVM Operator (FastAPI) |

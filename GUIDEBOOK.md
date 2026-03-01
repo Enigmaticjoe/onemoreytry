@@ -261,9 +261,11 @@ Already included in `litellm-stack.yml`. Postgres runs as a sidecar container an
 
 ---
 
-## Chapter 2.5 — Node A — Brain Node (RX 7900 XT)
+## Chapter 2.5 — Node A — Brain Project (RX 7900 XT)
 
-> **Install on Node A (192.168.1.9).** This provides the `brain-heavy` model that LiteLLM (Node B) routes heavy-reasoning requests to.  
+> **Install on Node A (192.168.1.9).** This deploys the full Brain Project stack —  
+> vLLM, OpenWebUI, Qdrant, Embeddings, SearXNG, Coding Agent, Hardware Agent, and Dashboard.  
+> The `brain-heavy` LiteLLM alias routes to the `dolphin-2.9.3-llama-3.1-8b` model served by vLLM.  
 > Full guide: [`docs/03_DEPLOY_NODE_A_BRAIN.md`](docs/03_DEPLOY_NODE_A_BRAIN.md)
 
 ### 2.5.1 Install ROCm (AMD GPU driver)
@@ -294,22 +296,22 @@ ls -la /dev/kfd /dev/dri/render*
 # Both must exist
 ```
 
-### 2.5.3 Deploy vLLM (Primary)
+### 2.5.3 Deploy Brain Project (Primary)
 
 ```bash
 cd ~/homelab/node-a-vllm
 cp .env.example .env
-# Edit .env: set HUGGINGFACE_TOKEN and VLLM_MODEL
+# Edit .env: set HUGGING_FACE_HUB_TOKEN at minimum (other secrets auto-generated)
 
-docker compose up -d
+./setup.sh        # or: ./scripts/setup-node-a.sh from repo root
 
-# Wait for model load (~2-5 min on first start)
-docker logs vllm_brain -f | grep -E "Uvicorn|error"
+# Wait for vLLM model load (~3-5 min on first start)
+docker logs brain-vllm -f | grep -E "Uvicorn|error"
 
 # Verify
 curl http://localhost:8000/health
 curl http://localhost:8000/v1/models | jq '.data[].id'
-# → "brain-heavy"
+# → "dolphin-2.9.3-llama-3.1-8b"
 ```
 
 ### 2.5.4 Deploy Ollama+ROCm (Alternative)
@@ -325,7 +327,14 @@ curl http://localhost:11435/api/version
 
 | Port | Service |
 |------|---------|
-| **8000** | vLLM OpenAI API (`brain-heavy`) |
+| **8000** | vLLM OpenAI API (`dolphin-2.9.3-llama-3.1-8b`) |
+| **3000** | OpenWebUI chat interface |
+| **6333** | Qdrant vector database |
+| **8001** | Embeddings service |
+| **8888** | SearXNG private search |
+| **8899** | Coding Agent (JupyterLab) |
+| **8090** | Hardware Agent (GPU monitoring) |
+| **8080** | Dashboard (Homepage) |
 | **11435** | Ollama + ROCm alternative |
 | **3099** | Command Center Dashboard (Chapter 3) |
 | **5000** | KVM Operator (Chapter 4) |
@@ -342,7 +351,7 @@ curl -X POST http://192.168.1.222:4000/v1/chat/completions \
 ### 2.5.7 Automated setup
 
 ```bash
-./scripts/setup-node-a.sh           # full ROCm + vLLM deploy
+./scripts/setup-node-a.sh           # full ROCm + Brain Project deploy
 ./scripts/setup-node-a.sh --status  # GPU + container health check
 ```
 

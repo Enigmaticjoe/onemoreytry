@@ -1,0 +1,19 @@
+# vLLM configuration reference for Brain Project
+# Model: cognitivecomputations/dolphin-2.9.3-llama-3.1-8b-AWQ
+# Hardware: AMD Radeon RX 7900 XT (20GB VRAM) with ROCm
+#
+# NOTE: vLLM reads arguments from the docker-compose command: block, not this file.
+# This file is mounted at /config/config.yaml as a reference and for future
+# vLLM config-file support. Keep it in sync with the docker-compose command: block.
+
+model: cognitivecomputations/dolphin-2.9.3-llama-3.1-8b-AWQ
+quantization: awq
+dtype: half
+gpu_memory_utilization: 0.90
+max_model_len: 16384
+max_num_seqs: 32
+served_model_name: dolphin-2.9.3-llama-3.1-8b
+enable_auto_tool_choice: true
+tool_call_parser: hermes
+trust_remote_code: true
+disable_log_requests: true
