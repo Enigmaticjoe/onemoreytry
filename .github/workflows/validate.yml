@@ -19,6 +19,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Harden Runner
+        uses: step-security/harden-runner@a90bcbc6539c36a85cdfeb73f7e2f433735f215b # v2.15.0
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            files.pythonhosted.org:443
+            pypi.org:443
+
       - name: Install Python dependencies
         run: pip install pyyaml
 
