@@ -182,12 +182,33 @@ def _task_generate_env(ctx: RuntimeContext) -> None:
         raise RuntimeError("Env generation failed")
 
 
-def _task_start_services(ctx: RuntimeContext) -> None:
+def _task_install_portainer(ctx: RuntimeContext) -> None:
+    """Install Portainer CE on the local machine."""
     dest = Path("/opt/homelab")
+    script = dest / "scripts" / "portainer-install.sh"
+    if not script.exists():
+        ctx.append_log("portainer-install.sh not found — skipping Portainer install")
+        return
+    rc, _ = _run(["bash", str(script), "--local"], ctx)
+    if rc != 0:
+        raise RuntimeError("Portainer install failed — check Docker is running")
+
+
+def _task_start_services(ctx: RuntimeContext) -> None:
+    """Start all homelab node services via docker compose."""
+    dest = Path("/opt/homelab")
+    # All compose files in deployment order
     compose_files = [
+        dest / "node-a-vllm" / "docker-compose.yml",
         dest / "node-b-litellm" / "litellm-stack.yml",
+        dest / "node-b-litellm" / "stacks" / "ai-orchestration-stack.yml",
         dest / "node-c-arc" / "docker-compose.yml",
+        dest / "node-d-home-assistant" / "docker-compose.yml",
+        dest / "node-e-sentinel" / "docker-compose.yml",
+        dest / "unraid" / "docker-compose.yml",
+        dest / "deploy-gui" / "docker-compose.yml",
     ]
+    started = 0
     for cf in compose_files:
         if cf.exists():
             rc, _ = _run(
@@ -195,9 +216,12 @@ def _task_start_services(ctx: RuntimeContext) -> None:
                 ctx,
             )
             if rc != 0:
-                ctx.append_log(f"WARNING: compose up failed for {cf} — continuing")
+                ctx.append_log(f"WARNING: compose up failed for {cf.name} — continuing")
+            else:
+                started += 1
         else:
             ctx.append_log(f"Compose file not found: {cf} — skipping")
+    ctx.append_log(f"Started {started} of {len(compose_files)} node stacks")
 
 
 def _task_verify(ctx: RuntimeContext) -> None:
@@ -213,6 +237,7 @@ def _task_verify(ctx: RuntimeContext) -> None:
 TASK_REGISTRY: Dict[str, Callable[[RuntimeContext], None]] = {
     "check_network": _task_check_network,
     "install_deps": _task_install_deps,
+    "install_portainer": _task_install_portainer,
     "clone_repo": _task_clone_repo,
     "generate_env": _task_generate_env,
     "start_services": _task_start_services,
@@ -220,12 +245,13 @@ TASK_REGISTRY: Dict[str, Callable[[RuntimeContext], None]] = {
 }
 
 # Actions that require human approval when REQUIRE_APPROVAL=true
-APPROVAL_REQUIRED_ACTIONS = {"install_deps", "generate_env", "start_services"}
+APPROVAL_REQUIRED_ACTIONS = {"install_deps", "install_portainer", "generate_env", "start_services"}
 
 # Ordered sequence for a full install
 FULL_INSTALL_SEQUENCE = [
     "check_network",
     "install_deps",
+    "install_portainer",
     "clone_repo",
     "generate_env",
     "start_services",
@@ -288,8 +314,8 @@ def confirm_action(action: str, approved: bool, ctx: RuntimeContext, state_file:
         ctx.pending_confirm = None
         task = ctx.upsert_task(action)
         task.status = "skipped"
-        task.message = "Rejected by caregiver"
-        ctx.append_log(f"Action '{action}' rejected by caregiver")
+        task.message = "Rejected by operator"
+        ctx.append_log(f"Action '{action}' rejected by operator")
         save_state(ctx, state_file)
 
 

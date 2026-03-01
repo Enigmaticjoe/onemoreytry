@@ -783,37 +783,20 @@ def create_chat_html(boss: BossAI, dist: Path, commands: Optional[List[str]] = N
             shown.
     """
     # Build a JavaScript snippet to send an initial message on page load
-    # Compose the welcome message.  The first message introduces the assistant
-    # with a friendly, neutral personality and explains its role.  Subsequent
-    # lines list available commands and encourage the user to either click a
-    # button or type a question.  Plain language and short sentences improve
-    # comprehension for users with cognitive impairments【131686025932182†L263-L265】.
-    # Compose a cyberpunk‑inspired welcome.  Use short sentences and plain language
-    # to remain accessible to users with cognitive impairments【131686025932182†L263-L265】.  A
-    # friendly tone invites the user into a neon‑lit world while
-    # reassuring them of step‑by‑step guidance.
     welcome_lines = [
-        "Greetings, traveller of the neon grid. I’m your cyberpunk AI companion.",
-        "I’m here to guide you, step by step, through the homelab installation.",
+        "Greetings! I'm your Homelab AI assistant.",
+        "I'm here to guide you step by step through the homelab installation.",
     ]
     if commands:
-        # Create a user‑friendly list of commands.  List them in a single
-        # sentence so the user knows what’s possible at a glance【740382120809859†L86-L90】.
         cmd_list = ', '.join(commands)
         welcome_lines.append(
             "You can click a button or type one of these commands: " + cmd_list + "."
         )
         welcome_lines.append(
-            "If you’re not sure, type ‘help’ to see your options."
+            "If you're not sure, type 'help' to see your options."
         )
-    # Provide reassurance and guidance on how to restart or seek help.  This
-    # follows conversational design best practices: remind the user they can
-    # restart and that support is available【740382120809859†L95-L104】.
     welcome_lines.append(
         "You can restart the session at any time by refreshing the page."
-    )
-    welcome_lines.append(
-        "If you need extra help, ask a caregiver or reach out to support."
     )
     welcome_js = "\n".join([
         "window.addEventListener('load', function() {",
@@ -847,49 +830,28 @@ def create_chat_html(boss: BossAI, dist: Path, commands: Optional[List[str]] = N
                 input[type="text"] {{ width: calc(100% - 90px); padding: 12px; background: #0a1432; color: #e0eaff; border: 1px solid #00ffc8; border-radius: 4px; font-size: 1em; }}
                 button {{ background-color: #00ffc8; color: #0a0e1a; border: none; border-radius: 4px; padding: 10px 14px; font-size: 1em; cursor: pointer; transition: background-color 0.2s; }}
                 button:hover {{ background-color: #0efbff; }}
-                /* Voice toggle styling */
-                #voice-toggle label {{ color: #e0eaff; font-size: 0.9em; }}
-                #voice-toggle input[type="checkbox"] {{ margin-right: 6px; }}
                 /* Command buttons area */
                 #command-buttons button {{ margin-right: 6px; margin-bottom: 6px; }}
             </style>
         </head>
         <body>
             <div id="chat-container">
-                <!-- Avatar with descriptive alt text for screen readers【131686025932182†L220-L222】 -->
+                <!-- Avatar -->
                 <img id="avatar" src="{AVATAR_DATA_URI}" alt="Cyberpunk AI avatar">
                 <h2 style="margin-top: 0; color: #00ffc8;">Homelab Assistant</h2>
                 <div id="messages"></div>
-                <!-- Voice feedback toggle -->
-                <div id="voice-toggle" style="margin-bottom:10px;">
-                    <label>
-                        <input type="checkbox" id="voiceToggle" onchange="toggleVoice()"> Enable voice feedback
-                    </label>
-                </div>
                 <!-- Command buttons will be injected here by JS -->
                 <div id="command-buttons" style="margin-bottom:10px;"></div>
                 <input type="text" id="user-input" placeholder="Enter a command or ask a question..." onkeydown="if(event.key==='Enter') send();">
                 <button onclick="send()">Send</button>
             </div>
             <script>
-                // Voice settings
-                let voiceEnabled = false;
-                function toggleVoice() {{
-                    voiceEnabled = document.getElementById('voiceToggle').checked;
-                }}
-                function speak(text) {{
-                    if (!voiceEnabled) return;
-                    if (!('speechSynthesis' in window)) return;
-                    const utter = new SpeechSynthesisUtterance(text);
-                    speechSynthesis.speak(utter);
-                }}
                 function appendMessage(text, cls) {{
                     const div = document.createElement('div');
                     div.className = 'msg ' + cls;
                     div.textContent = text;
                     document.getElementById('messages').appendChild(div);
                     document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
-                    if (cls === 'bot') {{ speak(text); }}
                 }}
                 function send() {{
                     const input = document.getElementById('user-input');
@@ -1131,6 +1093,10 @@ NODE_COMPOSE_MAP: Dict[str, Dict[str, Any]] = {
     "Node D – Home Assistant": {
         "compose": REPO_ROOT / "node-d-home-assistant" / "docker-compose.yml",
         "ip": "192.168.1.149",
+    },
+    "Node E – Sentinel (Frigate/NVR)": {
+        "compose": REPO_ROOT / "node-e-sentinel" / "docker-compose.yml",
+        "ip": "192.168.1.116",
     },
     "Unraid Management Stack": {
         "compose": REPO_ROOT / "unraid" / "docker-compose.yml",
@@ -1692,6 +1658,102 @@ def run_configure_env(boss: Optional["BossAI"] = None) -> None:
     input("  Press Enter to continue…")
 
 
+def run_portainer_on_all_nodes(boss: Optional["BossAI"] = None) -> None:
+    """Install Portainer CE on every homelab node via portainer-install.sh.
+
+    Nodes that cannot be reached are skipped with a warning.  The script
+    is run locally (--local) for the current machine and remotely (--ip)
+    for every other node using the portainer-install.sh helper.
+    """
+    print_section("INSTALL PORTAINER ON ALL NODES")
+    portainer_script = REPO_ROOT / "scripts" / "portainer-install.sh"
+    if not portainer_script.exists():
+        print(_c(f"  ✗ portainer-install.sh not found at {portainer_script}", _RED))
+        input("  Press Enter to continue…")
+        return
+
+    # Load IPs from node-inventory.env if present, else use defaults
+    inv = REPO_ROOT / "config" / "node-inventory.env"
+    node_ips: Dict[str, str] = {
+        "Node A (Brain)":       "192.168.1.9",
+        "Node B (Unraid/GW)":   "192.168.1.222",
+        "Node C (Intel Arc)":   "192.168.1.6",
+        "Node D (Home Asst.)":  "192.168.1.149",
+        "Node E (Sentinel)":    "192.168.1.116",
+    }
+    node_users: Dict[str, str] = {k: "root" for k in node_ips}
+    if inv.exists():
+        for line in inv.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k, v = k.strip(), v.strip()
+            ip_map = {
+                "NODE_A_IP": "Node A (Brain)",
+                "NODE_B_IP": "Node B (Unraid/GW)",
+                "NODE_C_IP": "Node C (Intel Arc)",
+                "NODE_D_IP": "Node D (Home Asst.)",
+                "NODE_E_IP": "Node E (Sentinel)",
+            }
+            user_map = {
+                "NODE_A_SSH_USER": "Node A (Brain)",
+                "NODE_B_SSH_USER": "Node B (Unraid/GW)",
+                "NODE_C_SSH_USER": "Node C (Intel Arc)",
+                "NODE_D_SSH_USER": "Node D (Home Asst.)",
+                "NODE_E_SSH_USER": "Node E (Sentinel)",
+            }
+            if k in ip_map:
+                node_ips[ip_map[k]] = v
+            if k in user_map:
+                node_users[user_map[k]] = v
+
+    print("  Will install Portainer CE on the following nodes:\n")
+    for name, ip in node_ips.items():
+        print(f"    • {name}  ({ip})")
+    print()
+    confirm = input("  Proceed? (y/N): ").strip().lower()
+    if confirm != "y":
+        print("  Skipped.")
+        return
+
+    for name, ip in node_ips.items():
+        user = node_users.get(name, "root")
+        print(f"\n  ── Installing on {name} ({ip}) ──")
+        cmd = [
+            "ssh", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new",
+            f"{user}@{ip}",
+            "bash -s --",
+        ]
+        print(f"  Running: ssh {user}@{ip} bash -s -- < {portainer_script.name}")
+        try:
+            with open(portainer_script, "rb") as fh:
+                script_data = fh.read()
+            proc = subprocess.run(
+                cmd,
+                input=script_data,
+                capture_output=False,
+                timeout=300,
+            )
+            if proc.returncode == 0:
+                print(_c(f"  ✓ Portainer installed on {name}", _GREEN))
+            else:
+                print(_c(f"  ✗ Portainer install failed on {name} (exit {proc.returncode})", _RED))
+                print("     Check SSH access and try manually:")
+                print(f"     ssh {user}@{ip} bash -s -- < scripts/portainer-install.sh")
+        except subprocess.TimeoutExpired:
+            print(_c(f"  ✗ Timed out on {name}", _RED))
+        except Exception as exc:
+            print(_c(f"  ✗ Error on {name}: {exc}", _RED))
+
+    print()
+    print(_c("  ✓ Portainer install pass complete.", _GREEN))
+    print("     Access each node's Portainer at http://<node-ip>:9000")
+    input("\n  Press Enter to continue…")
+
+
 def _run_full_guided_install(boss: "BossAI") -> None:
     """Run the full guided install sequence (all steps in order)."""
     print_section("FULL GUIDED INSTALL")
@@ -1701,7 +1763,9 @@ def _run_full_guided_install(boss: "BossAI") -> None:
     2. Install prerequisites (Docker, Node.js, Python tools)
     3. Setup virtual environment (.venv)
     4. Configure environment files
-    5. Test AI assistant
+    5. Install Portainer on all nodes
+    6. Deploy all node stacks via docker compose
+    7. Test AI assistant
 
   You will be prompted before each step.
 """)
@@ -1714,6 +1778,8 @@ def _run_full_guided_install(boss: "BossAI") -> None:
     setup_venv(boss)
     input("\n  Press Enter to continue to environment configuration…")
     run_configure_env(boss)
+    input("\n  Press Enter to continue to Portainer installation…")
+    run_portainer_on_all_nodes(boss)
     test_ai_assistant(boss)
     print(_c("\n  ✓ Full guided install complete!", _GREEN))
     input("  Press Enter to return to main menu…")
@@ -1742,10 +1808,11 @@ def run_main_menu() -> None:
         print("  [7]  Help Assistant  (chat)")
         print("  [8]  Logs & Troubleshooting")
         print("  [9]  Full Guided Install  (all steps)")
+        print("  [p]  Install Portainer on All Nodes")
         print("  [0]  Exit")
         print()
         try:
-            choice = input("  Enter choice [0-9]: ").strip()
+            choice = input("  Enter choice [0-9, p]: ").strip()
         except (EOFError, KeyboardInterrupt):
             choice = "0"
         if choice == "0":
@@ -1771,8 +1838,10 @@ def run_main_menu() -> None:
             show_logs_panel(boss)
         elif choice == "9":
             _run_full_guided_install(boss)
+        elif choice == "p":
+            run_portainer_on_all_nodes(boss)
         else:
-            print(_c("  Invalid choice. Please enter 0–9.", _YELLOW))
+            print(_c("  Invalid choice. Please enter 0–9 or p.", _YELLOW))
             time.sleep(0.8)
 
 
