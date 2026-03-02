@@ -75,7 +75,7 @@ Routes three model types:
 
 **API Key:** `sk-master-key`
 
-### 2. Node C: Intel Arc Ollama (Fedora 43)
+### 2. Node C: Intel Arc Ollama (Fedora 44 cosmic nightly)
 
 #### `node-c-arc/docker-compose.yml`
 Key features:
@@ -179,7 +179,7 @@ Before deploying, ensure:
 
 - [ ] **Node A:** vLLM running on port 8000
 - [ ] **Node B:** Unraid server accessible at 192.168.1.222
-- [ ] **Node C:** Fedora 43 with Intel drivers installed
+- [ ] **Node C:** Fedora 44 (cosmic nightly) with Intel drivers installed
 - [ ] **Node C:** Run `sudo dnf install intel-level-zero-gpu intel-opencl`
 - [ ] **Network:** All nodes can communicate on 192.168.1.0/24
 - [x] **IPs:** Node C=192.168.1.6, HA=192.168.1.149, Proxmox=192.168.1.174, Blue Iris=192.168.1.116, KVM=192.168.1.130 (kvm-d829.local), Brawn=192.168.1.222

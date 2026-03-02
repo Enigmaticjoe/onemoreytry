@@ -49,7 +49,7 @@ docker compose -f litellm-stack.yml up -d
 
 ---
 
-### 2. Node C: Intel Arc Ollama (Fedora 43)
+### 2. Node C: Intel Arc Ollama (Fedora 44 cosmic nightly)
 
 **File:** `node-c-arc/docker-compose.yml`
 

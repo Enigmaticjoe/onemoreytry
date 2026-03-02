@@ -9,15 +9,15 @@
 
 | # | Chapter | What you will accomplish |
 |---|---------|--------------------------|
-| 0 | [Pre-Flight & Network Map](#chapter-0--pre-flight--network-map) | Verify hardware, set IP plan, install Ansible & prereqs on Fedora 43 |
-| 1 | [Node C — Intel Arc Command Center](#chapter-1--node-c--intel-arc-command-center-fedora-43) | Ollama + Chimera Face UI on your Fedora 43 / Intel Arc A770 |
+| 0 | [Pre-Flight & Network Map](#chapter-0--pre-flight--network-map) | Verify hardware, set IP plan, install Ansible & prereqs on Fedora 44 |
+| 1 | [Node C — Intel Arc Command Center](#chapter-1--node-c--intel-arc-command-center-fedora-44) | Ollama + Chimera Face UI on your Fedora 44 (cosmic nightly) / Intel Arc A770 |
 | 2 | [Node B — LiteLLM Gateway](#chapter-2--node-b--litellm-gateway-unraid) | Unified AI API gateway on Unraid (Node B) |
 | 2.5 | [Node A — Brain Node (RX 7900 XT)](#chapter-25--node-a--brain-node-rx-7900-xt) | ROCm + vLLM (or Ollama) on the AMD RX 7900 XT |
 | 3 | [Node A — Command Center Dashboard](#chapter-3--node-a--command-center-dashboard) | Node.js status dashboard + chat proxy |
 | 4 | [KVM Operator](#chapter-4--kvm-operator) | FastAPI AI-controlled KVM over IP (NanoKVM Cube) |
 | 5 | [OpenClaw AI Gateway](#chapter-5--openclaw-ai-gateway) | OpenClaw personal AI assistant + deployment skills |
 | 6 | [OpenClaw × KVM Integration](#chapter-6--openclaw--kvm-integration) | Wire OpenClaw to KVM Operator for full AI-driven control |
-| 7 | [Deploy GUI](#chapter-7--deploy-gui--visual-deployment-console) | Visual web GUI to deploy & administer all nodes from Fedora 43 |
+| 7 | [Deploy GUI](#chapter-7--deploy-gui--visual-deployment-console) | Visual web GUI to deploy & administer all nodes from Fedora 44 |
 | 8 | [Home Assistant Integration](#chapter-8--home-assistant-integration) | Smart-home voice control via LiteLLM |
 | 9 | [Node E — Sentinel / NVR](#chapter-9--node-e--sentinel--nvr) | AI-assisted NVR webhook integration |
 | 10 | [Portainer Stack Administration](#chapter-10--portainer-stack-administration) | Manage all Docker stacks from one UI |
@@ -33,14 +33,14 @@
 
 | Node | Machine | Role | Key hardware |
 |------|---------|------|-------------|
-| Node A | Fedora 43 workstation | Brain / heavy reasoning | RX 7900 XT 20 GB |
+| Node A | Fedora 44 (cosmic nightly) workstation | Brain / heavy reasoning | RX 7900 XT 20 GB |
 | Node B | Unraid server | LiteLLM gateway + Brawn | i5-13600K, 96 GB, RTX 4070 12 GB |
-| Node C | Fedora 43 workstation | Vision AI + Command Center UI | Ryzen 7 7700X, 32 GB, Intel Arc A770 16 GB |
+| Node C | Fedora 44 (cosmic nightly) workstation | Vision AI + Command Center UI | Ryzen 7 7700X, 32 GB, Intel Arc A770 16 GB |
 | Node D | Any machine | Home Assistant | – |
 | Node E | Any machine | Sentinel NVR | – |
 | KVM Host | Any machine | NanoKVM Cube physical attachment | – |
 
-> **Note:** Node A and Node C may be the same Fedora 43 machine if you have both GPUs installed.
+> **Note:** Node A and Node C may be the same Fedora 44 (cosmic nightly) machine if you have both GPUs installed.
 
 ### 0.2 Network Address Plan
 
@@ -58,7 +58,7 @@ KVM_HOSTNAME=kvm-d829.local  # NanoKVM hostname
 CLOUDFLARE_DOMAIN=happystrugglebus.us
 ```
 
-### 0.3 Required Software on Fedora 43 (Command Center)
+### 0.3 Required Software on Fedora 44 (cosmic nightly — Command Center)
 
 ```bash
 # Docker (official repo — NOT the Fedora package)
@@ -134,7 +134,7 @@ This script verifies:
 
 ---
 
-## Chapter 1 — Node C — Intel Arc Command Center (Fedora 43)
+## Chapter 1 — Node C — Intel Arc Command Center (Fedora 44)
 
 > **Install first.** This provides the local Vision AI endpoint that LiteLLM (Node B) routes to.
 
@@ -382,7 +382,7 @@ node node-a-command-center.js
 - **Chat Proxy:** `POST http://localhost:3099/api/chat`
 - **Install Wizard:** `http://localhost:3099/install-wizard`
 
-### 3.3 Install as a Desktop Icon (Fedora 43)
+### 3.3 Install as a Desktop Icon (Fedora 44 cosmic nightly)
 
 ```bash
 chmod +x ~/homelab/node-a-command-center/install-desktop-icon.sh
@@ -419,7 +419,7 @@ systemctl --user enable --now node-a-dashboard
 
 ## Chapter 4 — KVM Operator
 
-> **Install on Node A (Fedora 43) — the machine that will manage other machines via NanoKVM.**
+> **Install on Node A (Fedora 44 cosmic nightly) — the machine that will manage other machines via NanoKVM.**
 
 ### 4.1 What Is the KVM Operator?
 
@@ -430,7 +430,7 @@ The KVM Operator is a FastAPI service that:
 4. Enforces a **human-in-the-loop approval gate** (`REQUIRE_APPROVAL=true`)
 5. Blocks destructive commands via `policy_denylist.txt`
 
-**Why on Node A / Fedora 43?**  
+**Why on Node A / Fedora 44 (cosmic nightly)?**  
 The KVM Operator is a Python service, not a Docker container. It runs natively on the command center machine where the operator (you) can approve or reject AI actions. It can reach all NanoKVM devices on your LAN from this central location.
 
 ### 4.2 Install & Configure
@@ -709,11 +709,11 @@ The `skill-kvm.md` file documents all available API endpoints and their paramete
 
 ## Chapter 7 — Deploy GUI — Visual Deployment Console
 
-> **Runs on Node A / Fedora 43.** A full-featured web GUI for deploying and administering all nodes.
+> **Runs on Node A / Fedora 44 (cosmic nightly).** A full-featured web GUI for deploying and administering all nodes.
 
 ### 7.1 What the Deploy GUI Does
 
-The Deploy GUI is a Docker container running a Node.js web application. From your Fedora 43 browser you can:
+The Deploy GUI is a Docker container running a Node.js web application. From your Fedora 44 (cosmic nightly) browser you can:
 
 - **Deploy** any node's Docker stack with one click
 - **View real-time logs** via streaming terminal output
@@ -848,7 +848,7 @@ node node-e-sentinel.js
 
 ### 10.2 Add Node A as a Portainer Agent
 
-On Node A (Fedora 43):
+On Node A (Fedora 44 cosmic nightly):
 ```bash
 docker run -d \
   -p 9001:9001 \
@@ -1070,7 +1070,7 @@ openssl rand -hex 24
 - Use **Tailscale** for remote access:
 
 ```bash
-# Install Tailscale on Fedora 43
+# Install Tailscale on Fedora 44 (cosmic nightly)
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 ```

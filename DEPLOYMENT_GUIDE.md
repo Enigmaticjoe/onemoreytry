@@ -140,7 +140,7 @@ API Key: `sk-master-key`
 
 ---
 
-### Node C: Deploy Ollama with Intel Arc (Fedora 43)
+### Node C: Deploy Ollama with Intel Arc (Fedora 44 cosmic nightly)
 
 **Location:** `/home/runner/work/onemoreytry/onemoreytry/node-c-arc/`
 
@@ -148,7 +148,7 @@ API Key: `sk-master-key`
 
 1. Ensure Intel Compute Runtime is installed on the host:
    ```bash
-   # On Fedora 43
+   # On Fedora 44 (cosmic nightly)
    sudo dnf install intel-level-zero-gpu intel-opencl
    ```
 

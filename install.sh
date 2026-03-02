@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# Homelab Assistant — One-Click Bootstrap for Fedora 43
+# Homelab Assistant — One-Click Bootstrap for Fedora 44 (cosmic nightly)
 # ==============================================================================
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/Enigmaticjoe/onemoreytry/main/install.sh | sudo bash
@@ -9,7 +9,7 @@
 #   sudo bash install.sh [--non-interactive] [--auto-start-chat]
 #
 # This script:
-#   1. Verifies Fedora 43 + dnf5
+#   1. Verifies Fedora 44 (cosmic nightly) + dnf5
 #   2. Installs minimal deps (git, python3, curl)
 #   3. Clones the repo
 #   4. Hands off to boss_multi_agent_install.py
@@ -51,17 +51,17 @@ check_fedora() {
     fi
     local ver
     ver=$(rpm -E %fedora 2>/dev/null || echo "unknown")
-    if [[ "$ver" != "43" ]]; then
-        log_warn "Expected Fedora 43, detected version: $ver"
+    if [[ "$ver" != "44" ]]; then
+        log_warn "Expected Fedora 44, detected version: $ver"
         log_warn "Proceeding anyway — some commands may differ."
     else
-        log_ok "Fedora 43 confirmed."
+        log_ok "Fedora 44 confirmed."
     fi
 }
 
 check_dnf5() {
     if ! command -v dnf5 &>/dev/null; then
-        # On Fedora 43, 'dnf' should be dnf5
+        # On Fedora 44, 'dnf' should be dnf5
         if command -v dnf &>/dev/null; then
             local dnf_ver
             dnf_ver=$(dnf --version 2>/dev/null | head -1)
@@ -70,7 +70,7 @@ check_dnf5() {
                 return 0
             fi
         fi
-        die "dnf5 not found. Is this Fedora 43?"
+        die "dnf5 not found. Is this Fedora 44?"
     fi
     log_ok "dnf5 available."
 }
@@ -154,7 +154,7 @@ run_installer() {
 main() {
     echo ""
     echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║     Homelab Assistant — One-Click Bootstrap (Fedora 43)      ║${NC}"
+    echo -e "${CYAN}║  Homelab Assistant — One-Click Bootstrap (Fedora 44 cosmic)  ║${NC}"
     echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 

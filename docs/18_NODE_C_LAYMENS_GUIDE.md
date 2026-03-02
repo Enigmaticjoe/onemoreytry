@@ -14,7 +14,7 @@ Node C is the **face of the system** — the node you interact with most directl
 
 - IP address: **192.168.1.6**
 - Nickname: **The Command Center / Eyes**
-- OS: **Fedora 43**
+- OS: **Fedora 44** (cosmic nightly)
 
 Think of Node A as the brain working in the back room, and Node C as the friendly face at the front desk that takes your request, handles the quick stuff itself, and calls the back room only when needed.
 
@@ -50,9 +50,9 @@ The Arc A770 has **16 GB of VRAM** — more than NVIDIA's RTX 4070 Ti, at a frac
 
 ## Setting Up Node C — Step by Step
 
-### Step 1: Install Intel GPU Drivers on Fedora 43
+### Step 1: Install Intel GPU Drivers on Fedora 44 (cosmic nightly)
 
-Fedora 43 includes decent Intel GPU support out of the box, but for AI workloads you want the full Intel oneAPI stack.
+Fedora 44 (cosmic nightly) includes decent Intel GPU support out of the box, but for AI workloads you want the full Intel oneAPI stack.
 
 ```bash
 # Update system first
@@ -290,7 +290,7 @@ docker compose restart openclaw
 | OpenClaw UI | http://192.168.1.6:18789 |
 | Model alias | `intel-vision` (llava) |
 | GPU | Intel Arc A770 (16 GB) |
-| OS | Fedora 43 |
+| OS | Fedora 44 (cosmic nightly) |
 | Key env var | `ZES_ENABLE_SYSMAN=1` |
 
 ---

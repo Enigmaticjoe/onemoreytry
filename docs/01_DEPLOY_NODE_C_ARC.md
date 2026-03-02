@@ -1,4 +1,4 @@
-# Deploy Node C (Intel Arc A770 on Fedora 43) — Ollama via IPEX-LLM
+# Deploy Node C (Intel Arc A770 on Fedora 44 cosmic nightly) — Ollama via IPEX-LLM
 
 ## Host prerequisites (Fedora)
 Install Intel userspace runtime packages (per your blueprint):

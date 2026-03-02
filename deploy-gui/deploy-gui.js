@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Homelab Deploy GUI — Node.js web application
- * Visual GUI to deploy and administer all AI home-lab nodes from Fedora 43.
+ * Visual GUI to deploy and administer all AI home-lab nodes from Fedora 44 (cosmic nightly).
  *
  * Access: http://localhost:9999
  * Endpoints:
