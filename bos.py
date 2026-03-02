@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Boss‑Driven Homelab Install Assistant for Fedora 43
-===================================================
+Boss‑Driven Homelab Install Assistant for Fedora 44 (cosmic nightly)
+======================================================================
 
 This script reimagines the original single‑process homelab installer as
 an orchestrated, multi‑agent system.  A central **Boss AI** coordinates
@@ -9,9 +9,9 @@ several **Minion** agents, each responsible for a discrete part of the
 installation workflow.  The architecture emphasises idempotence,
 robust error handling and self‑correction: if a task fails, the Boss
 attempts to learn from the error by performing a web search and
-presenting possible solutions.  The script supports Fedora 43 systems
-and honours RPM package management best practices without disabling
-SELinux.
+presenting possible solutions.  The script supports Fedora 44 (cosmic
+nightly) systems and honours RPM package management best practices
+without disabling SELinux.
 
 Key design elements
 -------------------
@@ -34,7 +34,7 @@ Key design elements
   directories and performs a `git pull --ff-only`.  Environment files
   prompt before overwriting.  The script aborts on unhandled errors.
 
-* **Fedora 43 aware:** The installer prefers the `dnf5` command when
+* **Fedora 44 aware:** The installer prefers the `dnf5` command when
   available (falling back to `dnf` if not) and installs Docker
   Engine components using the officially recommended packages
   (`docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin`,
@@ -46,7 +46,7 @@ Key design elements
   lightweight Flask web server exposing a HTML chat interface and a
   JSON `/ask` endpoint, enabling browser‑based interaction.
 
-To use this script, run it as root on a Fedora 43 machine.  Answer
+To use this script, run it as root on a Fedora 44 machine.  Answer
 the prompts when asked; the Boss AI will handle the rest.  At the
 end, a chat server listens on port 8008 (by default), and the
 repository and configuration files are ready for deployment.
@@ -72,7 +72,7 @@ try:
     import urllib.request as urlrequest
     from html import unescape
 except ImportError:
-    # Python 2 fallback (unlikely on Fedora 43)
+    # Python 2 fallback (unlikely on Fedora 44)
     import urllib as urlparse  # type: ignore
     import urllib2 as urlrequest  # type: ignore
 

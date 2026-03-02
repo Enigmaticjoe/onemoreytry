@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Boss-Driven Homelab Install Assistant for Fedora 43 — Production Release
+Boss-Driven Homelab Install Assistant for Fedora 44 (cosmic nightly) — Production Release
 =========================================================================
 
 Orchestrated, multi-agent installer for the onemoreytry homelab stack.
@@ -8,13 +8,13 @@ A central BossAI coordinates Minion agents, each handling a discrete
 installation phase.  Self-correcting: on failure the Boss searches for
 fixes and offers a retry.
 
-Fedora 43 specifics
--------------------
+Fedora 44 (cosmic nightly) specifics
+--------------------------------------
 * DNF5 is the ONLY package manager (no dnf4/yum fallback).
 * Docker repo added via ``dnf5 config-manager addrepo --from-repofile=``.
 * Python packages installed inside a venv (PEP 668 compliance).
 * SELinux stays Enforcing — proper file contexts applied.
-* Wayland-only GNOME 49 assumed (no X11 tools).
+* Wayland-only GNOME 50 assumed (no X11 tools).
 
 Usage
 -----
@@ -178,7 +178,7 @@ def write_file(
 # ---------------------------------------------------------------------------
 
 def dnf5_available() -> bool:
-    """Verify dnf5 is present (required on Fedora 43)."""
+    """Verify dnf5 is present (required on Fedora 44)."""
     return shutil.which("dnf5") is not None
 
 
@@ -295,7 +295,7 @@ class BossAI:
     def search_for_error(self, error: str) -> str:
         """Web-search for potential fixes to an error."""
         log.info("Searching for fixes: %r", error)
-        results = search_web(f"Fedora 43 {error}", max_results=3)
+        results = search_web(f"Fedora 44 {error}", max_results=3)
         if not results:
             return "No results found."
         lines = []
@@ -384,8 +384,8 @@ def task_check_network(boss: BossAI) -> None:
 def task_install_core_packages(boss: BossAI) -> None:
     """Install Git, curl, Python venv, Node.js via dnf5."""
     if not dnf5_available():
-        raise RuntimeError("dnf5 not found — is this Fedora 43?")
-    # dnf5-plugins ships by default on F43 but verify
+        raise RuntimeError("dnf5 not found — is this Fedora 44?")
+    # dnf5-plugins ships by default on F44 but verify
     dnf_install(["dnf5-plugins"])
     dnf_install([
         "git", "curl", "python3", "python3-pip", "python3-devel",
@@ -1127,13 +1127,13 @@ def main() -> None:
     banner = f"""
 ╔═══════════════════════════════════════════════════════════════════╗
 ║  Homelab Install Assistant v{VERSION} — Boss-Driven Multi-Agent     ║
-║  Target: Fedora 43 | DNF5 | SELinux Enforcing | Wayland/GNOME49  ║
+║  Target: Fedora 44 cosmic | DNF5 | SELinux Enforcing | Wayland/GNOME50  ║
 ╚═══════════════════════════════════════════════════════════════════╝
 """
     print(banner)
 
     parser = argparse.ArgumentParser(
-        description="Boss-Driven Homelab Install Assistant for Fedora 43",
+        description="Boss-Driven Homelab Install Assistant for Fedora 44 (cosmic nightly)",
     )
     parser.add_argument(
         "--non-interactive", action="store_true",

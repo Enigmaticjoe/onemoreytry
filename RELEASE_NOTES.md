@@ -1,7 +1,7 @@
 # Boss-Driven Homelab Install Assistant v2.0.0 — Release Notes
 
 ## Target Platform
-- **Fedora 43** (GNOME 49 / Wayland / SELinux Enforcing)
+- **Fedora 44** (cosmic nightly — GNOME 50 / Wayland / SELinux Enforcing)
 - **DNF5 exclusively** (no dnf4/yum fallback)
 - **Python 3.14** (PEP 668 compliant)
 
@@ -13,11 +13,11 @@
 | Issue | Old (Broken) | New (Fixed) |
 |-------|-------------|-------------|
 | Repo add command | `dnf config-manager addrepo --from-repofile URL` (space) | `dnf5 config-manager addrepo --from-repofile=URL` (equals sign) |
-| Plugins package | `dnf-plugins-core` (DNF4 legacy) | `dnf5-plugins` (ships by default on F43) |
+| Plugins package | `dnf-plugins-core` (DNF4 legacy) | `dnf5-plugins` (ships by default on F44) |
 | Fallback logic | Falls back to `dnf` if `dnf5` missing | Requires `dnf5` — fails fast with clear error |
 
 ### 2. PEP 668 — Externally Managed Environment
-**Old:** `python3 -m pip install flask beautifulsoup4` → **crashes on Fedora 43** with `externally-managed-environment` error.
+**Old:** `python3 -m pip install flask beautifulsoup4` → **crashes on Fedora 44** with `externally-managed-environment` error.
 
 **New:** Creates a dedicated venv at `/opt/homelab/venv`, installs Flask + bs4 + gunicorn inside it. System Python untouched.
 
@@ -34,7 +34,7 @@
 **New:** Uses DuckDuckGo **Lite** (`lite.duckduckgo.com/lite/`) which has a more stable DOM. Searches for both `result-link` and `result__a` CSS classes for resilience.
 
 ### 6. Dead Code Removed
-- Python 2 `urllib2` / `urllib` fallback removed (F43 ships Python 3.14)
+- Python 2 `urllib2` / `urllib` fallback removed (F44 ships Python 3.14)
 - Unreachable code paths cleaned up
 
 ---
@@ -45,7 +45,7 @@
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Enigmaticjoe/onemoreytry/main/install.sh | sudo bash
 ```
-- Validates Fedora 43 + dnf5 before doing anything
+- Validates Fedora 44 + dnf5 before doing anything
 - Checks SELinux status (warns if not Enforcing)
 - Installs only bootstrap deps, then hands off to Python installer
 - Passes through all CLI arguments (`--non-interactive`, etc.)
@@ -88,7 +88,7 @@ Automatically opens port 8008/tcp in firewalld when starting the chat server.
 
 | Aspect | v1 (Original) | v2 (This Release) |
 |--------|--------------|-------------------|
-| Package manager | dnf5 with dnf fallback | dnf5 only (F43 requirement) |
+| Package manager | dnf5 with dnf fallback | dnf5 only (F44 requirement) |
 | Python deps | System pip (`pip install`) | Venv at `/opt/homelab/venv` |
 | Logging | `print()` with manual timestamps | `logging` module with levels |
 | File permissions | Default (world-readable) | `0600` for secrets, `0644` for config |
@@ -155,7 +155,7 @@ sudo python3 boss_multi_agent_install.py \
 
 ### Container
 ```dockerfile
-FROM fedora:43
+FROM fedora:44
 RUN dnf5 install -y python3 python3-pip git curl && dnf5 clean all
 COPY boss_multi_agent_install.py /opt/homelab/
 EXPOSE 8008 8123

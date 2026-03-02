@@ -2,7 +2,7 @@
 # Grand Unified AI Home Lab — Master Deploy Script
 # Deploys all nodes in the correct order with health checks between steps.
 #
-# This script runs from Node C (Fedora 43, Intel Arc) and deploys:
+# This script runs from Node C (Fedora 44 cosmic nightly, Intel Arc) and deploys:
 #   1. Node C — Ollama + Chimera Face (local)
 #   2. Node B — LiteLLM Gateway (remote via SSH to Unraid)
 #   3. Node A — Command Center Dashboard (local)

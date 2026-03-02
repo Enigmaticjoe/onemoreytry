@@ -1,4 +1,4 @@
-// OpenClaw Configuration — Node C (Fedora 43 / Intel Arc A770)
+// OpenClaw Configuration — Node C (Fedora 44 cosmic nightly / Intel Arc A770)
 // Format: JSON5 (comments + trailing commas allowed, strict key validation)
 // Path:   /opt/openclaw/config/openclaw.json
 //

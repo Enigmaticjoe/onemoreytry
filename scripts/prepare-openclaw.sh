@@ -229,7 +229,7 @@ deploy, administer, and troubleshoot the following nodes:
 
 - **Node A** (${NODE_A_IP}): Brain / vLLM model host, Dashboard (port 3099), KVM Operator (port 5000)
 - **Node B** (${NODE_B_IP}): Unraid / LiteLLM gateway (port 4000), OpenClaw (port 18789), Portainer (port 9000)
-- **Node C** (${NODE_C_IP:-set-in-inventory}): Fedora 43 / Intel Arc A770, Ollama (port 11434), Chimera Face UI (port 3000)
+- **Node C** (${NODE_C_IP:-set-in-inventory}): Fedora 44 (cosmic nightly) / Intel Arc A770, Ollama (port 11434), Chimera Face UI (port 3000)
 - **Node D** (${NODE_D_IP:-not-set}): Home Assistant
 - **Node E** (${NODE_E_IP:-not-set}): Sentinel NVR (Blue Iris)
 

@@ -1,5 +1,5 @@
 # Grand Unified AI Home Lab - Command Center (Node C)
-# Deploy on Fedora 43 with Intel Arc A770 (16GB)
+# Deploy on Fedora 44 (cosmic nightly) with Intel Arc A770 (16GB)
 #
 # Hardware: Ryzen 7 7700X, 32GB RAM, Intel Arc A770 (16GB)
 # Role: Vision AI (Llava) & Whisper Audio

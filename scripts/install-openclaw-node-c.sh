@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Grand Unified AI Home Lab — Install OpenClaw on Node C (Fedora 43 / Intel Arc A770)
+# Grand Unified AI Home Lab — Install OpenClaw on Node C (Fedora 44 cosmic nightly / Intel Arc A770)
 #
 # This script provisions Node C for OpenClaw and deploys the container.
 # After running it, OpenClaw is reachable at http://<NODE_C_IP>:18789.
@@ -77,7 +77,7 @@ fi
 # ── Main flow ─────────────────────────────────────────────────────────────────
 echo ""
 echo "╔═══════════════════════════════════════════════════════╗"
-echo "║   Install OpenClaw on Node C (Intel Arc / Fedora 43)  ║"
+echo "║   Install OpenClaw on Node C (Intel Arc / Fedora 44 cosmic)   ║"
 echo "╚═══════════════════════════════════════════════════════╝"
 echo ""
 echo "  Target:  ${SSH_USER}@${SSH_HOST}"
@@ -221,7 +221,7 @@ LiteLLM on Node B as a fallback for tasks that need larger context or cloud mode
 
 - **Node A** (${NODE_A_IP}): Brain / vLLM model host, Dashboard (port 3099), KVM Operator (port 5000)
 - **Node B** (${NODE_B_IP}): Unraid / LiteLLM gateway (port 4000), Portainer (port 9000)
-- **Node C** (${SSH_HOST}): Fedora 43 / Intel Arc A770 — THIS NODE
+- **Node C** (${SSH_HOST}): Fedora 44 (cosmic nightly) / Intel Arc A770 — THIS NODE
   - Ollama: port 11434 (llava, llama3, etc.)
   - Chimera Face (Open WebUI): port 3000
   - OpenClaw: port 18789 (this service)

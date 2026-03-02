@@ -35,7 +35,7 @@ Node A is the **self-evolving AI brain** of the home lab — a complete inferenc
 
 ### 1.1 Operating System
 
-Fedora 40/41/42/43 or Ubuntu 22.04/24.04 are the tested platforms.  
+Fedora 40/41/42/43/44 (cosmic nightly) or Ubuntu 22.04/24.04 are the tested platforms.  
 The RX 7900 XT requires **ROCm 6.x** for GPU-accelerated inference.
 
 ### 1.2 ROCm (AMD GPU driver stack)
