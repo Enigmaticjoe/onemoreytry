@@ -55,6 +55,7 @@ repository and configuration files are ready for deployment.
 from __future__ import annotations
 
 import os
+import re
 import sys
 import subprocess
 import getpass
@@ -185,7 +186,7 @@ class Minion:
             self.error = str(e)
 
 
-def run_command(cmd: List[str], timeout: int = 60) -> (int, str):
+def run_command(cmd: List[str], timeout: int = 60) -> Tuple[int, str]:
     """Execute a command and return (exit_code, combined stdout/stderr)."""
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -427,16 +428,28 @@ def dnf_install(packages: List[str], boss: BossAI) -> None:
 
 
 def set_up_docker_repository(boss: BossAI) -> None:
-    """Configure the Docker repository for Fedora using dnf config manager."""
-    # Ensure dnf-plugins-core for config‑manager
-    if not check_package_installed("dnf-plugins-core"):
-        dnf_install(["dnf-plugins-core"], boss)
-    boss.log("Adding Docker repository configuration…")
+    """Configure the Docker repository for Fedora using dnf config manager.
+
+    dnf5 (default on Fedora 41+) has ``config-manager`` built-in and uses the
+    ``addrepo --from-repofile=<url>`` syntax.  dnf4 requires the
+    ``dnf-plugins-core`` package and uses ``config-manager --add-repo <url>``.
+    """
     dnf_cmd = choose_dnf()
-    repo_cmd = [dnf_cmd, "config-manager", "addrepo", "--from-repofile",
-               "https://download.docker.com/linux/fedora/docker-ce.repo"]
+    docker_repo_url = "https://download.docker.com/linux/fedora/docker-ce.repo"
+    boss.log("Adding Docker repository configuration…")
+    if dnf_cmd == "dnf5":
+        # dnf5 (Fedora 41+) has config-manager built-in; no extra plugin needed.
+        repo_cmd = [
+            dnf_cmd, "config-manager", "addrepo",
+            f"--from-repofile={docker_repo_url}",
+        ]
+    else:
+        # dnf4 requires dnf-plugins-core for the config-manager subcommand.
+        if not check_package_installed("dnf-plugins-core"):
+            dnf_install(["dnf-plugins-core"], boss)
+        repo_cmd = [dnf_cmd, "config-manager", "--add-repo", docker_repo_url]
     code, out = run_command(repo_cmd)
-    if code != 0 and "already exists" not in out and "File exists" not in out:
+    if code != 0 and not re.search(r"already exists|file exists", out, re.IGNORECASE):
         raise RuntimeError(f"Could not add Docker repository:\n{out}")
     boss.log("Docker repository configured.")
 
@@ -459,11 +472,22 @@ def install_docker_engine(boss: BossAI) -> None:
 
 
 def install_nodejs_python(boss: BossAI) -> None:
-    """Install Node.js, Python pip/wheel, Git and curl."""
+    """Install Node.js, Python pip/wheel, Git and curl.
+
+    On Fedora 44+ Python uses PEP 668 (externally-managed-environment), so
+    ``pip install`` requires ``--break-system-packages`` when targeting the
+    system interpreter.  Prefer running inside a ``.venv`` for day-to-day use
+    (see :func:`setup_venv`); this function targets the initial bootstrap where
+    no venv exists yet.
+    """
     core = ["git", "curl", "python3-pip", "python3-wheel", "nodejs"]
     dnf_install(core, boss)
     boss.log("Installing Python modules via pip…")
-    pip_cmd = ["python3", "-m", "pip", "install", "--quiet", "flask", "beautifulsoup4"]
+    pip_cmd = [
+        "python3", "-m", "pip", "install", "--quiet",
+        "--break-system-packages",
+        "flask", "beautifulsoup4",
+    ]
     code, out = run_command(pip_cmd, timeout=600)
     if code != 0:
         raise RuntimeError(f"pip install failed:\n{out}")
@@ -1108,6 +1132,50 @@ NODE_COMPOSE_MAP: Dict[str, Dict[str, Any]] = {
     },
 }
 
+def _detect_os_release() -> str:
+    """Return the PRETTY_NAME value from /etc/os-release, or an empty string."""
+    os_release = Path("/etc/os-release")
+    if not os_release.exists():
+        return ""
+    try:
+        for line in os_release.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("PRETTY_NAME="):
+                return line.split("=", 1)[1].strip().strip('"')
+    except OSError:
+        pass
+    return ""
+
+
+def _suggest_next_steps(results: Dict[str, bool]) -> None:
+    """Print prioritised next-step recommendations based on health check results.
+
+    Called automatically at the end of :func:`run_health_checks` so the user
+    always leaves the health screen with a clear action plan.
+    """
+    steps: List[str] = []
+    if not results.get("fedora44"):
+        steps.append("⚠  This installer is optimised for Fedora 44. Unexpected behaviour may occur on other distros.")
+    if not results.get("docker"):
+        steps.append("→  [2] Install Prerequisites to install Docker Engine.")
+    elif not results.get("docker_running"):
+        steps.append("→  Run:  sudo systemctl enable --now docker")
+    if not results.get("venv"):
+        steps.append("→  [3] Setup Virtual Environment to create .venv for Python packages.")
+    if not results.get("inventory"):
+        steps.append("→  [4] Configure Environment Files to generate node-inventory.env.")
+    if not results.get("ollama"):
+        steps.append("→  Install Ollama (https://ollama.ai/download) then run: ollama serve")
+    if not results.get("network"):
+        steps.append("⚠  No network connectivity detected — check your connection before proceeding.")
+    if steps:
+        print("  Recommended next steps:")
+        for s in steps:
+            print(f"    {s}")
+    else:
+        print(_c("  ✓ All checks passed — your system looks ready!", _GREEN))
+    print()
+
+
 # ANSI colour helpers
 _GREEN = "\033[0;32m"
 _RED = "\033[0;31m"
@@ -1187,6 +1255,25 @@ def run_health_checks(boss: Optional["BossAI"] = None) -> Dict[str, bool]:
     """
     print_section("SYSTEM HEALTH CHECK")
     results: Dict[str, bool] = {}
+
+    # OS / Fedora 44 detection
+    dist_info = _detect_os_release() or f"{platform.system()} {platform.version()}"
+    is_fedora44 = bool(re.search(r"Fedora(?:\s+Linux)?\s+44\b", dist_info))
+    _health_line(
+        f"OS: {dist_info}",
+        is_fedora44,
+        "target platform" if is_fedora44 else "expected Fedora 44",
+    )
+    results["fedora44"] = is_fedora44
+
+    # dnf5 availability (preferred on Fedora 41+)
+    dnf5_ok = bool(shutil.which("dnf5"))
+    _health_line(
+        "dnf5 (preferred package manager)",
+        dnf5_ok,
+        "will use dnf5" if dnf5_ok else "falling back to dnf",
+    )
+    results["dnf5"] = dnf5_ok
 
     # Python version
     py_ver = platform.python_version()
@@ -1287,6 +1374,7 @@ def run_health_checks(boss: Optional["BossAI"] = None) -> Dict[str, bool]:
     ok_count = sum(1 for v in results.values() if v)
     total = len(results)
     print(f"\n  Summary: {ok_count}/{total} checks passed\n")
+    _suggest_next_steps(results)
     return results
 
 
@@ -1453,12 +1541,16 @@ def run_chat_session(boss: Optional["BossAI"] = None) -> None:
 """)
 
     SUGGESTED = [
-        "How do I install Docker on Fedora?",
+        "How do I install Docker on Fedora 44?",
         "How do I start the LiteLLM gateway?",
         "How do I add a model to Ollama?",
         "What is the default API key for LiteLLM?",
         "How do I access the command center dashboard?",
         "How do I create a virtual environment in Python?",
+        "How do I fix 'externally managed environment' pip error on Fedora 44?",
+        "How do I enable and start the Docker service with systemctl?",
+        "What dnf5 command adds the Docker CE repository on Fedora 44?",
+        "How do I open a firewall port with firewall-cmd on Fedora?",
     ]
 
     while True:
