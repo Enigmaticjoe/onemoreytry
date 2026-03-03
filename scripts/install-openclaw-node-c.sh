@@ -207,16 +207,16 @@ services:
       - "5000:5000"
 YAML
 
-cat > "${BUNDLE_DIR}/node-c/.env.template" <<ENV
-OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_TOKEN}
+cat > "${BUNDLE_DIR}/node-c/.env.template" <<'ENV'
+OPENCLAW_GATEWAY_TOKEN=change-me-openclaw-gateway-token
 OLLAMA_API_KEY=ollama
-LITELLM_API_KEY="$(openssl rand -hex 24)"
-KVM_OPERATOR_URL=http://${NODE_A_IP}:5000
-KVM_OPERATOR_TOKEN=${KVM_OPERATOR_TOKEN}
+LITELLM_API_KEY=change-me-litellm-api-key
+KVM_OPERATOR_URL=http://NODE_A_IP:5000
+KVM_OPERATOR_TOKEN=change-me-kvm-operator-token
 ENV
 
-cat > "${BUNDLE_DIR}/node-a/kvm-operator.env.template" <<ENV
-KVM_OPERATOR_TOKEN=${KVM_OPERATOR_TOKEN}
+cat > "${BUNDLE_DIR}/node-a/kvm-operator.env.template" <<'ENV'
+KVM_OPERATOR_TOKEN=change-me-kvm-operator-token
 REQUIRE_APPROVAL=true
 ALLOW_DANGEROUS=false
 KVM_TARGETS_JSON={"kvm-d829":"192.168.1.130"}
@@ -224,7 +224,7 @@ NANOKVM_USERNAME=admin
 NANOKVM_PASSWORD=change-me
 NANOKVM_AUTH_MODE=auto
 SESSION_TTL=300
-LITELLM_URL=http://${NODE_B_IP}:4000/v1/chat/completions
+LITELLM_URL=http://NODE_B_IP:4000/v1/chat/completions
 LITELLM_API_KEY=sk-master-key
 VISION_MODEL=kvm-vision
 LOG_LEVEL=INFO
@@ -233,21 +233,26 @@ ENV
 cat > "${BUNDLE_DIR}/TURNKEY_RELEASE.md" <<DOC
 # Turnkey release (Node A + Node C)
 
+NOTE: Template files (*.env.template) in this bundle contain placeholder values only.
+Real tokens are written by the installer directly to the runtime directory (${OPENCLAW_DIR}).
+
 ## Node C local deployment (Fedora 44+)
-1. Copy \
-   - \
-   `${BUNDLE_DIR}/stacks/node-c-openclaw-compose.yml` to `${HOMELAB_DIR}/openclaw.yml`
-   - `${BUNDLE_DIR}/node-c/.env.template` to `${OPENCLAW_DIR}/.env`
-   - `node-c-arc/openclaw.json` to `${OPENCLAW_DIR}/config/openclaw.json`
-2. Start:
+The installer has already written the runtime env to ${OPENCLAW_DIR}/.env.
+If deploying manually on a different host, fill in the placeholder values from:
+  ${BUNDLE_DIR}/node-c/.env.template → ${OPENCLAW_DIR}/.env
+1. Copy `${BUNDLE_DIR}/stacks/node-c-openclaw-compose.yml` to `${HOMELAB_DIR}/openclaw.yml`
+2. Ensure `${OPENCLAW_DIR}/.env` contains real tokens (see above)
+3. Start:
    docker compose -f ${HOMELAB_DIR}/openclaw.yml --env-file ${OPENCLAW_DIR}/.env up -d
-3. Open Control UI:
-   http://${NODE_C_IP}:18789/?token=${OPENCLAW_TOKEN}
+4. Open Control UI:
+   http://${NODE_C_IP}:18789/?token=<value of OPENCLAW_GATEWAY_TOKEN in ${OPENCLAW_DIR}/.env>
 
 ## Node A KVM operator container deployment
-1. Copy `${BUNDLE_DIR}/node-a/kvm-operator.env.template` to `${BUNDLE_DIR}/stacks/kvm-operator.env`
+Real token is written to ${OPENCLAW_DIR}/kvm-operator.env.
+Copy it to the stacks directory on Node A before deploying:
+1. Copy ${OPENCLAW_DIR}/kvm-operator.env to the stacks directory alongside node-a-kvm-operator-compose.yml as kvm-operator.env
 2. Deploy:
-   cd ${BUNDLE_DIR}/stacks
+   cd <stacks-dir>
    docker compose -f node-a-kvm-operator-compose.yml up -d
 3. Verify:
    curl -fsS http://${NODE_A_IP}:5000/health
@@ -263,7 +268,44 @@ run "install -m 0644 node-c-arc/openclaw.json '${OPENCLAW_DIR}/config/openclaw.j
 run "install -m 0644 openclaw/skill-kvm.md '${OPENCLAW_DIR}/workspace/skill-kvm.md'"
 run "install -m 0644 openclaw/skill-deploy.md '${OPENCLAW_DIR}/workspace/skill-deploy.md'"
 run "install -m 0644 '${BUNDLE_DIR}/stacks/node-c-openclaw-compose.yml' '${HOMELAB_DIR}/openclaw.yml'"
-run "install -m 0600 '${BUNDLE_DIR}/node-c/.env.template' '${OPENCLAW_DIR}/.env'"
+
+# Write secret-bearing env files only to the runtime directory (never to tracked bundle paths)
+if [ "$DRY_RUN" = true ]; then
+  echo "[dry-run] write ${OPENCLAW_DIR}/.env with generated secrets"
+  echo "[dry-run] write ${OPENCLAW_DIR}/kvm-operator.env with generated secrets"
+else
+  _litellm_key="$(openssl rand -hex 24)"
+  _tmp="$(mktemp)" || { err "Failed to create temp file"; exit 1; }
+  cat > "$_tmp" <<ENV
+OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_TOKEN}
+OLLAMA_API_KEY=ollama
+LITELLM_API_KEY=${_litellm_key}
+KVM_OPERATOR_URL=http://${NODE_A_IP}:5000
+KVM_OPERATOR_TOKEN=${KVM_OPERATOR_TOKEN}
+ENV
+  install -m 0600 "$_tmp" "${OPENCLAW_DIR}/.env"
+  rm -f "$_tmp"
+  ok "Runtime .env written to ${OPENCLAW_DIR}/.env"
+
+  _tmp2="$(mktemp)" || { err "Failed to create temp file"; exit 1; }
+  cat > "$_tmp2" <<ENV
+KVM_OPERATOR_TOKEN=${KVM_OPERATOR_TOKEN}
+REQUIRE_APPROVAL=true
+ALLOW_DANGEROUS=false
+KVM_TARGETS_JSON={"kvm-d829":"192.168.1.130"}
+NANOKVM_USERNAME=admin
+NANOKVM_PASSWORD=change-me
+NANOKVM_AUTH_MODE=auto
+SESSION_TTL=300
+LITELLM_URL=http://${NODE_B_IP}:4000/v1/chat/completions
+LITELLM_API_KEY=sk-master-key
+VISION_MODEL=kvm-vision
+LOG_LEVEL=INFO
+ENV
+  install -m 0600 "$_tmp2" "${OPENCLAW_DIR}/kvm-operator.env"
+  rm -f "$_tmp2"
+  ok "Runtime kvm-operator.env written to ${OPENCLAW_DIR}/kvm-operator.env"
+fi
 
 cat > "${OPENCLAW_DIR}/workspace/AGENTS.md" <<EOF2
 # Node C OpenClaw Runtime Context
