@@ -1,0 +1,18 @@
+services:
+  openclaw-gateway:
+    image: ghcr.io/openclaw/openclaw:latest
+    container_name: openclaw-gateway
+    user: root
+    init: true
+    restart: unless-stopped
+    ports:
+      - "18789:18789"
+    env_file:
+      - /opt/openclaw/.env
+    volumes:
+      - /opt/openclaw/config:/root/.openclaw
+      - /opt/openclaw/workspace:/home/node/clawd
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    command: ["sh", "-c", "exec node dist/index.js gateway --bind lan"]

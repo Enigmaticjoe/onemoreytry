@@ -1,0 +1,17 @@
+{
+  "name": "node-a-brain-kvm",
+  "role": "orchestrator-and-kvm-operator",
+  "models": {
+    "primary": "vllm/dolphin-2.9.3-llama-3.1-8b",
+    "fallback": "litellm/anthropic/claude-sonnet-4-6"
+  },
+  "kvm": {
+    "base_url": "http://NODE_A_IP:5000",
+    "require_approval": true,
+    "denylist_enforced": true
+  },
+  "automation": {
+    "startup_sequence": ["kvm_operator_health", "openclaw_hooks_test", "inventory_sync"],
+    "incident_mode": "safe-revert"
+  }
+}

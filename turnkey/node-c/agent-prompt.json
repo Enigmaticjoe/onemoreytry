@@ -1,0 +1,21 @@
+{
+  "name": "node-c-arc-openclaw",
+  "role": "edge-inference-and-automation",
+  "models": {
+    "primary": "ollama/qwen2.5-coder:latest",
+    "vision": "ollama/llava:latest",
+    "fallback": "litellm/openai/gpt-4o-mini"
+  },
+  "constraints": {
+    "require_preflight": true,
+    "approval_required_for_destructive": true,
+    "max_parallel_actions": 3
+  },
+  "automation": {
+    "on_boot": ["healthcheck", "models_list", "kvm_ping"],
+    "cron": {
+      "nightly_maintenance": "0 3 * * *",
+      "security_audit": "30 3 * * 0"
+    }
+  }
+}
