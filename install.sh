@@ -1,18 +1,14 @@
 #!/bin/bash
 # ==============================================================================
-# Homelab Assistant — One-Click Bootstrap for Fedora 44 (cosmic nightly)
+# Homelab Assistant — Local Bootstrap for Fedora 44 (cosmic nightly)
 # ==============================================================================
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/Enigmaticjoe/onemoreytry/main/install.sh | sudo bash
-#
-# Or locally:
 #   sudo bash install.sh [--non-interactive] [--auto-start-chat]
 #
 # This script:
 #   1. Verifies Fedora 44 (cosmic nightly) + dnf5
-#   2. Installs minimal deps (git, python3, curl)
-#   3. Clones the repo
-#   4. Hands off to boss_multi_agent_install.py
+#   2. Installs minimal deps (python3, curl)
+#   3. Runs boss_multi_agent_install.py from the local repo directory
 #
 # SELinux stays Enforcing. No X11 tools. DNF5 only.
 # ==============================================================================
@@ -20,9 +16,8 @@
 set -euo pipefail
 
 # --- Constants ----------------------------------------------------------------
-REPO_URL="https://github.com/Enigmaticjoe/onemoreytry.git"
 INSTALL_DIR="/opt/homelab"
-CLONE_DIR="${HOME}/onemoreytry"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="boss_multi_agent_install.py"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -89,19 +84,10 @@ check_selinux() {
     fi
 }
 
-check_network() {
-    log_info "Checking network connectivity..."
-    if curl -sf --max-time 8 --head https://github.com >/dev/null 2>&1; then
-        log_ok "Network OK (github.com reachable)."
-    else
-        die "Cannot reach github.com. Check DNS and firewall."
-    fi
-}
-
 install_bootstrap_deps() {
     log_info "Installing bootstrap dependencies via dnf5..."
     local pkgs=()
-    for pkg in git curl python3 python3-pip; do
+    for pkg in curl python3 python3-pip; do
         if ! rpm -q "$pkg" &>/dev/null; then
             pkgs+=("$pkg")
         fi
@@ -114,28 +100,17 @@ install_bootstrap_deps() {
     fi
 }
 
-clone_repo() {
-    if [[ -d "$CLONE_DIR/.git" ]]; then
-        log_info "Repository exists at $CLONE_DIR — updating..."
-        git -C "$CLONE_DIR" pull --ff-only || log_warn "git pull failed, using existing."
-    else
-        log_info "Cloning $REPO_URL..."
-        git clone --depth=1 "$REPO_URL" "$CLONE_DIR"
-    fi
-    log_ok "Repository ready at $CLONE_DIR"
-}
-
 stage_installer() {
     log_info "Staging installer to $INSTALL_DIR..."
     mkdir -p "$INSTALL_DIR"
-    # Copy the installer script
-    local src="$CLONE_DIR/$SCRIPT_NAME"
+    # Find the installer script relative to this script's directory
+    local src="$SCRIPT_DIR/$SCRIPT_NAME"
     if [[ ! -f "$src" ]]; then
-        # Might be in a subdirectory — search
-        src=$(find "$CLONE_DIR" -name "$SCRIPT_NAME" -type f | head -1)
+        # Search within the repo directory
+        src=$(find "$SCRIPT_DIR" -name "$SCRIPT_NAME" -type f | head -1)
     fi
     if [[ -z "$src" || ! -f "$src" ]]; then
-        die "Cannot find $SCRIPT_NAME in $CLONE_DIR"
+        die "Cannot find $SCRIPT_NAME in $SCRIPT_DIR"
     fi
     cp -f "$src" "$INSTALL_DIR/$SCRIPT_NAME"
     chmod 755 "$INSTALL_DIR/$SCRIPT_NAME"
@@ -154,7 +129,7 @@ run_installer() {
 main() {
     echo ""
     echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║  Homelab Assistant — One-Click Bootstrap (Fedora 44 cosmic)  ║${NC}"
+    echo -e "${CYAN}║  Homelab Assistant — Local Bootstrap (Fedora 44 cosmic)      ║${NC}"
     echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
@@ -162,9 +137,7 @@ main() {
     check_fedora
     check_dnf5
     check_selinux
-    check_network
     install_bootstrap_deps
-    clone_repo
     stage_installer
     run_installer "$@"
 }

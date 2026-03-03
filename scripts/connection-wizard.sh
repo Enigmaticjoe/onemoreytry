@@ -666,20 +666,17 @@ cf_install() {
       sudo apt-get update -qq && sudo apt-get install -y cloudflared
     elif command -v dnf &>/dev/null; then
       info "Installing via dnf (Fedora/CentOS)…"
-      sudo dnf install -y cloudflared 2>/dev/null || \
-        { curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.rpm -o /tmp/cloudflared.rpm && sudo rpm -i /tmp/cloudflared.rpm; }
+      sudo dnf install -y cloudflared || warn "dnf install failed. Install cloudflared manually from https://pkg.cloudflare.com/"
     else
-      info "Downloading latest cloudflared binary…"
-      local arch
-      arch=$(uname -m)
-      local cf_arch="amd64"
-      [[ "$arch" == "aarch64" || "$arch" == "arm64" ]] && cf_arch="arm64"
-      curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${cf_arch}" \
-        -o /tmp/cloudflared-download
-      sudo mv /tmp/cloudflared-download /usr/local/bin/cloudflared
-      sudo chmod +x /usr/local/bin/cloudflared
+      warn "No supported package manager found."
+      warn "Install cloudflared manually: https://pkg.cloudflare.com/"
+      pause; return
     fi
-    pass "cloudflared installed: $(cloudflared version 2>/dev/null | head -1)"
+    if command -v cloudflared &>/dev/null; then
+      pass "cloudflared installed: $(cloudflared version 2>/dev/null | head -1)"
+    else
+      warn "cloudflared installation could not be verified."
+    fi
   fi
   pause
 }
@@ -854,10 +851,9 @@ cf_quickstart() {
   ────────────────────────────────────────────────────────
 
   STEP 1 — Install cloudflared
-    Option 2 in this menu  OR  manually:
-      curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
-        -o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared
-
+    Option 2 in this menu  OR  manually via your package manager:
+      sudo dnf install -y cloudflared        # Fedora/CentOS
+      sudo apt-get install -y cloudflared    # Debian/Ubuntu
   STEP 2 — Login to Cloudflare
     cloudflared tunnel login
     (Opens browser / prints a URL to authorize your account)
