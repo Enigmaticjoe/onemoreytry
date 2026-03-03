@@ -230,37 +230,6 @@ VISION_MODEL=kvm-vision
 LOG_LEVEL=INFO
 ENV
 
-cat > "${BUNDLE_DIR}/TURNKEY_RELEASE.md" <<DOC
-# Turnkey release (Node A + Node C)
-
-NOTE: Template files (*.env.template) in this bundle contain placeholder values only.
-Real tokens are written by the installer directly to the runtime directory (${OPENCLAW_DIR}).
-
-## Node C local deployment (Fedora 44+)
-The installer has already written the runtime env to ${OPENCLAW_DIR}/.env.
-If deploying manually on a different host, fill in the placeholder values from:
-  ${BUNDLE_DIR}/node-c/.env.template → ${OPENCLAW_DIR}/.env
-1. Copy `${BUNDLE_DIR}/stacks/node-c-openclaw-compose.yml` to `${HOMELAB_DIR}/openclaw.yml`
-2. Ensure `${OPENCLAW_DIR}/.env` contains real tokens (see above)
-3. Start:
-   docker compose -f ${HOMELAB_DIR}/openclaw.yml --env-file ${OPENCLAW_DIR}/.env up -d
-4. Open Control UI:
-   http://${NODE_C_IP}:18789/?token=<value of OPENCLAW_GATEWAY_TOKEN in ${OPENCLAW_DIR}/.env>
-
-## Node A KVM operator container deployment
-Real token is written to ${OPENCLAW_DIR}/kvm-operator.env.
-Copy it to the stacks directory on Node A before deploying:
-1. Copy ${OPENCLAW_DIR}/kvm-operator.env to the stacks directory alongside node-a-kvm-operator-compose.yml as kvm-operator.env
-2. Deploy:
-   cd <stacks-dir>
-   docker compose -f node-a-kvm-operator-compose.yml up -d
-3. Verify:
-   curl -fsS http://${NODE_A_IP}:5000/health
-
-## Prompt bootstrap JSON
-- Node C prompt: `${BUNDLE_DIR}/node-c/agent-prompt.json`
-- Node A prompt: `${BUNDLE_DIR}/node-a/agent-prompt.json`
-DOC
 ok "Turnkey package created at ${BUNDLE_DIR}"
 
 step "Step 6 — Install OpenClaw runtime files"
