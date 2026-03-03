@@ -37,7 +37,7 @@ When helping with installation:
 5. Celebrate progress and be encouraging
 
 Node layout for this lab:
-- Node A (192.168.1.9): AMD RX 7900 XT Brain — vLLM or Ollama, runs this dashboard
+- Node A (192.168.1.9): AMD RX 7900 XTX Brain — vLLM or Ollama, runs this dashboard
 - Node B (192.168.1.222): Unraid server — LiteLLM gateway, Portainer, Homepage, Uptime Kuma
 - Node C (192.168.1.6): Intel Arc GPU — Ollama for vision tasks (llava model)
 - Node D (192.168.1.149): Home Assistant — extended_openai_conversation integration
@@ -91,22 +91,6 @@ async function fetchWithTimeout(url, options = {}) {
   } finally {
     clearTimeout(timeout);
   }
-}
-
-async function fetchWithRetry(url, options = {}, maxRetries = 1, retryDelayMs = 500) {
-  let lastError;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const response = await fetchWithTimeout(url, options);
-      return response;
-    } catch (error) {
-      lastError = error;
-      if (attempt < maxRetries) {
-        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
-      }
-    }
-  }
-  throw lastError;
 }
 
 async function checkService(service) {
@@ -1013,7 +997,7 @@ async function handleChat(req, res) {
   }
 
   try {
-    const response = await fetchWithRetry(`${LITELLM_BASE_URL}/v1/chat/completions`, {
+    const response = await fetchWithTimeout(`${LITELLM_BASE_URL}/v1/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1059,7 +1043,7 @@ async function handleSherpaChat(req, res) {
   }
 
   try {
-    const response = await fetchWithRetry(`${LITELLM_BASE_URL}/v1/chat/completions`, {
+    const response = await fetchWithTimeout(`${LITELLM_BASE_URL}/v1/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
