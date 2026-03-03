@@ -230,32 +230,6 @@ VISION_MODEL=kvm-vision
 LOG_LEVEL=INFO
 ENV
 
-cat > "${BUNDLE_DIR}/TURNKEY_RELEASE.md" <<DOC
-# Turnkey release (Node A + Node C)
-
-## Node C local deployment (Fedora 44+)
-1. Copy \
-   - \
-   `${BUNDLE_DIR}/stacks/node-c-openclaw-compose.yml` to `${HOMELAB_DIR}/openclaw.yml`
-   - `${BUNDLE_DIR}/node-c/.env.template` to `${OPENCLAW_DIR}/.env`
-   - `node-c-arc/openclaw.json` to `${OPENCLAW_DIR}/config/openclaw.json`
-2. Start:
-   docker compose -f ${HOMELAB_DIR}/openclaw.yml --env-file ${OPENCLAW_DIR}/.env up -d
-3. Open Control UI:
-   http://${NODE_C_IP}:18789/?token=${OPENCLAW_TOKEN}
-
-## Node A KVM operator container deployment
-1. Copy `${BUNDLE_DIR}/node-a/kvm-operator.env.template` to `${BUNDLE_DIR}/stacks/kvm-operator.env`
-2. Deploy:
-   cd ${BUNDLE_DIR}/stacks
-   docker compose -f node-a-kvm-operator-compose.yml up -d
-3. Verify:
-   curl -fsS http://${NODE_A_IP}:5000/health
-
-## Prompt bootstrap JSON
-- Node C prompt: `${BUNDLE_DIR}/node-c/agent-prompt.json`
-- Node A prompt: `${BUNDLE_DIR}/node-a/agent-prompt.json`
-DOC
 ok "Turnkey package created at ${BUNDLE_DIR}"
 
 step "Step 6 — Install OpenClaw runtime files"
