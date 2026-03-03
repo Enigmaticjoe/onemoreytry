@@ -326,3 +326,21 @@ User report -> Open Node A dashboard -> Refresh status
 - [ ] Confirm LiteLLM key and model aliases are valid
 - [ ] Confirm operator access controls for dashboard exposure
 - [ ] Confirm screenshot evidence for UI baseline after deployment
+
+## Appendix C — Validation
+
+Before submitting a PR, always run the repository validation suite from the repo root:
+
+```bash
+./validate.sh
+```
+
+All tests must pass. This catches broken configs, missing files, and stale references.
+
+## Appendix D — Migration Notes
+
+| Area | Old behaviour | New behaviour | Action needed |
+|---|---|---|---|
+| Chat API retry | No retry on transient gateway errors | **One automatic retry** with 500 ms back-off for LiteLLM gateway calls | Automatic — no config change needed |
+| Timeout enforcement | Single `REQUEST_TIMEOUT_MS` (default 7000 ms) | Unchanged — timeout still ≤ 7000 ms per attempt | None |
+| SHERPA_SYSTEM_PROMPT | Node A IP listed as `192.168.1.9` (7900 XTX) | Corrected to **7900 XT** (not XTX) to match hardware | None — cosmetic fix |

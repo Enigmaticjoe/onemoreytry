@@ -1,6 +1,8 @@
 # Node C — The Command Center / Eyes: Layman's Guide
 
 > **Who this guide is for:** Anyone who wants to chat with the AI, analyze images, or manage deployments from Node C. This is the most user-facing node — the one you'll interact with the most day-to-day.
+>
+> **OS target:** Fedora 44 (primary). This guide assumes `dnf` and the Fedora 44 kernel throughout.
 
 ---
 
@@ -36,6 +38,8 @@ The Arc A770 has **16 GB of VRAM** — more than NVIDIA's RTX 4070 Ti, at a frac
 - Running Ollama efficiently with Intel's oneAPI acceleration
 - Being the "always-on" card since it runs cool and efficient at idle
 
+> ⚠️ **OOM / offload warning:** The Arc A770 has 16 GB of VRAM. Models larger than ~13 B parameters (in fp16) or ~26 B parameters (in 4-bit quantisation) will exceed available VRAM and cause Ollama to either OOM-crash or fall back to slow CPU offload. Stick to `:8b`–`:13b` models at 4-bit for reliable GPU-only inference. Check VRAM usage with `intel_gpu_top` before loading large models.
+
 ---
 
 ## What Software Runs on Node C?
@@ -50,28 +54,35 @@ The Arc A770 has **16 GB of VRAM** — more than NVIDIA's RTX 4070 Ti, at a frac
 
 ## Setting Up Node C — Step by Step
 
-### Step 1: Install Intel GPU Drivers on Fedora 44 (cosmic nightly)
+### Step 1: Install Intel GPU Drivers on Fedora 44
 
-Fedora 44 (cosmic nightly) includes decent Intel GPU support out of the box, but for AI workloads you want the full Intel oneAPI stack.
+Fedora 44 includes basic Intel GPU support (i915/xe kernel driver) out of the box. For AI workloads you need the Intel Compute Runtime (OpenCL + Level Zero) on top of that:
 
 ```bash
 # Update system first
 sudo dnf update -y
 
-# Add Intel's repository
-sudo dnf install -y intel-one-api-mkl intel-opencl
-
-# Install level-zero (needed for GPU compute)
-sudo dnf install -y level-zero level-zero-devel
+# Install Intel Compute Runtime (OpenCL) and Level Zero (needed for Ollama GPU compute)
+sudo dnf install -y intel-compute-runtime intel-level-zero intel-gpu-tools
 ```
 
-Verify the GPU is recognized:
+Verify the GPU and compute runtime are detected:
 
 ```bash
+# Verify GPU is visible to the kernel
+lspci | grep -i "arc\|intel.*graphics"
+# Should show: Intel Corporation ... Arc A770
+
+# Verify OpenCL sees the GPU
 clinfo | grep "Device Name"
+# Should show: Intel(R) Arc(TM) A770 Graphics
+
+# Verify GPU is active (requires intel-gpu-tools)
+intel_gpu_top
+# Press Ctrl+C to exit — you should see GPU frequency and engine utilisation
 ```
 
-You should see `Intel(R) Arc(TM) A770 Graphics` or similar.
+> **Note:** Do not install ROCm on Node C — that is AMD-specific software and will conflict with Intel drivers.
 
 ### Step 2: Set the Required Environment Variable
 
@@ -216,10 +227,10 @@ clinfo | grep -i "device name"
 If nothing shows, make sure the Intel compute runtime is installed:
 
 ```bash
-sudo dnf install -y intel-opencl
+sudo dnf install -y intel-compute-runtime intel-level-zero
 ```
 
-Then reboot and try again.
+Then log out and back in (or reboot) and try again.
 
 ### Models Running Slowly
 
@@ -322,6 +333,30 @@ ollama rm model-name-here
 # Intel GPU status (requires ZES_ENABLE_SYSMAN=1)
 intel_gpu_top
 
-# Or use this simpler check
+# Check VRAM / frequency
 cat /sys/class/drm/card*/gt/gt0/freq_cur_mhz
 ```
+
+---
+
+## Before Submitting PRs
+
+Always run the repository validation suite from the repo root before opening a pull request:
+
+```bash
+./validate.sh
+```
+
+All tests must pass. This catches broken configs, missing files, and stale references before they reach main.
+
+---
+
+## Migration Notes
+
+> **What changed and why** — for operators upgrading from an earlier version.
+
+| Area | Old behaviour | New behaviour | Action needed |
+|---|---|---|---|
+| Intel driver packages | `intel-one-api-mkl`, `intel-opencl`, `level-zero-devel` | **`intel-compute-runtime intel-level-zero intel-gpu-tools`** (correct Fedora 44 package names) | Re-run `sudo dnf install -y intel-compute-runtime intel-level-zero intel-gpu-tools` |
+| Arc A770 OOM risk | Not documented | **Explicit warning** added for models >13 B (fp16) / >26 B (4-bit) exceeding 16 GB VRAM | Check model size before `ollama pull` — use `:8b`–`:13b` quantised variants |
+| Ollama network mode | `network_mode: host` in compose | **Bridge network** with explicit port 11434 mapping; chimera_face uses service name `http://ollama:11434` | Run `docker compose down && docker compose up -d` to apply network change |
