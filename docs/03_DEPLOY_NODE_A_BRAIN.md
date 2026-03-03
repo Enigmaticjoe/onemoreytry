@@ -35,12 +35,12 @@ Node A is the **self-evolving AI brain** of the home lab — a complete inferenc
 
 ### 1.1 Operating System
 
-Fedora 40/41/42/43/44 (cosmic nightly) or Ubuntu 22.04/24.04 are the tested platforms.  
+**Fedora 44** is the primary supported platform. Ubuntu 22.04/24.04 notes are retained as `[Ubuntu]` callouts where the commands differ.
 The RX 7900 XT requires **ROCm 6.x** for GPU-accelerated inference.
 
 ### 1.2 ROCm (AMD GPU driver stack)
 
-**Fedora:**
+**Fedora 44 (primary):**
 ```bash
 sudo tee /etc/yum.repos.d/rocm.repo > /dev/null <<'REPO'
 [ROCm]
@@ -54,13 +54,13 @@ REPO
 sudo dnf install -y rocm-hip-sdk rocm-opencl-sdk rocminfo rocm-smi-lib
 ```
 
-**Ubuntu 22.04 / 24.04:**
-```bash
-wget -q -O /tmp/amdgpu-install.deb \
-  "https://repo.radeon.com/amdgpu-install/6.1.3/ubuntu/jammy/amdgpu-install_6.1.60103-1_all.deb"
-sudo apt-get install -y /tmp/amdgpu-install.deb
-sudo amdgpu-install --usecase=rocm --no-dkms -y
-```
+> **[Ubuntu 22.04 / 24.04]**
+> ```bash
+> wget -q -O /tmp/amdgpu-install.deb \
+>   "https://repo.radeon.com/amdgpu-install/6.1.3/ubuntu/jammy/amdgpu-install_6.1.60103-1_all.deb"
+> sudo apt-get install -y /tmp/amdgpu-install.deb
+> sudo amdgpu-install --usecase=rocm --no-dkms -y
+> ```
 
 ### 1.3 Add user to GPU groups
 
@@ -84,8 +84,8 @@ rocm-smi
 
 ### 1.5 Docker
 
+**Fedora 44 (primary):**
 ```bash
-# Fedora:
 sudo dnf install -y dnf-plugins-core
 sudo dnf config-manager --add-repo \
   https://download.docker.com/linux/fedora/docker-ce.repo
@@ -94,6 +94,8 @@ sudo systemctl enable --now docker
 sudo usermod -aG docker "$USER"
 newgrp docker
 ```
+
+> **[Ubuntu]** Follow the official Docker install guide: https://docs.docker.com/engine/install/ubuntu/
 
 ---
 
@@ -335,3 +337,25 @@ curl -X POST http://192.168.1.222:4000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"brain-heavy","messages":[{"role":"user","content":"Hello"}]}'
 ```
+
+---
+
+## Before Submitting PRs
+
+Always run the repository validation suite from the repo root before opening a pull request:
+
+```bash
+./validate.sh
+```
+
+---
+
+## Migration Notes
+
+> **What changed and why** — for operators upgrading from an earlier version.
+
+| Area | Old behaviour | New behaviour | Action needed |
+|---|---|---|---|
+| OS section | Fedora 40–44 and Ubuntu listed equally | **Fedora 44 is now primary**; Ubuntu retained as `[Ubuntu]` callout | None (content only) |
+| Docker install | Fedora and Ubuntu shown side-by-side | Fedora 44 block is primary; Ubuntu noted in callout | None (content only) |
+| Secrets in `.env` | Manual copy-paste of placeholder values | `setup-node-a.sh` auto-generates `WEBUI_SECRET_KEY`, `SEARXNG_SECRET`, `JUPYTER_TOKEN` | Run `./scripts/setup-node-a.sh` — existing `.env` is preserved |

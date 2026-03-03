@@ -6,6 +6,10 @@
 #
 # FIXED: Now uses standard Ollama image with Intel Compute Runtime
 # (No ROCm - Intel Arc uses /dev/dri and Intel OneAPI/Level Zero)
+#
+# NETWORK: Bridge network (arc-node-c) — network_mode: host is NOT required
+# for GPU access via /dev/dri. Port 11434 is explicitly mapped so that Ollama
+# remains reachable from the host and other nodes (e.g. openclaw.yml).
 
 services:
   # Ollama service for Intel Arc A770
@@ -13,34 +17,37 @@ services:
     image: ollama/ollama:latest
     container_name: ollama_intel_arc
     restart: unless-stopped
-    
-    # Host network for easy access from other nodes
-    network_mode: host
-    
+
+    # Bridge network — explicit port mapping replaces network_mode: host
+    networks:
+      - arc-node-c
+    ports:
+      - "11434:11434"
+
     # Intel Arc GPU access via /dev/dri
     devices:
       - /dev/dri:/dev/dri
-    
+
     volumes:
       - ollama-models:/root/.ollama
       - /dev/shm:/dev/shm
-    
+
     environment:
       OLLAMA_HOST: "0.0.0.0:11434"
-      
+
       # Intel Arc A770 specific settings
       # ZES_ENABLE_SYSMAN is REQUIRED for Intel Arc GPU support
       ZES_ENABLE_SYSMAN: "1"
-      
+
       # Enable all available GPUs
       OLLAMA_NUM_GPU: "999"
-      
+
       # Additional Intel GPU optimizations
       ONEAPI_DEVICE_SELECTOR: "level_zero:0"
       SYCL_CACHE_PERSISTENT: "1"
-    
+
     shm_size: "16gb"
-    
+
     healthcheck:
       test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
       interval: 30s
@@ -52,21 +59,20 @@ services:
     image: ghcr.io/open-webui/open-webui:main
     container_name: chimera_face
     restart: unless-stopped
-    
+
+    networks:
+      - arc-node-c
     ports:
       - "3000:8080"
-    
+
     environment:
-      # Connect to Ollama on host network
-      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      # Connect to Ollama via Docker service name (bridge network)
+      OLLAMA_BASE_URL: "http://ollama:11434"
       WEBUI_NAME: "Chimera Face - Command Center"
-    
+
     volumes:
       - open-webui-data:/app/backend/data
-    
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    
+
     depends_on:
       ollama:
         condition: service_healthy
@@ -76,3 +82,8 @@ volumes:
     name: command-center-ollama-models
   open-webui-data:
     name: command-center-webui-data
+
+networks:
+  arc-node-c:
+    name: arc-node-c
+    driver: bridge

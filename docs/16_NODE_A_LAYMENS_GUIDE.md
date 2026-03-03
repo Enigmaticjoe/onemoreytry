@@ -1,6 +1,8 @@
 # Node A — The Brain: Layman's Guide
 
 > **Who this guide is for:** Anyone who wants to understand, set up, or use Node A — no technical background required. If you can follow a recipe, you can follow this guide.
+>
+> **OS target:** Fedora 44 (primary). Cross-distro notes are marked **[Ubuntu]** where they differ.
 
 ---
 
@@ -48,18 +50,30 @@ Node A is the **heavy thinker** of your AI home lab. Think of it as the big, pow
 
 ROCm is AMD's software that lets the GPU run AI workloads. Without it, the GPU just sits there.
 
+**Fedora 44 (primary):**
+
 ```bash
-# Add AMD's software repository
-sudo apt update
-sudo apt install -y wget gnupg
+# Add AMD ROCm repository
+sudo tee /etc/yum.repos.d/rocm.repo > /dev/null <<'REPO'
+[ROCm]
+name=ROCm
+baseurl=https://repo.radeon.com/rocm/rhel9/latest/main
+enabled=1
+gpgcheck=1
+gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key
+REPO
 
-wget https://repo.radeon.com/amdgpu-install/6.1.3/ubuntu/jammy/amdgpu-install_6.1.3.60103-1_all.deb
-sudo dpkg -i amdgpu-install_6.1.3.60103-1_all.deb
-sudo apt update
-
-# Install ROCm
-sudo amdgpu-install --usecase=rocm
+# Install ROCm packages
+sudo dnf install -y rocm-hip-sdk rocm-opencl-sdk rocminfo rocm-smi-lib
 ```
+
+> **[Ubuntu 22.04/24.04]** Use the AMDGPU installer instead:
+> ```bash
+> wget -q -O /tmp/amdgpu-install.deb \
+>   "https://repo.radeon.com/amdgpu-install/6.1.3/ubuntu/jammy/amdgpu-install_6.1.60103-1_all.deb"
+> sudo apt-get install -y /tmp/amdgpu-install.deb
+> sudo amdgpu-install --usecase=rocm --no-dkms -y
+> ```
 
 After installing, add your user to the video and render groups so the GPU is accessible:
 
@@ -67,17 +81,24 @@ After installing, add your user to the video and render groups so the GPU is acc
 sudo usermod -aG video,render $USER
 ```
 
-Then **reboot** the machine. This is required for ROCm to activate.
+Then **log out and back in** (or reboot). This is required for ROCm group changes to take effect.
 
 ### Step 2: Verify ROCm Is Working
 
-After rebooting, run this to confirm the GPU is detected:
+After logging back in, run this to confirm the GPU is detected:
 
 ```bash
 rocm-smi
 ```
 
 You should see your RX 7900 XT listed with temperature and memory usage. If you see it — you're good.
+
+Also confirm the GPU kernel interface is available:
+
+```bash
+ls -la /dev/kfd /dev/dri/render*
+# /dev/kfd must exist; /dev/dri/renderD128 (or similar) must exist
+```
 
 ### Step 3: Start the Brain Project Services
 
@@ -94,7 +115,7 @@ This will:
 3. Pull all Docker images
 4. Start all Brain Project services
 
-The `-d` flag runs containers in the background. You can close your terminal and they keep running.
+Containers run in the background (`-d`). You can close your terminal and they keep running.
 
 ### Step 4: Pull AI Models into Ollama (Optional)
 
@@ -193,7 +214,7 @@ groups $USER
 # You should see "video" and "render" in the list
 ```
 
-If the groups are missing, re-run the `usermod` command above and reboot again.
+If the groups are missing, re-run the `usermod` command above and log out/back in (or reboot).
 
 ### "Model won't load" / Out of VRAM
 
@@ -311,3 +332,27 @@ docker compose logs -f
 | Model alias (LiteLLM) | `brain-heavy` |
 | GPU | AMD RX 7900 XT (20 GB) |
 | GPU driver stack | ROCm |
+
+---
+
+## Before Submitting PRs
+
+Always run the repository validation suite from the repo root before opening a pull request:
+
+```bash
+./validate.sh
+```
+
+All tests must pass. This catches broken configs, missing files, and stale references before they reach main.
+
+---
+
+## Migration Notes
+
+> **What changed and why** — for operators upgrading from an earlier version.
+
+| Area | Old behaviour | New behaviour | Action needed |
+|---|---|---|---|
+| ROCm install | Ubuntu `apt`/`amdgpu-install` shown first | **Fedora 44 `dnf` is now primary**; Ubuntu retained as `[Ubuntu]` callout | Re-run `./scripts/setup-node-a.sh` if upgrading on Fedora — no data loss |
+| Login/logout requirement | "Reboot the machine" | Log out and back in (or `newgrp render`) — reboot is optional | None, unless groups were missed |
+| Group membership | Silent on Fedora path | `setup-node-a.sh` automatically adds user to `render`/`video` and warns | Verify with `groups $USER` |
