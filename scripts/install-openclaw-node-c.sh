@@ -1,20 +1,6 @@
 #!/usr/bin/env bash
-# Grand Unified AI Home Lab — Install OpenClaw on Node C (Fedora 44 cosmic nightly / Intel Arc A770)
-#
-# This script provisions Node C for OpenClaw and deploys the container.
-# After running it, OpenClaw is reachable at http://<NODE_C_IP>:18789.
-# Ollama (local, port 11434) is used as the primary AI backend.
-# LiteLLM on Node B provides cloud model fallbacks.
-#
-# Usage:
-#   ./scripts/install-openclaw-node-c.sh                # full setup + deploy
-#   ./scripts/install-openclaw-node-c.sh --no-deploy    # prepare only
-#   ./scripts/install-openclaw-node-c.sh --status       # check if running
-#
-# Prerequisites:
-#   - SSH key-based access to Node C (root@192.168.1.6 by default)
-#   - openssl available locally for token generation
-#   - Node C running Ollama (docker compose -f node-c-arc/docker-compose.yml up -d)
+# Turnkey local installer for OpenClaw on Node C (Fedora 44+)
+# Also prepares Node A KVM Operator + OpenClaw prompt/config bundles.
 
 set -euo pipefail
 
@@ -23,345 +9,297 @@ cd "$REPO_ROOT"
 source "${REPO_ROOT}/scripts/lib-inventory.sh"
 load_inventory "$REPO_ROOT"
 
+OPENCLAW_DIR="${OPENCLAW_DIR:-/opt/openclaw}"
+HOMELAB_DIR="${HOMELAB_DIR:-${OPENCLAW_DIR}/homelab}"
+BUNDLE_DIR="${REPO_ROOT}/turnkey"
+DRY_RUN=false
 NO_DEPLOY=false
-STATUS_ONLY=false
+CHECK_ONLY=false
+
 for arg in "$@"; do
-  [[ "$arg" == "--no-deploy" ]] && NO_DEPLOY=true
-  [[ "$arg" == "--status" ]]    && STATUS_ONLY=true
+  case "$arg" in
+    --dry-run) DRY_RUN=true ;;
+    --no-deploy) NO_DEPLOY=true ;;
+    --check-only) CHECK_ONLY=true ;;
+    *) echo "Unknown argument: $arg"; exit 1 ;;
+  esac
 done
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+ok(){ echo -e "${GREEN}✓${NC} $*"; }
+warn(){ echo -e "${YELLOW}!${NC} $*"; }
+err(){ echo -e "${RED}✗${NC} $*"; }
+info(){ echo -e "${CYAN}→${NC} $*"; }
+step(){ echo; echo -e "${BOLD}$*${NC}"; echo; }
 
-ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
-err()  { echo -e "  ${RED}✗${NC} $1"; }
-warn() { echo -e "  ${YELLOW}!${NC} $1"; }
-info() { echo -e "  ${CYAN}→${NC} $1"; }
-step() { echo ""; echo -e "${BOLD}$1${NC}"; echo ""; }
-
-# ── Configuration ─────────────────────────────────────────────────────────────
-OPENCLAW_DIR="/opt/openclaw"
-HOMELAB_DIR="/opt/openclaw/homelab"
-SSH_USER="${NODE_C_SSH_USER:-root}"
-SSH_HOST="${NODE_C_IP}"
-
-ssh_run() {
-  ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes \
-    "${SSH_USER}@${SSH_HOST}" "$@" 2>&1
+run(){
+  if [ "$DRY_RUN" = true ]; then
+    echo "[dry-run] $*"
+  else
+    eval "$@"
+  fi
 }
 
-# ── Status check ──────────────────────────────────────────────────────────────
-if [ "$STATUS_ONLY" = true ]; then
-  echo ""
-  echo "Checking OpenClaw status on Node C (${SSH_HOST})..."
-  echo ""
+require_cmd(){
+  command -v "$1" >/dev/null 2>&1 || { err "Missing required command: $1"; exit 1; }
+}
 
-  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://${SSH_HOST}:18789/" 2>/dev/null || echo "000")
-  if [[ "$code" =~ ^2 ]]; then
-    ok "OpenClaw is running (HTTP ${code})"
-    ok "Control UI: http://${SSH_HOST}:18789/"
-  elif [ "$code" = "000" ]; then
-    err "OpenClaw is not reachable at http://${SSH_HOST}:18789/"
-  else
-    warn "OpenClaw returned HTTP ${code}"
-  fi
+json_escape(){
+  python3 - <<'PY' "$1"
+import json,sys
+print(json.dumps(sys.argv[1]))
+PY
+}
 
-  if ssh_run "docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null | grep -q openclaw-gateway" &>/dev/null; then
-    container_status=$(ssh_run "docker ps --format '{{.Status}}' --filter name=openclaw-gateway" 2>/dev/null)
-    ok "Container: openclaw-gateway (${container_status})"
-  else
-    warn "Container openclaw-gateway not found on Node C"
-  fi
+latest_github_release(){
+  local repo="$1"
+  curl -fsSL "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null | jq -r '.tag_name // empty' || true
+}
+
+latest_ghcr_digest(){
+  local image="$1"
+  skopeo inspect "docker://${image}" 2>/dev/null | jq -r '.Digest // empty' || true
+}
+
+step "Step 1 — Host validation (Fedora local install)"
+
+if [ "$(id -u)" -ne 0 ]; then
+  err "Run as root: sudo $0 [--dry-run] [--no-deploy]"
+  exit 1
+fi
+
+if ! [ -f /etc/fedora-release ]; then
+  err "This installer is for Fedora hosts only."
+  exit 1
+fi
+
+FEDORA_VERSION="$(rpm -E %fedora)"
+if [ "$FEDORA_VERSION" -lt 44 ]; then
+  warn "Fedora ${FEDORA_VERSION} detected. Script is tuned for Fedora 44+; continuing."
+else
+  ok "Fedora ${FEDORA_VERSION} detected"
+fi
+
+for bin in curl jq openssl python3; do require_cmd "$bin"; done
+
+step "Step 2 — Install/verify dependencies"
+run "dnf -y install docker docker-compose-plugin git curl jq openssl python3 python3-pip intel-compute-runtime intel-level-zero intel-gpu-tools"
+run "systemctl enable --now docker"
+
+if command -v skopeo >/dev/null 2>&1; then
+  ok "skopeo already present"
+else
+  run "dnf -y install skopeo"
+fi
+
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  ok "Docker + compose plugin ready"
+else
+  err "Docker or compose plugin not functional"
+  exit 1
+fi
+
+step "Step 3 — Query latest upstream versions"
+OPENCLAW_RELEASE="$(latest_github_release openclaw/openclaw)"
+OPENCLAW_DIGEST="$(latest_ghcr_digest ghcr.io/openclaw/openclaw:latest)"
+KVM_FASTAPI_RELEASE="$(latest_github_release fastapi/fastapi)"
+
+[ -n "$OPENCLAW_RELEASE" ] && ok "Latest OpenClaw release tag: ${OPENCLAW_RELEASE}" || warn "Could not resolve OpenClaw release tag"
+[ -n "$OPENCLAW_DIGEST" ] && ok "Latest OpenClaw image digest: ${OPENCLAW_DIGEST}" || warn "Could not resolve OpenClaw image digest"
+[ -n "$KVM_FASTAPI_RELEASE" ] && ok "Latest FastAPI release tag (KVM operator dependency): ${KVM_FASTAPI_RELEASE}" || warn "Could not resolve FastAPI release"
+
+if [ "$CHECK_ONLY" = true ]; then
+  ok "Check-only complete"
   exit 0
 fi
 
-# ── Main flow ─────────────────────────────────────────────────────────────────
-echo ""
-echo "╔═══════════════════════════════════════════════════════╗"
-echo "║   Install OpenClaw on Node C (Intel Arc / Fedora 44 cosmic)   ║"
-echo "╚═══════════════════════════════════════════════════════╝"
-echo ""
-echo "  Target:  ${SSH_USER}@${SSH_HOST}"
-echo "  Data:    ${OPENCLAW_DIR}"
-echo "  Compose: ${HOMELAB_DIR}/openclaw.yml"
-echo ""
+step "Step 4 — Generate secure tokens"
+OPENCLAW_TOKEN="$(openssl rand -hex 24)"
+KVM_OPERATOR_TOKEN="$(openssl rand -hex 24)"
+ok "Generated OPENCLAW_GATEWAY_TOKEN"
+ok "Generated KVM_OPERATOR_TOKEN"
 
-# ── Step 1: Validate prerequisites ───────────────────────────────────────────
-step "Step 1 — Validate prerequisites"
+step "Step 5 — Build turnkey package (Node A + Node C)"
+run "mkdir -p '${BUNDLE_DIR}/node-a' '${BUNDLE_DIR}/node-c' '${BUNDLE_DIR}/stacks' '${OPENCLAW_DIR}/config' '${OPENCLAW_DIR}/workspace' '${HOMELAB_DIR}'"
 
-ERRORS=0
+cat > "${BUNDLE_DIR}/node-c/agent-prompt.json" <<JSON
+{
+  "name": "node-c-arc-openclaw",
+  "role": "edge-inference-and-automation",
+  "host": "${NODE_C_IP}",
+  "models": {
+    "primary": "ollama/qwen2.5-coder:latest",
+    "vision": "ollama/llava:latest",
+    "fallback": "litellm/openai/gpt-4o-mini"
+  },
+  "constraints": {
+    "require_preflight": true,
+    "approval_required_for_destructive": true,
+    "max_parallel_actions": 3
+  },
+  "automation": {
+    "on_boot": ["healthcheck", "models_list", "kvm_ping"],
+    "cron": {
+      "nightly_maintenance": "0 3 * * *",
+      "security_audit": "30 3 * * 0"
+    }
+  }
+}
+JSON
 
-if is_missing_or_placeholder_ip "$SSH_HOST"; then
-  err "Node C IP is not configured (currently: ${SSH_HOST})"
-  info "Set NODE_C_IP in config/node-inventory.env"
-  exit 1
-fi
-ok "Node C IP: ${SSH_HOST}"
+cat > "${BUNDLE_DIR}/node-a/agent-prompt.json" <<JSON
+{
+  "name": "node-a-brain-kvm",
+  "role": "orchestrator-and-kvm-operator",
+  "host": "${NODE_A_IP}",
+  "models": {
+    "primary": "vllm/dolphin-2.9.3-llama-3.1-8b",
+    "fallback": "litellm/anthropic/claude-sonnet-4-6"
+  },
+  "kvm": {
+    "base_url": "http://${NODE_A_IP}:5000",
+    "require_approval": true,
+    "denylist_enforced": true
+  },
+  "automation": {
+    "startup_sequence": ["kvm_operator_health", "openclaw_hooks_test", "inventory_sync"],
+    "incident_mode": "safe-revert"
+  }
+}
+JSON
 
-if command -v openssl &>/dev/null; then
-  ok "openssl available"
-else
-  err "openssl not found — needed for token generation"
-  exit 1
-fi
+cat > "${BUNDLE_DIR}/stacks/node-c-openclaw-compose.yml" <<'YAML'
+services:
+  openclaw-gateway:
+    image: ghcr.io/openclaw/openclaw:latest
+    container_name: openclaw-gateway
+    user: root
+    init: true
+    restart: unless-stopped
+    ports:
+      - "18789:18789"
+    env_file:
+      - /opt/openclaw/.env
+    volumes:
+      - /opt/openclaw/config:/root/.openclaw
+      - /opt/openclaw/workspace:/home/node/clawd
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    command: ["sh", "-c", "exec node dist/index.js gateway --bind lan"]
+YAML
 
-if command -v ssh &>/dev/null; then
-  ok "SSH client available"
-else
-  err "SSH client not found"
-  exit 1
-fi
+cat > "${BUNDLE_DIR}/stacks/node-a-kvm-operator-compose.yml" <<'YAML'
+services:
+  kvm-operator:
+    image: python:3.12-slim
+    container_name: kvm-operator
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      bash -lc "pip install --no-cache-dir -r requirements.txt &&
+      uvicorn app:app --host 0.0.0.0 --port 5000"
+    env_file:
+      - ./kvm-operator.env
+    volumes:
+      - ../../kvm-operator:/app:ro
+    ports:
+      - "5000:5000"
+YAML
 
-for f in node-c-arc/openclaw.yml node-c-arc/openclaw.json openclaw/skill-kvm.md openclaw/skill-deploy.md; do
-  if [ -f "$f" ]; then
-    ok "Source file: $f"
-  else
-    err "Missing source file: $f"
-    ((ERRORS++))
-  fi
-done
-
-if [ "$ERRORS" -gt 0 ]; then
-  err "Fix the errors above and try again"
-  exit 1
-fi
-
-# ── Step 2: Test SSH connectivity ─────────────────────────────────────────────
-step "Step 2 — Test SSH to Node C"
-
-if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
-     "${SSH_USER}@${SSH_HOST}" true &>/dev/null; then
-  ok "SSH to ${SSH_USER}@${SSH_HOST} -- connected"
-else
-  err "SSH to ${SSH_USER}@${SSH_HOST} -- FAILED"
-  echo ""
-  echo "  Set up SSH key-based auth:"
-  echo ""
-  echo "    [ -f ~/.ssh/id_ed25519 ] || ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519"
-  echo "    ssh-copy-id ${SSH_USER}@${SSH_HOST}"
-  echo ""
-  echo "  Then run this script again."
-  exit 1
-fi
-
-info "Checking Docker on Node C..."
-if ssh_run "docker --version" &>/dev/null; then
-  DOCKER_VER=$(ssh_run "docker --version 2>/dev/null" | head -1)
-  ok "Docker on Node C: ${DOCKER_VER}"
-else
-  err "Docker not available on Node C"
-  exit 1
-fi
-
-info "Checking Ollama on Node C..."
-if ssh_run "curl -fsS http://localhost:11434/api/version" &>/dev/null; then
-  ok "Ollama is running on Node C (port 11434)"
-else
-  warn "Ollama not responding — make sure Node C Ollama stack is running:"
-  warn "  cd node-c-arc && docker compose up -d"
-  warn "Continuing anyway (OpenClaw will retry Ollama automatically)..."
-fi
-
-# ── Step 3: Generate tokens ──────────────────────────────────────────────────
-step "Step 3 — Generate tokens"
-
-EXISTING_TOKEN=""
-if ssh_run "test -f ${OPENCLAW_DIR}/.env" &>/dev/null; then
-  EXISTING_TOKEN=$(ssh_run "grep OPENCLAW_GATEWAY_TOKEN ${OPENCLAW_DIR}/.env 2>/dev/null" | cut -d= -f2 || true)
-fi
-
-if [ -n "$EXISTING_TOKEN" ]; then
-  warn "Existing OpenClaw .env found on Node C — reusing tokens"
-  OPENCLAW_TOKEN="$EXISTING_TOKEN"
-  KVM_OPERATOR_TOKEN=$(ssh_run "grep KVM_OPERATOR_TOKEN ${OPENCLAW_DIR}/.env 2>/dev/null" | cut -d= -f2 || openssl rand -hex 24)
-  ok "Reusing existing OPENCLAW_GATEWAY_TOKEN"
-else
-  OPENCLAW_TOKEN=$(openssl rand -hex 24)
-  KVM_OPERATOR_TOKEN=$(openssl rand -hex 24)
-  ok "Generated OPENCLAW_GATEWAY_TOKEN"
-  ok "Generated KVM_OPERATOR_TOKEN"
-fi
-
-# ── Step 4: Create directories on Node C ─────────────────────────────────────
-step "Step 4 — Create directories on Node C"
-
-ssh_run "mkdir -p ${OPENCLAW_DIR}/{config,workspace,homebrew} ${HOMELAB_DIR}"
-ok "Created ${OPENCLAW_DIR}/{config,workspace,homebrew}"
-ok "Created ${HOMELAB_DIR}"
-
-# ── Step 5: Upload configuration files ───────────────────────────────────────
-step "Step 5 — Upload config files"
-
-scp -o StrictHostKeyChecking=no \
-  node-c-arc/openclaw.json \
-  "${SSH_USER}@${SSH_HOST}:${OPENCLAW_DIR}/config/openclaw.json"
-ok "Uploaded openclaw.json"
-
-scp -o StrictHostKeyChecking=no \
-  openclaw/skill-kvm.md \
-  openclaw/skill-deploy.md \
-  "${SSH_USER}@${SSH_HOST}:${OPENCLAW_DIR}/workspace/"
-ok "Uploaded skill-kvm.md and skill-deploy.md"
-
-scp -o StrictHostKeyChecking=no \
-  node-c-arc/openclaw.yml \
-  "${SSH_USER}@${SSH_HOST}:${HOMELAB_DIR}/openclaw.yml"
-ok "Uploaded openclaw.yml"
-
-# ── Step 6: Create AGENTS.md ─────────────────────────────────────────────────
-step "Step 6 — Create workspace AGENTS.md"
-
-ssh_run "cat > ${OPENCLAW_DIR}/workspace/AGENTS.md" <<AGENTEOF
-# OpenClaw Agent Context — Node C (Intel Arc A770)
-
-You are an AI assistant running on Node C, the Intel Arc A770 GPU workstation in a
-multi-node home AI lab. Your primary model is Ollama (local, port 11434). Use
-LiteLLM on Node B as a fallback for tasks that need larger context or cloud models.
-
-## Lab Nodes
-
-- **Node A** (${NODE_A_IP}): Brain / vLLM model host, Dashboard (port 3099), KVM Operator (port 5000)
-- **Node B** (${NODE_B_IP}): Unraid / LiteLLM gateway (port 4000), Portainer (port 9000)
-- **Node C** (${SSH_HOST}): Fedora 44 (cosmic nightly) / Intel Arc A770 — THIS NODE
-  - Ollama: port 11434 (llava, llama3, etc.)
-  - Chimera Face (Open WebUI): port 3000
-  - OpenClaw: port 18789 (this service)
-- **Node D** (${NODE_D_IP:-192.168.1.149}): Home Assistant (port 8123)
-- **Node E** (${NODE_E_IP:-192.168.1.116}): Sentinel NVR
-
-## Available Skills
-
-Read these files for detailed API documentation:
-- \`skill-kvm.md\` — Control remote machines via NanoKVM Cube devices
-- \`skill-deploy.md\` — Deploy Docker stacks, manage Portainer, run health checks
-
-## Local Capabilities
-
-- Vision tasks: use \`ollama/llava:latest\` for image analysis
-- Audio transcription: Whisper models available via Ollama
-- Docker management: Docker socket is mounted — you can list/start/stop containers
-
-## Safety Rules
-
-1. Always verify the current state before making changes (screenshot, health check)
-2. Never run commands matching the KVM denylist
-3. Request confirmation for destructive actions
-4. Keep REQUIRE_APPROVAL=true unless explicitly told otherwise
-AGENTEOF
-ok "AGENTS.md created"
-
-# ── Step 7: Create .env file ─────────────────────────────────────────────────
-step "Step 7 — Create .env file on Node C"
-
-ssh_run "cat > ${OPENCLAW_DIR}/.env" <<ENVEOF
+cat > "${BUNDLE_DIR}/node-c/.env.template" <<ENV
 OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_TOKEN}
 OLLAMA_API_KEY=ollama
 LITELLM_API_KEY=sk-master-key
 KVM_OPERATOR_URL=http://${NODE_A_IP}:5000
 KVM_OPERATOR_TOKEN=${KVM_OPERATOR_TOKEN}
-# HOME_ASSISTANT_URL=http://${NODE_D_IP:-192.168.1.149}:8123
-# HOME_ASSISTANT_TOKEN=
-# ANTHROPIC_API_KEY=
-# OPENAI_API_KEY=
-# GEMINI_API_KEY=
-# OPENROUTER_API_KEY=
-ENVEOF
-ok ".env created at ${OPENCLAW_DIR}/.env"
+ENV
 
-ssh_run "cp ${OPENCLAW_DIR}/.env ${HOMELAB_DIR}/.env"
-ok ".env copied to ${HOMELAB_DIR}/.env"
+cat > "${BUNDLE_DIR}/node-a/kvm-operator.env.template" <<ENV
+KVM_OPERATOR_TOKEN=${KVM_OPERATOR_TOKEN}
+REQUIRE_APPROVAL=true
+ALLOW_DANGEROUS=false
+KVM_TARGETS_JSON={"kvm-d829":"192.168.1.130"}
+NANOKVM_USERNAME=admin
+NANOKVM_PASSWORD=change-me
+NANOKVM_AUTH_MODE=auto
+SESSION_TTL=300
+LITELLM_URL=http://${NODE_B_IP}:4000/v1/chat/completions
+LITELLM_API_KEY=sk-master-key
+VISION_MODEL=kvm-vision
+LOG_LEVEL=INFO
+ENV
 
-# ── Step 8: Sync KVM Operator token ──────────────────────────────────────────
-step "Step 8 — Sync KVM Operator token (local)"
+cat > "${BUNDLE_DIR}/TURNKEY_RELEASE.md" <<DOC
+# Turnkey release (Node A + Node C)
 
-KVM_TOKEN_PLACEHOLDER="change-me-use-openssl-rand-hex-24"
+## Node C local deployment (Fedora 44+)
+1. Copy \
+   - \
+   `${BUNDLE_DIR}/stacks/node-c-openclaw-compose.yml` to `${HOMELAB_DIR}/openclaw.yml`
+   - `${BUNDLE_DIR}/node-c/.env.template` to `${OPENCLAW_DIR}/.env`
+   - `node-c-arc/openclaw.json` to `${OPENCLAW_DIR}/config/openclaw.json`
+2. Start:
+   docker compose -f ${HOMELAB_DIR}/openclaw.yml --env-file ${OPENCLAW_DIR}/.env up -d
+3. Open Control UI:
+   http://${NODE_C_IP}:18789/?token=${OPENCLAW_TOKEN}
 
-if [ -f "kvm-operator/.env" ]; then
-  if grep -q "${KVM_TOKEN_PLACEHOLDER}" kvm-operator/.env; then
-    sed -i "s|${KVM_TOKEN_PLACEHOLDER}|${KVM_OPERATOR_TOKEN}|g" kvm-operator/.env
-    ok "KVM Operator token updated in kvm-operator/.env"
-  else
-    warn "kvm-operator/.env already has a custom token — not overwriting"
-    info "To sync: set KVM_OPERATOR_TOKEN=${KVM_OPERATOR_TOKEN} in kvm-operator/.env"
-  fi
-elif [ -f "kvm-operator/.env.example" ]; then
-  cp kvm-operator/.env.example kvm-operator/.env
-  sed -i "s|${KVM_TOKEN_PLACEHOLDER}|${KVM_OPERATOR_TOKEN}|g" kvm-operator/.env
-  ok "Created kvm-operator/.env with synced token"
-else
-  warn "kvm-operator/.env.example not found — skipping KVM token sync"
-fi
+## Node A KVM operator container deployment
+1. Copy `${BUNDLE_DIR}/node-a/kvm-operator.env.template` to `${BUNDLE_DIR}/stacks/kvm-operator.env`
+2. Deploy:
+   cd ${BUNDLE_DIR}/stacks
+   docker compose -f node-a-kvm-operator-compose.yml up -d
+3. Verify:
+   curl -fsS http://${NODE_A_IP}:5000/health
 
-# ── Step 9: Deploy (or print Portainer instructions) ─────────────────────────
-step "Step 9 — Deploy OpenClaw on Node C"
+## Prompt bootstrap JSON
+- Node C prompt: `${BUNDLE_DIR}/node-c/agent-prompt.json`
+- Node A prompt: `${BUNDLE_DIR}/node-a/agent-prompt.json`
+DOC
+ok "Turnkey package created at ${BUNDLE_DIR}"
+
+step "Step 6 — Install OpenClaw runtime files"
+run "install -m 0644 node-c-arc/openclaw.json '${OPENCLAW_DIR}/config/openclaw.json'"
+run "install -m 0644 openclaw/skill-kvm.md '${OPENCLAW_DIR}/workspace/skill-kvm.md'"
+run "install -m 0644 openclaw/skill-deploy.md '${OPENCLAW_DIR}/workspace/skill-deploy.md'"
+run "install -m 0644 '${BUNDLE_DIR}/stacks/node-c-openclaw-compose.yml' '${HOMELAB_DIR}/openclaw.yml'"
+run "install -m 0600 '${BUNDLE_DIR}/node-c/.env.template' '${OPENCLAW_DIR}/.env'"
+
+cat > "${OPENCLAW_DIR}/workspace/AGENTS.md" <<EOF2
+# Node C OpenClaw Runtime Context
+
+Read these local skills before acting:
+- skill-kvm.md
+- skill-deploy.md
+
+Operational defaults:
+- Verify state before write actions.
+- Use KVM operator on Node A: http://${NODE_A_IP}:5000
+- Use Ollama local-first at http://host.docker.internal:11434/v1
+- Fall back to LiteLLM on Node B: http://${NODE_B_IP}:4000/v1
+EOF2
+ok "Runtime workspace context written"
 
 if [ "$NO_DEPLOY" = true ]; then
-  echo ""
-  echo "  --no-deploy flag set. To deploy manually on Node C:"
-  echo ""
-  echo "    ssh ${SSH_USER}@${SSH_HOST}"
-  echo "    cd ${HOMELAB_DIR}"
-  echo "    docker compose -f openclaw.yml --env-file ${OPENCLAW_DIR}/.env up -d"
-  echo ""
+  warn "--no-deploy set, skipping container start"
 else
-  info "Pulling OpenClaw image on Node C..."
-  ssh_run "cd ${HOMELAB_DIR} && docker compose -f openclaw.yml --env-file ${OPENCLAW_DIR}/.env pull" || {
-    err "Docker pull failed"
-    info "Check: ssh ${SSH_USER}@${SSH_HOST} 'cd ${HOMELAB_DIR} && docker compose -f openclaw.yml pull'"
-    exit 1
-  }
-  ok "Image pulled"
+  step "Step 7 — Deploy OpenClaw on local Node C"
+  run "docker compose -f '${HOMELAB_DIR}/openclaw.yml' --env-file '${OPENCLAW_DIR}/.env' pull"
+  run "docker compose -f '${HOMELAB_DIR}/openclaw.yml' --env-file '${OPENCLAW_DIR}/.env' up -d"
 
-  info "Starting OpenClaw container..."
-  ssh_run "cd ${HOMELAB_DIR} && docker compose -f openclaw.yml --env-file ${OPENCLAW_DIR}/.env up -d" || {
-    err "Docker compose up failed"
-    exit 1
-  }
-  ok "Container started"
-
-  info "Waiting for OpenClaw to be ready (can take 30-60s)..."
-  MAX_HEALTH_RETRIES=15
-  retry_count=0
-  while [ $retry_count -lt $MAX_HEALTH_RETRIES ]; do
-    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://${SSH_HOST}:18789/" 2>/dev/null || echo "000")
-    if [[ "$code" =~ ^2 ]]; then
-      ok "OpenClaw is healthy (HTTP ${code})"
-      break
-    fi
-    retry_count=$((retry_count+1))
-    info "  Attempt ${retry_count}/${MAX_HEALTH_RETRIES} — HTTP ${code}, waiting 5s..."
-    sleep 5
-  done
-
-  if [ $retry_count -ge $MAX_HEALTH_RETRIES ]; then
-    warn "OpenClaw did not respond in time — it may still be starting"
-    info "Check logs: ssh ${SSH_USER}@${SSH_HOST} docker logs openclaw-gateway --tail 30"
+  if [ "$DRY_RUN" = false ]; then
+    for _ in $(seq 1 24); do
+      if curl -fsS "http://127.0.0.1:18789/" >/dev/null 2>&1; then
+        ok "OpenClaw healthy on localhost:18789"
+        break
+      fi
+      sleep 5
+    done
   fi
 fi
 
-# ── Summary ───────────────────────────────────────────────────────────────────
-echo ""
-echo "═══════════════════════════════════════════════════════"
-echo -e "  ${GREEN}OpenClaw on Node C — deployment complete!${NC}"
-echo "═══════════════════════════════════════════════════════"
-echo ""
-echo "  Control UI:"
-echo "    http://${SSH_HOST}:18789/?token=${OPENCLAW_TOKEN}"
-echo ""
-echo "  Save these tokens:"
-echo "    OPENCLAW_GATEWAY_TOKEN = ${OPENCLAW_TOKEN}"
-echo "    KVM_OPERATOR_TOKEN     = ${KVM_OPERATOR_TOKEN}"
-echo ""
-echo "  Connect Chimera Face (Open WebUI on :3000) to OpenClaw:"
-echo "    Settings → Connections → Add OpenAI-compatible API"
-echo "    URL:   http://${SSH_HOST}:18789/v1"
-echo "    Key:   ${OPENCLAW_TOKEN}"
-echo "    Model: openclaw:main"
-echo ""
-echo "  Next steps:"
-echo "    1. Open the Control UI link above"
-echo "    2. Verify Ollama: node dist/index.js models list (in container console)"
-echo "    3. Set your model: /model ollama/<model-name>  (in chat)"
-echo "    4. Try: 'What models are available on Node C?'"
-echo ""
-echo "  Full docs: docs/11_OPENCLAW_KVM_GUIDEBOOK.md"
-echo ""
+step "Complete"
+echo "Control UI: http://${NODE_C_IP}:18789/?token=${OPENCLAW_TOKEN}"
+echo "Turnkey docs: ${BUNDLE_DIR}/TURNKEY_RELEASE.md"
+echo "Node A prompt JSON: ${BUNDLE_DIR}/node-a/agent-prompt.json"
+echo "Node C prompt JSON: ${BUNDLE_DIR}/node-c/agent-prompt.json"
