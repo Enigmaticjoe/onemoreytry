@@ -206,12 +206,12 @@ def choose_dnf() -> str:
     return "dnf"
 
 
-def check_network_connectivity(boss: 'BossAI', host: str = "github.com") -> None:
-    """Ensure the system has network connectivity by pinging a host.
+def check_network_connectivity(boss: 'BossAI', host: str = "1.1.1.1") -> None:
+    """Ensure the system has network connectivity by making an HTTP request to a host.
 
     Args:
         boss: The boss instance for logging.
-        host: Hostname to test connectivity against. Defaults to github.com.
+        host: Hostname to test connectivity against. Defaults to 1.1.1.1.
 
     Raises:
         RuntimeError: If the host cannot be reached.
@@ -248,11 +248,8 @@ def configure_api_keys(boss: 'BossAI', config: Dict[str, Any], root: Path) -> No
         "\nYou can optionally provide tokens for external services (leave blank to skip)."
         "\nThese values will be stored locally in config/api.env."
     )
-    github_token = prompt_input("GitHub Personal Access Token", "", secret=True)
     openai_key = prompt_input("OpenAI or other AI service API key", "", secret=True)
     extras: Dict[str, str] = {}
-    if github_token:
-        extras["GITHUB_TOKEN"] = github_token
     if openai_key:
         extras["AI_API_KEY"] = openai_key
     # Allow arbitrary key:value pairs for future services
@@ -1355,10 +1352,10 @@ def run_health_checks(boss: Optional["BossAI"] = None) -> Dict[str, bool]:
 
     # Network connectivity
     code, _ = run_command(
-        ["curl", "-s", "--head", "--max-time", "3", "https://github.com"]
+        ["curl", "-s", "--head", "--max-time", "3", "https://1.1.1.1"]
     )
     net_ok = code == 0
-    _health_line("Network (github.com)", net_ok, "" if net_ok else "check network")
+    _health_line("Network", net_ok, "" if net_ok else "check network")
     results["network"] = net_ok
 
     # config/node-inventory.env
@@ -1716,7 +1713,6 @@ def run_install_prerequisites(boss: Optional["BossAI"] = None) -> None:
     if boss is None:
         boss = BossAI([])
     try:
-        check_network_connectivity(boss)
         install_nodejs_python(boss)
         set_up_docker_repository(boss)
         install_docker_engine(boss)
@@ -1970,11 +1966,7 @@ def main() -> None:
     # Non-interactive / unattended mode
     if args.non_interactive:
         ensure_root()
-        default_repo = "https://github.com/Enigmaticjoe/onemoreytry.git"
-        default_dest = str(Path.home() / "onemoreytry")
-        repo_url = os.environ.get("REPOSITORY_URL", default_repo)
-        dest_dir = os.environ.get("DESTINATION_DIR", default_dest)
-        clone_path = Path(dest_dir).expanduser()
+        install_path = Path(os.environ.get("DESTINATION_DIR", str(Path.home() / "onemoreytry"))).expanduser()
         config = load_non_interactive_config(args.config_file)
 
         def _minion_deps(b: BossAI) -> None:
@@ -1983,30 +1975,25 @@ def main() -> None:
             install_docker_engine(b)
 
         unattended_minions = [
-            Minion("Network Connectivity Check", lambda b: check_network_connectivity(b)),
             Minion("Install Dependencies", _minion_deps),
-            Minion("Clone Repository", lambda b: clone_repository(b, repo_url, clone_path)),
-            Minion("Generate Env Files", lambda b: generate_env_files(b, config, clone_path)),
-            Minion("Install Home Assistant", lambda b: install_homeassistant(b, clone_path, config)),
-            Minion("Configure Cloudflare", lambda b: configure_cloudflare(b, clone_path, config)),
-            Minion("Configure Nabu Casa", lambda b: configure_nabu_casa(b, clone_path, config)),
+            Minion("Generate Env Files", lambda b: generate_env_files(b, config, install_path)),
+            Minion("Install Home Assistant", lambda b: install_homeassistant(b, install_path, config)),
+            Minion("Configure Cloudflare", lambda b: configure_cloudflare(b, install_path, config)),
+            Minion("Configure Nabu Casa", lambda b: configure_nabu_casa(b, install_path, config)),
             Minion("Verification", lambda b: verify_installation(b)),
         ]
         boss = BossAI(unattended_minions)
         boss.run_all()
         if args.auto_start_chat:
-            start_chat_server(boss, clone_path)
+            start_chat_server(boss, install_path)
         return
 
     # Legacy sequential interactive mode (--legacy flag)
     if args.legacy:
         ensure_root()
         print_banner()
-        default_repo = "https://github.com/Enigmaticjoe/onemoreytry.git"
-        default_dest = str(Path.home() / "onemoreytry")
-        repo_url = prompt_input("Repository URL to clone", default_repo)
-        dest_dir = prompt_input("Destination directory", default_dest)
-        clone_path = Path(dest_dir).expanduser()
+        dest_dir = prompt_input("Installation directory", str(Path.home() / "onemoreytry"))
+        install_path = Path(dest_dir).expanduser()
         config: Dict[str, Any] = {}
         tasks: Dict[str, Callable[[BossAI], str]] = {}
 
@@ -2020,40 +2007,35 @@ def main() -> None:
             config = collect_configuration(b)
 
         def _legacy_env(b: BossAI) -> None:
-            generate_env_files(b, config, clone_path)
+            generate_env_files(b, config, install_path)
 
         def _legacy_chat(b: BossAI) -> None:
             start = prompt_input("Start chat server after installation? (y/N)", "N").lower()
             if start == "y":
-                start_chat_server(b, clone_path, tasks)
+                start_chat_server(b, install_path, tasks)
 
         tasks = {
             "install dependencies": lambda b: (
                 (_legacy_deps(b), "Dependencies installed.")[1]  # type: ignore[func-returns-value]
             ),
-            "clone repository": lambda b: (
-                clone_repository(b, repo_url, clone_path) or f"Repository at {clone_path}."
-            ),
             "generate env files": lambda b: (
-                (generate_env_files(b, config, clone_path), "Environment files generated.")[1]  # type: ignore[func-returns-value]
+                (generate_env_files(b, config, install_path), "Environment files generated.")[1]  # type: ignore[func-returns-value]
             ),
             "configure api keys": lambda b: (
-                (configure_api_keys(b, config, clone_path), "API tokens configured.")[1]  # type: ignore[func-returns-value]
+                (configure_api_keys(b, config, install_path), "API tokens configured.")[1]  # type: ignore[func-returns-value]
             ),
             "verify installation": lambda b: (
                 verify_installation(b) or "Verification complete."
             ),
-            "install homeassistant": lambda b: install_homeassistant(b, clone_path, config),
-            "configure cloudflare": lambda b: configure_cloudflare(b, clone_path, config),
-            "configure nabu casa": lambda b: configure_nabu_casa(b, clone_path, config),
+            "install homeassistant": lambda b: install_homeassistant(b, install_path, config),
+            "configure cloudflare": lambda b: configure_cloudflare(b, install_path, config),
+            "configure nabu casa": lambda b: configure_nabu_casa(b, install_path, config),
             "help": lambda b: "Available commands: " + ", ".join(tasks.keys()),
         }
         boss = BossAI([
-            Minion("Network Connectivity Check", lambda b: check_network_connectivity(b)),
             Minion("Install Dependencies", _legacy_deps),
-            Minion("Clone Repository", lambda b: clone_repository(b, repo_url, clone_path)),
             Minion("Collect Configuration", _legacy_config),
-            Minion("Configure API Keys", lambda b: configure_api_keys(b, config, clone_path)),
+            Minion("Configure API Keys", lambda b: configure_api_keys(b, config, install_path)),
             Minion("Generate Env Files", _legacy_env),
             Minion("Launch Chat Server", _legacy_chat),
             Minion("Verification", lambda b: verify_installation(b)),

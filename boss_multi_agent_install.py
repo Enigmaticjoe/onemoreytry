@@ -66,7 +66,6 @@ AVATAR_DATA_URI = (
     "MCAzNSBMNDAgMzUgWiIgZmlsbD0iIzAwZmZmZiIgLz4KPC9zdmc+"
 )
 
-DEFAULT_REPO = "https://github.com/Enigmaticjoe/onemoreytry.git"
 DOCKER_REPO_URL = "https://download.docker.com/linux/fedora/docker-ce.repo"
 CHAT_PORT = 8008
 VENV_PATH = Path("/opt/homelab/venv")
@@ -372,12 +371,11 @@ class Minion:
 def task_check_network(boss: BossAI) -> None:
     """Verify internet connectivity."""
     log.info("Testing connectivity...")
-    for host in ("github.com", "download.docker.com"):
-        code, out = run_cmd(
-            ["curl", "-sf", "--head", "--max-time", "8", f"https://{host}"]
-        )
-        if code != 0:
-            raise RuntimeError(f"Cannot reach {host}. Check DNS/firewall.\n{out}")
+    code, out = run_cmd(
+        ["curl", "-sf", "--head", "--max-time", "8", "https://download.docker.com"]
+    )
+    if code != 0:
+        raise RuntimeError(f"Cannot reach download.docker.com. Check DNS/firewall.\n{out}")
     log.info("Network OK.")
 
 
@@ -711,9 +709,6 @@ def configure_api_keys(config: Dict[str, Any], root: Path) -> None:
     log.info("Configuring optional API tokens...")
     print("\nOptional API tokens (leave blank to skip):")
     extras: Dict[str, str] = {}
-    gh = prompt_input("GitHub Personal Access Token", "", secret=True)
-    if gh:
-        extras["GITHUB_TOKEN"] = gh
     ai = prompt_input("OpenAI / AI service API key", "", secret=True)
     if ai:
         extras["AI_API_KEY"] = ai
@@ -1156,12 +1151,8 @@ def main() -> None:
         help="Skip installation, only start the chat server.",
     )
     parser.add_argument(
-        "--repo-url", default=DEFAULT_REPO,
-        help=f"Git repository URL (default: {DEFAULT_REPO}).",
-    )
-    parser.add_argument(
         "--dest-dir",
-        help="Clone destination (default: ~/onemoreytry).",
+        help="Installation directory (default: ~/onemoreytry).",
     )
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {VERSION}",
@@ -1173,7 +1164,6 @@ def main() -> None:
     # Resolve paths
     dest_dir = args.dest_dir or str(Path.home() / "onemoreytry")
     if not args.non_interactive and not args.chat_only:
-        args.repo_url = prompt_input("Repository URL", args.repo_url)
         dest_dir = prompt_input("Destination directory", dest_dir)
     clone_path = Path(dest_dir).expanduser()
 
@@ -1194,7 +1184,7 @@ def main() -> None:
         boss = BossAI([])
 
         def _build_tasks() -> Dict[str, Callable[[BossAI], str]]:
-            return _make_task_map(boss, config, clone_path, args.repo_url)
+            return _make_task_map(boss, config, clone_path)
 
         tasks = _build_tasks()
         open_firewall_port(CHAT_PORT)
@@ -1210,8 +1200,6 @@ def main() -> None:
             Minion("Python Venv", task_setup_python_venv),
             Minion("Docker Repo", task_setup_docker_repo),
             Minion("Docker Engine", task_install_docker),
-            Minion("Clone Repository",
-                   lambda b: task_clone_repo(b, args.repo_url, clone_path)),
             Minion("Generate Env Files",
                    lambda b: generate_env_files(config, clone_path)),
             Minion("Deploy Home Assistant",
@@ -1230,7 +1218,7 @@ def main() -> None:
             install_systemd_service(script_dest)
 
         if args.auto_start_chat:
-            tasks = _make_task_map(boss, config, clone_path, args.repo_url)
+            tasks = _make_task_map(boss, config, clone_path)
             open_firewall_port(CHAT_PORT)
             start_chat_server(boss, clone_path, tasks)
         return
@@ -1248,9 +1236,6 @@ def main() -> None:
     def minion_docker(b: BossAI) -> None:
         task_install_docker(b)
 
-    def minion_clone(b: BossAI) -> None:
-        task_clone_repo(b, args.repo_url, clone_path)
-
     def minion_config(b: BossAI) -> None:
         nonlocal config
         config = collect_configuration_interactive()
@@ -1267,7 +1252,7 @@ def main() -> None:
     def minion_chat(b: BossAI) -> None:
         start_q = prompt_input("Start chat server now? (y/N)", "N")
         if start_q.lower() == "y":
-            tasks = _make_task_map(b, config, clone_path, args.repo_url)
+            tasks = _make_task_map(b, config, clone_path)
             open_firewall_port(CHAT_PORT)
             start_chat_server(b, clone_path, tasks)
 
@@ -1277,7 +1262,6 @@ def main() -> None:
         Minion("Python Venv", minion_venv),
         Minion("Docker Repo", minion_docker_repo),
         Minion("Docker Engine", minion_docker),
-        Minion("Clone Repository", minion_clone),
         Minion("Collect Configuration", minion_config),
         Minion("API Keys", minion_api_keys),
         Minion("Generate Env Files", minion_env),
@@ -1294,7 +1278,6 @@ def _make_task_map(
     boss: BossAI,
     config: Dict[str, Any],
     clone_path: Path,
-    repo_url: str,
 ) -> Dict[str, Callable[[BossAI], str]]:
     """Build the chat command -> action mapping."""
 
@@ -1303,10 +1286,6 @@ def _make_task_map(
         task_setup_docker_repo(b)
         task_install_docker(b)
         return "Dependencies installed."
-
-    def t_clone(b: BossAI) -> str:
-        task_clone_repo(b, repo_url, clone_path)
-        return f"Repository ready at {clone_path}."
 
     def t_env(b: BossAI) -> str:
         if not config:
@@ -1338,7 +1317,6 @@ def _make_task_map(
         msgs = []
         try:
             msgs.append(t_deps(b))
-            msgs.append(t_clone(b))
             if config:
                 msgs.append(t_env(b))
                 msgs.append(t_ha(b))
@@ -1351,7 +1329,6 @@ def _make_task_map(
 
     tasks: Dict[str, Callable[[BossAI], str]] = {
         "install dependencies": t_deps,
-        "clone repository": t_clone,
         "generate env files": t_env,
         "install homeassistant": t_ha,
         "configure cloudflare": t_cf,
