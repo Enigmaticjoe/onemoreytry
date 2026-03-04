@@ -108,15 +108,59 @@ else
   OS_ID="unknown"
 fi
 
-if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
-  ok "Docker is running"
-elif command -v docker &>/dev/null && sudo docker info &>/dev/null 2>&1; then
-  warn "Docker requires sudo — consider: sudo usermod -aG docker \$USER && newgrp docker"
-  SUDO="sudo"
-  ok "Docker is running via sudo"
+check_docker() {
+  if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
+    return 0
+  elif command -v docker &>/dev/null && sudo docker info &>/dev/null 2>&1; then
+    SUDO="sudo"
+    return 0
+  fi
+  return 1
+}
+
+if check_docker; then
+  if [ "$SUDO" = "sudo" ]; then
+    warn "Docker requires sudo — consider: sudo usermod -aG docker \$USER && newgrp docker"
+    ok "Docker is running via sudo"
+  else
+    ok "Docker is running"
+  fi
 else
-  err "Docker is not running — install it first"
-  exit 1
+  warn "Docker not found or not running — attempting automatic install"
+  case "${OS_ID:-unknown}" in
+    fedora)
+      info "Installing Docker CE on Fedora..."
+      $SUDO dnf -y install dnf-plugins-core
+      $SUDO dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+      $SUDO dnf -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      $SUDO systemctl enable --now docker
+      ;;
+    ubuntu|debian)
+      info "Installing Docker CE on ${OS_ID}..."
+      $SUDO apt-get update -qq
+      $SUDO apt-get install -y ca-certificates curl gnupg
+      $SUDO install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL "https://download.docker.com/linux/${OS_ID}/gpg" \
+        | $SUDO gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      $SUDO chmod a+r /etc/apt/keyrings/docker.gpg
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/${OS_ID} $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+        | $SUDO tee /etc/apt/sources.list.d/docker.list > /dev/null
+      $SUDO apt-get update -qq
+      $SUDO apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      $SUDO systemctl enable --now docker
+      ;;
+    *)
+      err "Docker is not running — install it first (see https://docs.docker.com/engine/install/)"
+      exit 1
+      ;;
+  esac
+  if check_docker; then
+    ok "Docker installed and running${SUDO:+ (via sudo)}"
+  else
+    err "Docker installation failed — see https://docs.docker.com/engine/install/"
+    exit 1
+  fi
 fi
 
 if docker compose version &>/dev/null 2>&1 || $SUDO docker compose version &>/dev/null 2>&1; then
