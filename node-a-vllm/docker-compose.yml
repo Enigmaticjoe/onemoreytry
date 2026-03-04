@@ -101,8 +101,8 @@ services:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
     group_add:
-      - video
-      - render
+      - "${VIDEO_GID:-44}"
+      - "${RENDER_GID:-989}"
     ipc: host
     shm_size: 8gb
     healthcheck:
@@ -320,8 +320,8 @@ services:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
     group_add:
-      - video
-      - render
+      - "${VIDEO_GID:-44}"
+      - "${RENDER_GID:-989}"
     networks:
       brain_network:
         ipv4_address: 172.30.0.70

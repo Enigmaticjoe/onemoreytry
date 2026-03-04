@@ -195,8 +195,18 @@ for grp in render video; do
         warn "Added '${CURRENT_USER}' to group '${grp}' — log out and back in (or: newgrp ${grp})" || \
         warn "Could not add to group '${grp}' — run: sudo usermod -aG ${grp} ${CURRENT_USER}"
     fi
+  else
+    warn "Group '${grp}' does not exist — ROCm may not be installed; see docs/03_DEPLOY_NODE_A_BRAIN.md §1"
   fi
 done
+
+# Detect numeric GIDs so docker-compose can use them directly (avoids
+# "Unable to find group render" when the container image lacks the group name).
+# Fallback GIDs match common ROCm/Fedora defaults (render≈989, video≈44).
+RENDER_GID=$(getent group render 2>/dev/null | cut -d: -f3 || true)
+VIDEO_GID=$(getent group video  2>/dev/null | cut -d: -f3 || true)
+[ -z "$RENDER_GID" ] && RENDER_GID=989   # common ROCm render group GID on Fedora
+[ -z "$VIDEO_GID"  ] && VIDEO_GID=44     # standard video group GID on Linux
 
 # ── Step 3: Prepare .env file ─────────────────────────────────────────────────
 step "Step 3 — Prepare .env"
@@ -227,6 +237,17 @@ if grep -q "^HUGGING_FACE_HUB_TOKEN=hf_your_token_here" .env 2>/dev/null; then
   warn "HUGGING_FACE_HUB_TOKEN is still set to placeholder — vLLM will fail to download the model"
   warn "  Get a token at https://huggingface.co/settings/tokens and update .env"
 fi
+
+# Write detected GIDs to .env (update if present, append if missing).
+# This ensures docker-compose uses numeric GIDs and avoids the
+# "Unable to find group render" error in containers that lack the group name.
+grep -q "^RENDER_GID=" .env && \
+  sed -i "s|^RENDER_GID=.*|RENDER_GID=${RENDER_GID}|" .env || \
+  echo "RENDER_GID=${RENDER_GID}" >> .env
+grep -q "^VIDEO_GID=" .env && \
+  sed -i "s|^VIDEO_GID=.*|VIDEO_GID=${VIDEO_GID}|" .env || \
+  echo "VIDEO_GID=${VIDEO_GID}" >> .env
+ok "GPU group IDs written to .env (RENDER_GID=${RENDER_GID}, VIDEO_GID=${VIDEO_GID})"
 
 # ── Step 4: Pull Docker images ────────────────────────────────────────────────
 step "Step 4 — Pull Docker images"
