@@ -23,12 +23,15 @@ load_inventory() {
   NODE_D_SSH_USER="${NODE_D_SSH_USER:-root}"
   NODE_E_SSH_USER="${NODE_E_SSH_USER:-root}"
 
-  # Tailscale fallback IPs (optional — set in node-inventory.env)
+  # Tailscale IPs — preferred over LAN IPs for remote connections
+  # Set these in config/node-inventory.env to match your Tailscale network.
   NODE_A_TS_IP="${NODE_A_TS_IP:-}"
   NODE_B_TS_IP="${NODE_B_TS_IP:-}"
   NODE_C_TS_IP="${NODE_C_TS_IP:-}"
   NODE_D_TS_IP="${NODE_D_TS_IP:-}"
   NODE_E_TS_IP="${NODE_E_TS_IP:-}"
+  KVM_TS_IP="${KVM_TS_IP:-}"
+  NANOKVM_TS_IP="${NANOKVM_TS_IP:-}"
 
   # Portainer defaults
   PORTAINER_PORT="${PORTAINER_PORT:-9000}"
@@ -38,4 +41,21 @@ load_inventory() {
 is_missing_or_placeholder_ip() {
   local ip="${1:-}"
   [[ -z "$ip" || "$ip" == *"192.168.1.X"* || "$ip" == *"192.168.1.Y"* || "$ip" == *"192.168.1.Z"* ]]
+}
+
+# resolve_node_ip NODE_TS_IP NODE_LAN_IP
+# Returns the Tailscale IP if non-empty, otherwise falls back to the LAN IP.
+resolve_node_ip() {
+  local ts_ip="${1:-}" lan_ip="${2:-}"
+  if [ -n "$ts_ip" ]; then
+    echo "$ts_ip"
+  else
+    echo "$lan_ip"
+  fi
+}
+
+# tailscale_available
+# Returns 0 if the tailscale CLI is present and the daemon is running.
+tailscale_available() {
+  command -v tailscale &>/dev/null && tailscale status &>/dev/null 2>&1
 }

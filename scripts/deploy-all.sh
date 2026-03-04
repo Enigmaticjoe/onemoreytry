@@ -4,17 +4,17 @@
 #
 # This script runs from Node C (Fedora 44 cosmic nightly, Intel Arc) and deploys:
 #   1. Node C — Ollama + Chimera Face (local)
-#   2. Node B — LiteLLM Gateway (remote via SSH to Unraid)
+#   2. Node B — LiteLLM Gateway (remote via Tailscale to Unraid)
 #   3. Node A — Command Center Dashboard (local)
 #   4. KVM Operator (local)
-#   5. OpenClaw (remote via SSH to Unraid)
+#   5. OpenClaw (remote via Tailscale to Unraid)
 #   6. Deploy GUI (local Docker)
 #
 # Usage:
 #   ./scripts/deploy-all.sh              # deploy everything
 #   ./scripts/deploy-all.sh stop         # stop all services
 #   ./scripts/deploy-all.sh status       # show status only
-#   ./scripts/deploy-all.sh --skip-ssh   # deploy local-only services
+#   ./scripts/deploy-all.sh --skip-remote  # deploy local-only services
 
 set -euo pipefail
 
@@ -24,10 +24,15 @@ source "${REPO_ROOT}/scripts/lib-inventory.sh"
 load_inventory "$REPO_ROOT"
 
 ACTION="${1:-deploy}"
-SKIP_SSH=false
+SKIP_REMOTE=false
 for arg in "$@"; do
-  [[ "$arg" == "--skip-ssh" ]] && SKIP_SSH=true
+  # Accept both --skip-remote and the previous --skip-ssh name for backward compatibility
+  [[ "$arg" == "--skip-remote" || "$arg" == "--skip-ssh" ]] && SKIP_REMOTE=true
 done
+
+# Resolve effective remote IPs — prefer Tailscale over LAN
+NODE_B_REMOTE_IP="$(resolve_node_ip "${NODE_B_TS_IP:-}" "$NODE_B_IP")"
+NODE_C_REMOTE_IP="$(resolve_node_ip "${NODE_C_TS_IP:-}" "$NODE_C_IP")"
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
@@ -155,7 +160,7 @@ wait_for_health() {
   return 1
 }
 
-# ── SSH helpers ───────────────────────────────────────────────────────────────
+# ── Remote connection helpers (Tailscale SSH) ─────────────────────────────────
 ssh_cmd() {
   local host="$1" user="$2"; shift 2
   ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "${user}@${host}" "$@" 2>&1
@@ -164,16 +169,17 @@ ssh_cmd() {
 test_ssh() {
   local label="$1" host="$2" user="$3"
   if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes "${user}@${host}" true &>/dev/null; then
-    ok "SSH to ${label} (${user}@${host}) -- connected"
+    ok "SSH via Tailscale to ${label} (${user}@${host}) -- connected"
     return 0
   else
-    err "SSH to ${label} (${user}@${host}) -- FAILED"
+    err "SSH via Tailscale to ${label} (${user}@${host}) -- FAILED"
     echo ""
     info "  ${YELLOW}Troubleshooting:${NC}"
-    info "  1. Check the host is reachable:  ping -c1 ${host}"
-    info "  2. Set up SSH key auth:          ssh-copy-id ${user}@${host}"
-    info "  3. Test manually:                ssh ${user}@${host}"
-    info "  4. For Unraid, ensure SSH is enabled in Settings > Management Access"
+    info "  1. Verify Tailscale is running:  tailscale status"
+    info "  2. Check the host is reachable:  ping -c1 ${host}"
+    info "  3. Set up SSH key auth:          ssh-copy-id ${user}@${host}"
+    info "  4. Test manually:                ssh ${user}@${host}"
+    info "  5. For Unraid, ensure SSH is enabled in Settings > Management Access"
     echo ""
     return 1
   fi
@@ -267,14 +273,14 @@ portainer_redeploy_stack() {
 }
 
 # ── Portainer stack deploy (create or update) via API ────────────────────────
-# Looks up the stack by name and redeploys it, or falls back to SSH.
+# Looks up the stack by name and redeploys it, or falls back to SSH over Tailscale.
 # Arguments: stack_name portainer_url portainer_token ssh_fallback_cmd node_ip ssh_user
 portainer_deploy_stack() {
   local stack_name="$1" portainer_url="$2" portainer_token="$3"
   local ssh_fallback="$4" node_ip="$5" ssh_user="$6"
 
   if [ -z "$portainer_token" ]; then
-    info "PORTAINER_TOKEN not set — using SSH fallback"
+    info "PORTAINER_TOKEN not set — using Tailscale SSH fallback"
     ssh_cmd "$node_ip" "$ssh_user" "$ssh_fallback" && return 0 || return 1
   fi
 
@@ -293,10 +299,10 @@ portainer_deploy_stack() {
   if [ -n "$stack_id" ]; then
     portainer_redeploy_stack "$stack_id" "$portainer_url" "$portainer_token" && return 0
   else
-    info "Stack '${stack_name}' not found in Portainer — using SSH fallback"
+    info "Stack '${stack_name}' not found in Portainer — using Tailscale SSH fallback"
   fi
 
-  # SSH fallback if Portainer API unavailable or stack not found
+  # Tailscale SSH fallback if Portainer API unavailable or stack not found
   ssh_cmd "$node_ip" "$ssh_user" "$ssh_fallback"
 }
 
@@ -346,15 +352,15 @@ echo "╔═══════════════════════�
 echo "║   Grand Unified AI Home Lab — Full Deploy          ║"
 echo "╚════════════════════════════════════════════════════╝"
 echo ""
-echo "  Node A (Brain):       ${NODE_A_IP}"
-echo "  Node B (Unraid):      ${NODE_B_IP}"
-echo "  Node C (Intel Arc):   ${NODE_C_IP} (this machine)"
-echo "  Node D (HA):          ${NODE_D_IP:-not set}"
-echo "  Node E (Sentinel):    ${NODE_E_IP:-not set}"
-echo "  KVM:                  ${KVM_IP:-not set}"
+echo "  Node A (Brain):       ${NODE_A_IP}  (Tailscale: ${NODE_A_TS_IP:-not set})"
+echo "  Node B (Unraid):      ${NODE_B_IP}  (Tailscale: ${NODE_B_TS_IP:-not set})"
+echo "  Node C (Intel Arc):   ${NODE_C_IP} (this machine, Tailscale: ${NODE_C_TS_IP:-not set})"
+echo "  Node D (HA):          ${NODE_D_IP:-not set}  (Tailscale: ${NODE_D_TS_IP:-not set})"
+echo "  Node E (Sentinel):    ${NODE_E_IP:-not set}  (Tailscale: ${NODE_E_TS_IP:-not set})"
+echo "  KVM:                  ${KVM_IP:-not set}  (Tailscale: ${KVM_TS_IP:-not set})"
 echo ""
 
-# ── Step 0: Preflight — Docker, Network, SSH ─────────────────────────────────
+# ── Step 0: Preflight — Docker, Network, Tailscale ───────────────────────────
 DEPLOY_STATE[phase]="preflight"; DEPLOY_STATE[node]="local"
 step "Step 0 — Preflight Checks"
 
@@ -383,29 +389,42 @@ else
 fi
 
 echo ""
-header "  Network Connectivity:"
-
-# Ping local nodes first
-test_ping "Node A (Brain)" "$NODE_A_IP" || note_error
-
-if ! is_missing_or_placeholder_ip "$NODE_B_IP"; then
-  test_ping "Node B (Unraid)" "$NODE_B_IP" || note_error
+header "  Tailscale:"
+if tailscale_available; then
+  ok "Tailscale is running ($(tailscale version 2>/dev/null | head -1))"
+  MY_TS_IP=$(tailscale ip -4 2>/dev/null | head -1 || echo "")
+  [ -n "$MY_TS_IP" ] && info "  This machine's Tailscale IP: ${MY_TS_IP}"
+else
+  warn "Tailscale not detected — remote connections will use LAN IPs as fallback"
+  info "  Install: curl -fsSL https://tailscale.com/install.sh | sh"
 fi
 
-if [ -n "${KVM_IP:-}" ] && ! is_missing_or_placeholder_ip "$KVM_IP"; then
+echo ""
+header "  Network Connectivity (via Tailscale):"
+
+# Ping remote nodes using their resolved (Tailscale) IPs
+test_ping "Node A (Brain)" "$(resolve_node_ip "${NODE_A_TS_IP:-}" "$NODE_A_IP")" || note_error
+
+if ! is_missing_or_placeholder_ip "$NODE_B_REMOTE_IP"; then
+  test_ping "Node B (Unraid)" "$NODE_B_REMOTE_IP" || note_error
+fi
+
+if [ -n "${KVM_TS_IP:-}" ]; then
+  test_ping "KVM" "$KVM_TS_IP" || true
+elif [ -n "${KVM_IP:-}" ] && ! is_missing_or_placeholder_ip "$KVM_IP"; then
   test_ping "NanoKVM" "$KVM_IP" || true
 fi
 
 echo ""
-header "  SSH Access (remote nodes):"
+header "  Tailscale SSH Access (remote nodes):"
 SSH_TO_B=false
 
-if [ "$SKIP_SSH" = true ]; then
-  warn "Skipping SSH checks (--skip-ssh flag)"
-elif is_missing_or_placeholder_ip "$NODE_B_IP"; then
-  warn "Node B IP not configured — skipping SSH test"
+if [ "$SKIP_REMOTE" = true ]; then
+  warn "Skipping remote checks (--skip-remote flag)"
+elif is_missing_or_placeholder_ip "$NODE_B_REMOTE_IP"; then
+  warn "Node B remote IP not configured — skipping connection test"
 else
-  if test_ssh "Node B (Unraid)" "$NODE_B_IP" "$NODE_B_SSH_USER"; then
+  if test_ssh "Node B (Unraid)" "$NODE_B_REMOTE_IP" "$NODE_B_SSH_USER"; then
     SSH_TO_B=true
   else
     note_error
@@ -449,24 +468,24 @@ DEPLOY_STATE[phase]="node-b-litellm"; DEPLOY_STATE[node]="Node B (Unraid)"
 DEPLOY_STATE[container]="litellm_gateway"
 step "Step 3 — Node B LiteLLM Gateway (Unraid)"
 
-PORTAINER_URL="${PORTAINER_URL:-http://${NODE_B_IP}:9000}"
+PORTAINER_URL="${PORTAINER_URL:-http://${NODE_B_REMOTE_IP}:9000}"
 PORTAINER_TOKEN="${PORTAINER_TOKEN:-}"
 
 if [ "$SSH_TO_B" = true ] || [ -n "$PORTAINER_TOKEN" ]; then
-  info "Deploying LiteLLM stack on Node B (${NODE_B_IP})..."
+  info "Deploying LiteLLM stack on Node B (${NODE_B_REMOTE_IP})..."
   local_ssh_cmd="cd /mnt/user/appdata/homelab/node-b-litellm 2>/dev/null || cd ~/homelab/node-b-litellm && docker compose -f litellm-stack.yml pull && docker compose -f litellm-stack.yml up -d"
   if portainer_deploy_stack "litellm" "$PORTAINER_URL" "$PORTAINER_TOKEN" \
-      "$local_ssh_cmd" "$NODE_B_IP" "$NODE_B_SSH_USER" || {
+      "$local_ssh_cmd" "$NODE_B_REMOTE_IP" "$NODE_B_SSH_USER" || {
     err "LiteLLM deploy command failed"
     note_error
     false
   }; then
     # Some deployments return 401 on readiness when auth middleware is enabled.
-    if ! wait_for_health "LiteLLM Gateway" "http://${NODE_B_IP}:4000/health/readiness" 12 2 "" "401"; then
+    if ! wait_for_health "LiteLLM Gateway" "http://${NODE_B_REMOTE_IP}:4000/health/readiness" 12 2 "" "401"; then
       warn "LiteLLM health check failed"
-      info "  Try checking directly: curl -H 'x-api-key: ${LITELLM_KEY}' http://${NODE_B_IP}:4000/health"
-      info "  Or use readiness endpoint: curl http://${NODE_B_IP}:4000/health/readiness"
-      info "  Check container logs: ssh ${NODE_B_SSH_USER}@${NODE_B_IP} docker logs litellm_gateway --tail 20"
+      info "  Try checking directly: curl -H 'x-api-key: ${LITELLM_KEY}' http://${NODE_B_REMOTE_IP}:4000/health"
+      info "  Or use readiness endpoint: curl http://${NODE_B_REMOTE_IP}:4000/health/readiness"
+      info "  Check container logs: ssh ${NODE_B_SSH_USER}@${NODE_B_REMOTE_IP} docker logs litellm_gateway --tail 20"
       note_error
     else
       ok "Node B LiteLLM Gateway ready"
@@ -474,16 +493,16 @@ if [ "$SSH_TO_B" = true ] || [ -n "$PORTAINER_TOKEN" ]; then
   else
     warn "Skipping LiteLLM health check because remote deploy command failed"
   fi
-elif ! is_missing_or_placeholder_ip "$NODE_B_IP"; then
-  warn "SSH to Node B not available and PORTAINER_TOKEN not set — skipping remote deploy"
-  info "Deploy manually: ssh ${NODE_B_SSH_USER}@${NODE_B_IP} 'cd /mnt/user/appdata/homelab/node-b-litellm && docker compose -f litellm-stack.yml up -d'"
+elif ! is_missing_or_placeholder_ip "$NODE_B_REMOTE_IP"; then
+  warn "Tailscale SSH to Node B not available and PORTAINER_TOKEN not set — skipping remote deploy"
+  info "Deploy manually: ssh ${NODE_B_SSH_USER}@${NODE_B_REMOTE_IP} 'cd /mnt/user/appdata/homelab/node-b-litellm && docker compose -f litellm-stack.yml up -d'"
   info "Or set PORTAINER_TOKEN to deploy via Portainer API"
 
   # Still check if it's already running
   info "Checking if LiteLLM is already running..."
-  wait_for_health "LiteLLM Gateway (existing)" "http://${NODE_B_IP}:4000/health/readiness" 2 2 || true
+  wait_for_health "LiteLLM Gateway (existing)" "http://${NODE_B_REMOTE_IP}:4000/health/readiness" 2 2 || true
 else
-  warn "Node B IP not configured — skipping LiteLLM deploy"
+  warn "Node B remote IP not configured — skipping LiteLLM deploy"
 fi
 
 # ── Step 4: Node A Dashboard ──────────────────────────────────────────────────
@@ -617,34 +636,34 @@ fi
 DEPLOY_STATE[phase]="openclaw"; DEPLOY_STATE[node]="Node B (Unraid)"; DEPLOY_STATE[container]=""
 step "Step 6 — OpenClaw AI Gateway (Node B)"
 if [ "$SSH_TO_B" = true ] || [ -n "$PORTAINER_TOKEN" ]; then
-  info "Deploying OpenClaw on Node B (${NODE_B_IP})..."
+  info "Deploying OpenClaw on Node B (${NODE_B_REMOTE_IP})..."
   local_ssh_cmd="cd /mnt/user/appdata/homelab/openclaw 2>/dev/null || cd ~/homelab/openclaw && docker compose pull && docker compose up -d"
   if portainer_deploy_stack "openclaw" "$PORTAINER_URL" "$PORTAINER_TOKEN" \
-      "$local_ssh_cmd" "$NODE_B_IP" "$NODE_B_SSH_USER" || {
+      "$local_ssh_cmd" "$NODE_B_REMOTE_IP" "$NODE_B_SSH_USER" || {
     err "OpenClaw deploy command failed"
     note_error
     false
   }; then
-    if ! wait_for_health "OpenClaw" "http://${NODE_B_IP}:18789/" 15 2; then
+    if ! wait_for_health "OpenClaw" "http://${NODE_B_REMOTE_IP}:18789/" 15 2; then
       warn "OpenClaw health check failed"
-      info "  Check container logs: ssh ${NODE_B_SSH_USER}@${NODE_B_IP} docker logs openclaw-gateway --tail 20"
+      info "  Check container logs: ssh ${NODE_B_SSH_USER}@${NODE_B_REMOTE_IP} docker logs openclaw-gateway --tail 20"
       info "  OpenClaw can take 30-60s to start — check again in a minute"
       note_error
     else
-      ok "OpenClaw ready at http://${NODE_B_IP}:18789"
+      ok "OpenClaw ready at http://${NODE_B_REMOTE_IP}:18789"
     fi
   else
     warn "Skipping OpenClaw health check because remote deploy command failed"
   fi
-elif ! is_missing_or_placeholder_ip "$NODE_B_IP"; then
-  warn "SSH to Node B not available and PORTAINER_TOKEN not set — skipping OpenClaw deploy"
+elif ! is_missing_or_placeholder_ip "$NODE_B_REMOTE_IP"; then
+  warn "Tailscale SSH to Node B not available and PORTAINER_TOKEN not set — skipping OpenClaw deploy"
   info "Deploy manually or use: ./scripts/prepare-openclaw.sh"
 
   # Still check if already running
   info "Checking if OpenClaw is already running..."
-  wait_for_health "OpenClaw (existing)" "http://${NODE_B_IP}:18789/" 2 2 || true
+  wait_for_health "OpenClaw (existing)" "http://${NODE_B_REMOTE_IP}:18789/" 2 2 || true
 else
-  warn "Node B IP not configured — skipping OpenClaw deploy"
+  warn "Node B remote IP not configured — skipping OpenClaw deploy"
 fi
 
 # ── Step 7: Deploy GUI ─────────────────────────────────────────────────────────
@@ -685,12 +704,12 @@ echo -e "    Node A Dashboard     ${CYAN}http://localhost:3099${NC}"
 echo -e "    KVM Operator         ${CYAN}http://localhost:5000${NC}"
 echo -e "    Deploy GUI           ${CYAN}http://localhost:9999${NC}"
 
-if ! is_missing_or_placeholder_ip "$NODE_B_IP"; then
+if ! is_missing_or_placeholder_ip "$NODE_B_REMOTE_IP"; then
   echo ""
-  echo -e "  ${GREEN}REMOTE SERVICES (Node B):${NC}"
-  echo -e "    LiteLLM Gateway      ${CYAN}http://${NODE_B_IP}:4000${NC}"
-  echo -e "    OpenClaw             ${CYAN}http://${NODE_B_IP}:18789${NC}"
-  echo -e "    Portainer            ${CYAN}http://${NODE_B_IP}:9000${NC}"
+  echo -e "  ${GREEN}REMOTE SERVICES (Node B via Tailscale ${NODE_B_REMOTE_IP}):${NC}"
+  echo -e "    LiteLLM Gateway      ${CYAN}http://${NODE_B_REMOTE_IP}:4000${NC}"
+  echo -e "    OpenClaw             ${CYAN}http://${NODE_B_REMOTE_IP}:18789${NC}"
+  echo -e "    Portainer            ${CYAN}http://${NODE_B_REMOTE_IP}:9000${NC}"
 fi
 
 echo ""
@@ -698,7 +717,8 @@ if [ "$DEPLOY_ERRORS" -gt 0 ]; then
   echo -e "  ${YELLOW}Completed with ${DEPLOY_ERRORS} warning(s) — review output above.${NC}"
   echo ""
   echo "  Troubleshooting tips:"
-  echo "    - Check SSH access:   ssh ${NODE_B_SSH_USER}@${NODE_B_IP}"
+  echo "    - Verify Tailscale:   tailscale status"
+  echo "    - Check SSH access:   ssh ${NODE_B_SSH_USER}@${NODE_B_REMOTE_IP}"
   echo "    - View container logs: docker logs <container_name>"
   echo "    - Run preflight:      ./scripts/preflight-check.sh"
   echo "    - Run validation:     ./validate.sh"

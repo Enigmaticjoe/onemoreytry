@@ -108,19 +108,35 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-step "1 / 5 — Node IPs & SSH users"
+step "1 / 5 — Node IPs, Tailscale IPs & SSH users"
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-header "  These IPs are baked into every env file that needs to talk to another node."
+header "  LAN IPs (used for local service health checks and fallback)"
 echo ""
 
-ask NODE_A_IP      "Node A IP (Brain / AMD RX 7900 XT)"     "192.168.1.9"
-ask NODE_B_IP      "Node B IP (Unraid / RTX 4070)"          "192.168.1.222"
-ask NODE_C_IP      "Node C IP (Intel Arc)"                  "192.168.1.6"
-ask NODE_D_IP      "Node D IP (Home Assistant)"             "192.168.1.149"
-ask NODE_E_IP      "Node E IP (Sentinel / NVR)"             "192.168.1.116"
-ask KVM_IP         "NanoKVM IP"                             "192.168.1.130"
-ask KVM_HOSTNAME   "NanoKVM mDNS hostname"                  "kvm-d829.local"
+ask NODE_A_IP      "Node A LAN IP (Brain / AMD RX 7900 XT)"  "192.168.1.9"
+ask NODE_B_IP      "Node B LAN IP (Unraid / RTX 4070)"       "192.168.1.222"
+ask NODE_C_IP      "Node C LAN IP (Intel Arc)"               "192.168.1.6"
+ask NODE_D_IP      "Node D LAN IP (Home Assistant)"          "192.168.1.149"
+ask NODE_E_IP      "Node E LAN IP (Sentinel / NVR)"          "192.168.1.116"
+ask KVM_IP         "NanoKVM LAN IP"                          "192.168.1.130"
+ask KVM_HOSTNAME   "NanoKVM mDNS hostname"                   "kvm-d829.local"
+
+echo ""
+header "  Tailscale IPs (used for all remote connections — preferred over LAN IPs)"
+dim "  Run 'tailscale status' on each node to verify these addresses."
+echo ""
+
+ask NODE_A_TS_IP    "Node A Tailscale IP (node-a)"           "100.120.119.26"
+ask NODE_B_TS_IP    "Node B Tailscale IP (node-b-unraid)"    "100.99.104.80"
+ask NODE_C_TS_IP    "Node C Tailscale IP (node-c)"           "100.64.20.118"
+ask NODE_D_TS_IP    "Node D Tailscale IP (optional)"         ""
+ask NODE_E_TS_IP    "Node E Tailscale IP (optional)"         ""
+ask KVM_TS_IP       "KVM Tailscale IP (node-a-kvm)"          "100.99.133.29"
+ask NANOKVM_TS_IP   "NanoKVM Tailscale IP (node-c-nanokvm)"  "100.90.139.95"
+
+echo ""
+header "  SSH users"
 echo ""
 ask NODE_A_SSH_USER "SSH user for Node A"  "root"
 ask NODE_B_SSH_USER "SSH user for Node B"  "root"
@@ -241,12 +257,14 @@ NODE_C_SSH_USER=${NODE_C_SSH_USER}
 NODE_D_SSH_USER=${NODE_D_SSH_USER}
 NODE_E_SSH_USER=${NODE_E_SSH_USER}
 
-# ── Tailscale IPs (optional — fallback if LAN SSH fails) ─────────────────────
-NODE_A_TS_IP=
-NODE_B_TS_IP=
-NODE_C_TS_IP=
-NODE_D_TS_IP=
-NODE_E_TS_IP=
+# ── Tailscale IPs — preferred for all remote connections ─────────────────────
+NODE_A_TS_IP=${NODE_A_TS_IP}
+NODE_B_TS_IP=${NODE_B_TS_IP}
+NODE_C_TS_IP=${NODE_C_TS_IP}
+NODE_D_TS_IP=${NODE_D_TS_IP}
+NODE_E_TS_IP=${NODE_E_TS_IP}
+KVM_TS_IP=${KVM_TS_IP}
+NANOKVM_TS_IP=${NANOKVM_TS_IP}
 
 # ── Service Ports ─────────────────────────────────────────────────────────────
 PORTAINER_PORT=9000
@@ -398,20 +416,19 @@ echo -e "    kvm-operator/.env"
 echo -e "    node-a-vllm/.env"
 echo -e "    node-a-command-center/.env"
 echo ""
-echo -e "  ${YELLOW}COPY TO Node B (${NODE_B_IP}):${NC}"
-echo -e "    scp node-b-litellm/stacks/.env ${NODE_B_SSH_USER}@${NODE_B_IP}:/mnt/user/appdata/homelab/node-b-litellm/stacks/.env"
-echo -e "    scp unraid/.env                ${NODE_B_SSH_USER}@${NODE_B_IP}:/mnt/user/appdata/homelab/unraid/.env"
+echo -e "  ${YELLOW}COPY TO Node B (Tailscale: ${NODE_B_TS_IP:-$NODE_B_IP}):${NC}"
+echo -e "    scp node-b-litellm/stacks/.env ${NODE_B_SSH_USER}@${NODE_B_TS_IP:-$NODE_B_IP}:/mnt/user/appdata/homelab/node-b-litellm/stacks/.env"
+echo -e "    scp unraid/.env                ${NODE_B_SSH_USER}@${NODE_B_TS_IP:-$NODE_B_IP}:/mnt/user/appdata/homelab/unraid/.env"
 echo ""
-echo -e "  ${YELLOW}COPY TO Node C (${NODE_C_IP}):${NC}"
-echo -e "    scp node-c-arc/.env.openclaw   ${NODE_C_SSH_USER}@${NODE_C_IP}:/opt/openclaw/.env"
+echo -e "  ${YELLOW}COPY TO Node C (Tailscale: ${NODE_C_TS_IP:-$NODE_C_IP}):${NC}"
+echo -e "    scp node-c-arc/.env.openclaw   ${NODE_C_SSH_USER}@${NODE_C_TS_IP:-$NODE_C_IP}:/opt/openclaw/.env"
 echo ""
-echo -e "  ${YELLOW}COPY TO Node D (${NODE_D_IP}):${NC}"
-echo -e "    scp node-d-home-assistant/.env ${NODE_D_SSH_USER}@${NODE_D_IP}:~/homelab/node-d-home-assistant/.env"
+echo -e "  ${YELLOW}COPY TO Node D (Tailscale: ${NODE_D_TS_IP:-$NODE_D_IP}):${NC}"
+echo -e "    scp node-d-home-assistant/.env ${NODE_D_SSH_USER}@${NODE_D_TS_IP:-$NODE_D_IP}:~/homelab/node-d-home-assistant/.env"
 echo ""
 echo -e "  ${CYAN}Next steps:${NC}"
 echo -e "    1. Review each .env file and adjust any remaining placeholder values."
-echo -e "    2. Run the SSH auditor to validate connectivity:"
-echo -e "         ./scripts/ssh-auditor.sh"
+echo -e "    2. Ensure Tailscale is running on all nodes (run 'tailscale status' on each node to verify)."
 echo -e "    3. Then deploy everything:"
 echo -e "         ./scripts/deploy-all.sh"
 echo ""
