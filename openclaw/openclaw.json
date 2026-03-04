@@ -37,6 +37,10 @@
       // allowInsecureAuth: needed when accessing over plain HTTP on LAN.
       // Set to false only if you're behind HTTPS (reverse proxy, Tailscale).
       allowInsecureAuth: true,
+      // allowedOrigins: allow the Control UI to be opened from any LAN host.
+      // Without this, you get "origin not allowed" when your browser is on a
+      // different IP than the gateway host.  Token auth still applies.
+      allowedOrigins: ["*"],
     },
 
     // ── OpenAI-Compatible HTTP API ──────────────────────────────────
