@@ -128,6 +128,7 @@ Full guide: **[PORTAINER_GUIDE.md](PORTAINER_GUIDE.md)**
 | File | Contents |
 |------|----------|
 | [PORTAINER_GUIDE.md](PORTAINER_GUIDE.md) | **Start here** — Portainer install, SSH troubleshooting, Tailscale, API |
+| [docs/25_STACK_ANALYSIS_AND_ALTERNATIVES.md](docs/25_STACK_ANALYSIS_AND_ALTERNATIVES.md) | **Overwhelmed?** — Stack review, simpler alternatives, beginner quick-win path |
 | [GUIDEBOOK.md](GUIDEBOOK.md) | Full architecture and per-node deployment details |
 | [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) | Step-by-step deployment reference |
 | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | Copy-paste commands for common operations |
