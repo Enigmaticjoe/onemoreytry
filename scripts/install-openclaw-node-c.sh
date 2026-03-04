@@ -207,15 +207,57 @@ services:
       - "5000:5000"
 YAML
 
-cat > "${BUNDLE_DIR}/node-c/.env.template" <<ENV
+cat > "${BUNDLE_DIR}/node-c/.env.template" <<'ENV'
+OPENCLAW_GATEWAY_TOKEN=change-me-openclaw-gateway-token
+OLLAMA_API_KEY=ollama
+LITELLM_API_KEY=change-me-litellm-api-key
+KVM_OPERATOR_URL=http://NODE_A_IP:5000
+KVM_OPERATOR_TOKEN=change-me-kvm-operator-token
+ENV
+
+cat > "${BUNDLE_DIR}/node-a/kvm-operator.env.template" <<'ENV'
+KVM_OPERATOR_TOKEN=change-me-kvm-operator-token
+REQUIRE_APPROVAL=true
+ALLOW_DANGEROUS=false
+KVM_TARGETS_JSON={"kvm-d829":"192.168.1.130"}
+NANOKVM_USERNAME=admin
+NANOKVM_PASSWORD=change-me
+NANOKVM_AUTH_MODE=auto
+SESSION_TTL=300
+LITELLM_URL=http://NODE_B_IP:4000/v1/chat/completions
+LITELLM_API_KEY=sk-master-key
+VISION_MODEL=kvm-vision
+LOG_LEVEL=INFO
+ENV
+
+ok "Turnkey package created at ${BUNDLE_DIR}"
+
+step "Step 6 — Install OpenClaw runtime files"
+run "install -m 0644 node-c-arc/openclaw.json '${OPENCLAW_DIR}/config/openclaw.json'"
+run "install -m 0644 openclaw/skill-kvm.md '${OPENCLAW_DIR}/workspace/skill-kvm.md'"
+run "install -m 0644 openclaw/skill-deploy.md '${OPENCLAW_DIR}/workspace/skill-deploy.md'"
+run "install -m 0644 '${BUNDLE_DIR}/stacks/node-c-openclaw-compose.yml' '${HOMELAB_DIR}/openclaw.yml'"
+
+# Write secret-bearing env files only to the runtime directory (never to tracked bundle paths)
+if [ "$DRY_RUN" = true ]; then
+  echo "[dry-run] write ${OPENCLAW_DIR}/.env with generated secrets"
+  echo "[dry-run] write ${OPENCLAW_DIR}/kvm-operator.env with generated secrets"
+else
+  _litellm_key="$(openssl rand -hex 24)"
+  _tmp="$(mktemp)" || { err "Failed to create temp file"; exit 1; }
+  cat > "$_tmp" <<ENV
 OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_TOKEN}
 OLLAMA_API_KEY=ollama
-LITELLM_API_KEY="$(openssl rand -hex 24)"
+LITELLM_API_KEY=${_litellm_key}
 KVM_OPERATOR_URL=http://${NODE_A_IP}:5000
 KVM_OPERATOR_TOKEN=${KVM_OPERATOR_TOKEN}
 ENV
+  install -m 0600 "$_tmp" "${OPENCLAW_DIR}/.env"
+  rm -f "$_tmp"
+  ok "Runtime .env written to ${OPENCLAW_DIR}/.env"
 
-cat > "${BUNDLE_DIR}/node-a/kvm-operator.env.template" <<ENV
+  _tmp2="$(mktemp)" || { err "Failed to create temp file"; exit 1; }
+  cat > "$_tmp2" <<ENV
 KVM_OPERATOR_TOKEN=${KVM_OPERATOR_TOKEN}
 REQUIRE_APPROVAL=true
 ALLOW_DANGEROUS=false
@@ -229,15 +271,10 @@ LITELLM_API_KEY=sk-master-key
 VISION_MODEL=kvm-vision
 LOG_LEVEL=INFO
 ENV
-
-ok "Turnkey package created at ${BUNDLE_DIR}"
-
-step "Step 6 — Install OpenClaw runtime files"
-run "install -m 0644 node-c-arc/openclaw.json '${OPENCLAW_DIR}/config/openclaw.json'"
-run "install -m 0644 openclaw/skill-kvm.md '${OPENCLAW_DIR}/workspace/skill-kvm.md'"
-run "install -m 0644 openclaw/skill-deploy.md '${OPENCLAW_DIR}/workspace/skill-deploy.md'"
-run "install -m 0644 '${BUNDLE_DIR}/stacks/node-c-openclaw-compose.yml' '${HOMELAB_DIR}/openclaw.yml'"
-run "install -m 0600 '${BUNDLE_DIR}/node-c/.env.template' '${OPENCLAW_DIR}/.env'"
+  install -m 0600 "$_tmp2" "${OPENCLAW_DIR}/kvm-operator.env"
+  rm -f "$_tmp2"
+  ok "Runtime kvm-operator.env written to ${OPENCLAW_DIR}/kvm-operator.env"
+fi
 
 cat > "${OPENCLAW_DIR}/workspace/AGENTS.md" <<EOF2
 # Node C OpenClaw Runtime Context
