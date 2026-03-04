@@ -530,13 +530,23 @@ def collect_configuration(boss: BossAI) -> Dict[str, Any]:
     """Interactively gather configuration values for environment files."""
     cfg: Dict[str, Any] = {}
     print("\nPlease enter configuration values (press Enter to accept defaults):")
-    cfg["NODE_A_IP"] = prompt_input("Node A IP (Brain / AMD GPU)", "192.168.1.9")
-    cfg["NODE_B_IP"] = prompt_input("Node B IP (Unraid / Gateway)", "192.168.1.222")
-    cfg["NODE_C_IP"] = prompt_input("Node C IP (Intel Arc)", "192.168.1.6")
-    cfg["NODE_D_IP"] = prompt_input("Node D IP (Home Assistant)", "192.168.1.149")
-    cfg["NODE_E_IP"] = prompt_input("Node E IP (Sentinel/NVR)", "192.168.1.116")
-    cfg["KVM_IP"] = prompt_input("NanoKVM IP", "192.168.1.130")
+    cfg["NODE_A_IP"] = prompt_input("Node A LAN IP (Brain / AMD GPU)", "192.168.1.9")
+    cfg["NODE_B_IP"] = prompt_input("Node B LAN IP (Unraid / Gateway)", "192.168.1.222")
+    cfg["NODE_C_IP"] = prompt_input("Node C LAN IP (Intel Arc)", "192.168.1.6")
+    cfg["NODE_D_IP"] = prompt_input("Node D LAN IP (Home Assistant)", "192.168.1.149")
+    cfg["NODE_E_IP"] = prompt_input("Node E LAN IP (Sentinel/NVR)", "192.168.1.116")
+    cfg["KVM_IP"] = prompt_input("NanoKVM LAN IP", "192.168.1.130")
     cfg["KVM_HOSTNAME"] = prompt_input("NanoKVM hostname", "kvm-d829.local")
+
+    print("\nTailscale IPs (used for all remote connections — run 'tailscale status' to verify):")
+    cfg["NODE_A_TS_IP"] = prompt_input("Node A Tailscale IP (node-a)", "100.120.119.26")
+    cfg["NODE_B_TS_IP"] = prompt_input("Node B Tailscale IP (node-b-unraid)", "100.99.104.80")
+    cfg["NODE_C_TS_IP"] = prompt_input("Node C Tailscale IP (node-c)", "100.64.20.118")
+    cfg["NODE_D_TS_IP"] = prompt_input("Node D Tailscale IP (optional)", "")
+    cfg["NODE_E_TS_IP"] = prompt_input("Node E Tailscale IP (optional)", "")
+    cfg["KVM_TS_IP"] = prompt_input("KVM Tailscale IP (node-a-kvm)", "100.99.133.29")
+    cfg["NANOKVM_TS_IP"] = prompt_input("NanoKVM Tailscale IP (node-c-nanokvm)", "100.90.139.95")
+
     cfg["NODE_A_SSH_USER"] = prompt_input("SSH user for Node A", "root")
     cfg["NODE_B_SSH_USER"] = prompt_input("SSH user for Node B", "root")
     cfg["NODE_C_SSH_USER"] = prompt_input("SSH user for Node C", "root")
@@ -590,6 +600,14 @@ def generate_env_files(boss: BossAI, config: Dict[str, Any], root: Path) -> None
         NODE_E_IP={config['NODE_E_IP']}
         KVM_IP={config['KVM_IP']}
         KVM_HOSTNAME={config['KVM_HOSTNAME']}
+
+        NODE_A_TS_IP={config['NODE_A_TS_IP']}
+        NODE_B_TS_IP={config['NODE_B_TS_IP']}
+        NODE_C_TS_IP={config['NODE_C_TS_IP']}
+        NODE_D_TS_IP={config['NODE_D_TS_IP']}
+        NODE_E_TS_IP={config['NODE_E_TS_IP']}
+        KVM_TS_IP={config['KVM_TS_IP']}
+        NANOKVM_TS_IP={config['NANOKVM_TS_IP']}
 
         NODE_A_SSH_USER={config['NODE_A_SSH_USER']}
         NODE_B_SSH_USER={config['NODE_B_SSH_USER']}
@@ -729,6 +747,13 @@ def load_non_interactive_config(config_path: Optional[str] = None) -> Dict[str, 
         "NODE_E_IP": "192.168.1.116",
         "KVM_IP": "192.168.1.130",
         "KVM_HOSTNAME": "kvm-d829.local",
+        "NODE_A_TS_IP": "",
+        "NODE_B_TS_IP": "",
+        "NODE_C_TS_IP": "",
+        "NODE_D_TS_IP": "",
+        "NODE_E_TS_IP": "",
+        "KVM_TS_IP": "",
+        "NANOKVM_TS_IP": "",
         "NODE_A_SSH_USER": "root",
         "NODE_B_SSH_USER": "root",
         "NODE_C_SSH_USER": "root",
@@ -1770,6 +1795,7 @@ def run_portainer_on_all_nodes(boss: Optional["BossAI"] = None) -> None:
         "Node E (Sentinel)":    "192.168.1.116",
     }
     node_users: Dict[str, str] = {k: "root" for k in node_ips}
+    env_data: Dict[str, str] = {}
     if inv.exists():
         for line in inv.read_text().splitlines():
             line = line.strip()
@@ -1778,25 +1804,38 @@ def run_portainer_on_all_nodes(boss: Optional["BossAI"] = None) -> None:
             if "=" not in line:
                 continue
             k, v = line.split("=", 1)
-            k, v = k.strip(), v.strip()
-            ip_map = {
-                "NODE_A_IP": "Node A (Brain)",
-                "NODE_B_IP": "Node B (Unraid/GW)",
-                "NODE_C_IP": "Node C (Intel Arc)",
-                "NODE_D_IP": "Node D (Home Asst.)",
-                "NODE_E_IP": "Node E (Sentinel)",
-            }
-            user_map = {
-                "NODE_A_SSH_USER": "Node A (Brain)",
-                "NODE_B_SSH_USER": "Node B (Unraid/GW)",
-                "NODE_C_SSH_USER": "Node C (Intel Arc)",
-                "NODE_D_SSH_USER": "Node D (Home Asst.)",
-                "NODE_E_SSH_USER": "Node E (Sentinel)",
-            }
+            env_data[k.strip()] = v.strip()
+
+        ip_map = {
+            "NODE_A_IP": "Node A (Brain)",
+            "NODE_B_IP": "Node B (Unraid/GW)",
+            "NODE_C_IP": "Node C (Intel Arc)",
+            "NODE_D_IP": "Node D (Home Asst.)",
+            "NODE_E_IP": "Node E (Sentinel)",
+        }
+        ts_map = {
+            "NODE_A_TS_IP": "Node A (Brain)",
+            "NODE_B_TS_IP": "Node B (Unraid/GW)",
+            "NODE_C_TS_IP": "Node C (Intel Arc)",
+            "NODE_D_TS_IP": "Node D (Home Asst.)",
+            "NODE_E_TS_IP": "Node E (Sentinel)",
+        }
+        user_map = {
+            "NODE_A_SSH_USER": "Node A (Brain)",
+            "NODE_B_SSH_USER": "Node B (Unraid/GW)",
+            "NODE_C_SSH_USER": "Node C (Intel Arc)",
+            "NODE_D_SSH_USER": "Node D (Home Asst.)",
+            "NODE_E_SSH_USER": "Node E (Sentinel)",
+        }
+        for k, v in env_data.items():
             if k in ip_map:
                 node_ips[ip_map[k]] = v
             if k in user_map:
                 node_users[user_map[k]] = v
+        # Prefer Tailscale IPs over LAN IPs for remote connections
+        for k, label in ts_map.items():
+            if env_data.get(k):
+                node_ips[label] = env_data[k]
 
     print("  Will install Portainer CE on the following nodes:\n")
     for name, ip in node_ips.items():

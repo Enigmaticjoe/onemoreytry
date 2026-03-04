@@ -172,11 +172,25 @@ if [ "$HEALTH_ONLY" = false ]; then
   done
 
   echo ""
-  echo "4. Network & SSH Connectivity"
-  echo "──────────────────────────────"
+  echo "4. Network & Tailscale Connectivity"
+  echo "────────────────────────────────────"
 
-  # Ping all configured nodes
-  for pair in "Node A:${NODE_A_IP}" "Node B:${NODE_B_IP}" "Node C:${NODE_C_IP}" "Node D:${NODE_D_IP:-}" "Node E:${NODE_E_IP:-}" "KVM:${KVM_IP:-}"; do
+  # Check Tailscale status
+  if command -v tailscale &>/dev/null && tailscale status &>/dev/null 2>&1; then
+    pass "Tailscale is running ($(tailscale version 2>/dev/null | head -1))"
+  else
+    warn "Tailscale not detected — install: curl -fsSL https://tailscale.com/install.sh | sh"
+  fi
+
+  # Ping nodes using resolved (Tailscale-preferred) IPs
+  NODE_A_REMOTE_IP="$(resolve_node_ip "${NODE_A_TS_IP:-}" "$NODE_A_IP")"
+  NODE_B_REMOTE_IP="$(resolve_node_ip "${NODE_B_TS_IP:-}" "$NODE_B_IP")"
+  NODE_C_REMOTE_IP="$(resolve_node_ip "${NODE_C_TS_IP:-}" "$NODE_C_IP")"
+  NODE_D_REMOTE_IP="$(resolve_node_ip "${NODE_D_TS_IP:-}" "${NODE_D_IP:-}")"
+  NODE_E_REMOTE_IP="$(resolve_node_ip "${NODE_E_TS_IP:-}" "${NODE_E_IP:-}")"
+  KVM_REMOTE_IP="$(resolve_node_ip "${KVM_TS_IP:-}" "${KVM_IP:-}")"
+
+  for pair in "Node A:${NODE_A_REMOTE_IP}" "Node B:${NODE_B_REMOTE_IP}" "Node C:${NODE_C_REMOTE_IP}" "Node D:${NODE_D_REMOTE_IP}" "Node E:${NODE_E_REMOTE_IP}" "KVM:${KVM_REMOTE_IP}"; do
     label="${pair%%:*}"
     ip="${pair#*:}"
     if [ -z "$ip" ] || is_missing_or_placeholder_ip "$ip"; then
@@ -191,8 +205,8 @@ if [ "$HEALTH_ONLY" = false ]; then
 
   echo ""
 
-  # SSH to remote nodes
-  for triple in "Node B:${NODE_B_IP}:${NODE_B_SSH_USER}" "Node C:${NODE_C_IP}:${NODE_C_SSH_USER:-root}"; do
+  # SSH to remote nodes over Tailscale
+  for triple in "Node B:${NODE_B_REMOTE_IP}:${NODE_B_SSH_USER}" "Node C:${NODE_C_REMOTE_IP}:${NODE_C_SSH_USER:-root}"; do
     label="${triple%%:*}"
     rest="${triple#*:}"
     ip="${rest%%:*}"
@@ -203,9 +217,9 @@ if [ "$HEALTH_ONLY" = false ]; then
     fi
     if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes \
          "${user}@${ip}" true &>/dev/null 2>&1; then
-      pass "SSH ${label} (${user}@${ip}) -- connected"
+      pass "SSH via Tailscale ${label} (${user}@${ip}) -- connected"
     else
-      warn "SSH ${label} (${user}@${ip}) -- failed (set up: ssh-copy-id ${user}@${ip})"
+      warn "SSH via Tailscale ${label} (${user}@${ip}) -- failed (set up: ssh-copy-id ${user}@${ip})"
     fi
   done
   echo ""
