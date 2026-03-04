@@ -72,7 +72,7 @@ services:
       - >
         mkdir -p /root/.openclaw /home/linuxbrew &&
         [ -s /root/.openclaw/openclaw.json ] ||
-        echo '{"gateway":{"mode":"local","bind":"lan","controlUi":{"allowInsecureAuth":true},"auth":{"mode":"token"}}}' > /root/.openclaw/openclaw.json &&
+        echo '{"gateway":{"mode":"local","bind":"lan","controlUi":{"allowInsecureAuth":true,"allowedOrigins":["*"]},"auth":{"mode":"token"}}}' > /root/.openclaw/openclaw.json &&
         exec node dist/index.js gateway --bind lan
 
     ports:
