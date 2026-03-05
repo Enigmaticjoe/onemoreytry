@@ -6,7 +6,7 @@
 #
 # AI Integration:
 #   OpenClaw → LiteLLM (port 4000) for AI-assisted deployments
-#   OpenClaw → Docker socket for container management
+#   OpenClaw → Portainer API for controlled container management
 #
 # Usage:
 #   cp stacks/.env.example stacks/.env
@@ -25,10 +25,11 @@ services:
       - LITELLM_API_KEY=${LITELLM_MASTER_KEY:-sk-master-key}
       - NODE_NAME=node-b-brawn
       - TZ=${TZ:-America/New_York}
+      - PORTAINER_URL=${PORTAINER_URL:-}
+      - PORTAINER_TOKEN=${PORTAINER_TOKEN:-}
     ports:
-      - "18789:18789"
+      - "${OPENCLAW_BIND_IP:-127.0.0.1}:18789:18789"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${APPDATA_PATH}/openclaw:/data
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:18789/health || exit 1"]

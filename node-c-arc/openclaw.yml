@@ -71,7 +71,7 @@ services:
     ports:
       # ALL traffic on ONE port: WebSocket gateway + OpenAI-compat API +
       # Control UI (?token=...) + Webhooks (/hooks/*) + Health
-      - "18789:18789"
+      - "${OPENCLAW_BIND_IP:-127.0.0.1}:18789:18789"
 
     environment:
       HOME: /root
@@ -112,6 +112,10 @@ services:
       KVM_OPERATOR_URL: ${KVM_OPERATOR_URL:-}
       KVM_OPERATOR_TOKEN: ${KVM_OPERATOR_TOKEN:-}
 
+      # Controlled container automation path (no direct Docker socket mount):
+      PORTAINER_URL: ${PORTAINER_URL:-}
+      PORTAINER_TOKEN: ${PORTAINER_TOKEN:-}
+
       # ══════════════════════════════════════════════════════════════════════
       # CLOUD AI PROVIDERS (optional — used as fallback when Ollama is busy)
       # ══════════════════════════════════════════════════════════════════════
@@ -145,11 +149,6 @@ services:
       # Optional: Homebrew (skills that need brew/go tools persist across restarts)
       - /opt/openclaw/homebrew:/home/linuxbrew/.linuxbrew
 
-      # Docker socket — lets OpenClaw manage Node C containers directly.
-      # SECURITY: This grants root-equivalent access to the Docker daemon.
-      # Only enable if you trust your OpenClaw configuration and keep the
-      # OPENCLAW_GATEWAY_TOKEN secret.
-      - /var/run/docker.sock:/var/run/docker.sock
 
     extra_hosts:
       # Reach Ollama and other host-networked services from inside OpenClaw:

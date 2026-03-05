@@ -3,10 +3,8 @@
 # ══════════════════════════════════════════════════════════════════════════════
 #
 #  Deploys OpenClaw on NODE_B with Swarm placement constraints.
-#  Requires Docker socket access for container management capabilities.
-#
-#  IMPORTANT: OpenClaw uses --user root and Docker socket mount.
-#  This is intentional per OpenClaw's official template requirements.
+#  Container automation should route through Portainer API credentials
+#  (PORTAINER_URL + PORTAINER_TOKEN), not direct Docker socket exposure.
 #
 #  Deploy via Portainer BE:
 #    Environments → Homelab Swarm → Stacks → Add Stack → Upload this file
@@ -22,7 +20,6 @@ services:
     ports:
       - "18789:18789"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - openclaw_workspace:/home/node/clawd
       - openclaw_config:/home/node/.config
     environment:
@@ -43,6 +40,10 @@ services:
       # ── KVM Operator ─────────────────────────────────────────────────────
       KVM_OPERATOR_URL: ${KVM_OPERATOR_URL:-http://192.168.1.9:5000}
       KVM_OPERATOR_TOKEN: ${KVM_OPERATOR_TOKEN:-}
+
+      # Controlled container automation path (no direct Docker socket mount):
+      PORTAINER_URL: ${PORTAINER_URL:-}
+      PORTAINER_TOKEN: ${PORTAINER_TOKEN:-}
 
       # ── Unraid ───────────────────────────────────────────────────────────
       UNRAID_API_KEY: ${UNRAID_API_KEY:-}

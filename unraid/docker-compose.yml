@@ -35,7 +35,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /mnt/user/data:/mnt/user/data:ro
     ports:
-      - "8010:3000"
+      - "${HOMEPAGE_BIND_IP:-127.0.0.1}:8010:3000"
     environment:
       - HOMEPAGE_ALLOWED_HOSTS=*
       - HOMEPAGE_VAR_HA_TOKEN=${HA_LONG_LIVED_TOKEN}
@@ -45,7 +45,7 @@ services:
     container_name: uptime-kuma
     restart: unless-stopped
     ports:
-      - "3010:3001"
+      - "${UPTIME_KUMA_BIND_IP:-127.0.0.1}:3010:3001"
     volumes:
       - ${APPDATA_PATH}/uptime-kuma:/app/data
     environment:
@@ -61,7 +61,7 @@ services:
     container_name: dozzle
     restart: unless-stopped
     ports:
-      - "8888:8080"
+      - "${DOZZLE_BIND_IP:-127.0.0.1}:8888:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:

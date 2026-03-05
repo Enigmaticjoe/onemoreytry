@@ -7,8 +7,9 @@ services:
     container_name: ollama_arc
     restart: unless-stopped
 
-    # Exposes Ollama on the host network at :11434
-    network_mode: host
+    # Hardened default: bridge network + explicit bind address.
+    ports:
+      - "${OLLAMA_BIND_IP:-127.0.0.1}:11434:11434"
 
     # Kept because your blueprint describes Level Zero permission issues without privileged DRM access.
     # Try removing later + use group_add/video/render if your host allows it.
@@ -49,7 +50,7 @@ services:
     container_name: open-webui
     restart: unless-stopped
     ports:
-      - "3000:8080"
+      - "${OPEN_WEBUI_BIND_IP:-127.0.0.1}:3000:8080"
     environment:
       # IMPORTANT: if Ollama is on the host network, localhost inside the container is wrong.
       # Use host.docker.internal with host-gateway mapping.
