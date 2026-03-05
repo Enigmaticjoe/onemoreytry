@@ -1,5 +1,8 @@
 # 14 — Post-Installation Layman's Guide: "Now What?"
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 **Who this guide is for:** You've followed the setup guides, your containers are (hopefully) running, and now you're staring at your screen wondering what to actually *do* next. This guide walks you through verifying everything works, sending your first AI message, and keeping things healthy — in plain English, no experience required.
 
 ---

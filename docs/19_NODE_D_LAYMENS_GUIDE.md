@@ -1,5 +1,8 @@
 # Node D — Home Assistant: Layman's Guide
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 > **Who this guide is for:** Anyone who wants to automate their home, use voice control, or connect their smart home to the AI lab. You don't need any coding experience — Home Assistant is designed for regular people.
 
 ---

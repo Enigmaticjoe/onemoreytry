@@ -1,5 +1,8 @@
 # Troubleshooting
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 Open WebUI cannot connect to Ollama:
 - If Ollama runs on host network, localhost inside container is wrong.
 - Use OLLAMA_BASE_URL=http://host.docker.internal:11434 + extra_hosts host-gateway

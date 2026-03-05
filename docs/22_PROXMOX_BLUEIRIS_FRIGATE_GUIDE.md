@@ -1,5 +1,8 @@
 # Proxmox + Blue Iris + Frigate: The Complete Layman's Guide
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 **Who this guide is for:** Anyone who wants to record and analyze security camera footage using a mix of professional and open-source tools — and then connect it all to AI for smart alerts.
 
 ---

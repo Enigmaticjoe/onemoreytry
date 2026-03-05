@@ -1,5 +1,8 @@
 # Node B — The Gateway: Layman's Guide
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 > **Who this guide is for:** Anyone setting up or managing Node B — the traffic director, storage hub, and deployment workhorse of the home lab. No technical background needed.
 
 ---
