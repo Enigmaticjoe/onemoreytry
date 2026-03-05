@@ -381,9 +381,9 @@ test_result $? "openclaw/skill-deploy.md (deployment skill) exists"
 grep -q "Portainer" openclaw/skill-deploy.md
 test_result $? "skill-deploy.md documents Portainer stack management"
 
-# Docker socket for deployment assistant
-grep -q "/var/run/docker.sock" openclaw/docker-compose.yml
-test_result $? "Docker socket mounted in OpenClaw (deployment assistant)"
+# Deployment assistant uses Portainer API (no direct Docker socket mount)
+grep -q "PORTAINER_URL\|PORTAINER_TOKEN" openclaw/docker-compose.yml
+test_result $? "OpenClaw deployment assistant uses Portainer API (not raw Docker socket)"
 
 echo ""
 
@@ -1158,6 +1158,178 @@ test_result $? "bos.py supports --non-interactive unattended mode"
 
 grep -q "OLLAMA_URL\|ollama_url" bos.py
 test_result $? "bos.py reads OLLAMA_URL environment variable"
+
+echo ""
+
+# Test 16: Validate Agent Instruction Framework
+echo "16. Validating Agent Instruction Framework..."
+echo "----------------------------------------------"
+
+[ -f "agent-governance/agent-config.yml" ]
+test_result $? "agent-governance/agent-config.yml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('agent-governance/agent-config.yml'))"
+test_result $? "agent-governance/agent-config.yml is valid YAML"
+
+python3 -c "
+import yaml, sys
+data = yaml.safe_load(open('agent-governance/agent-config.yml'))
+required = ['schema_version', 'execution_modes', 'roles', 'quality_gates', 'hard_blocks']
+missing = [k for k in required if k not in data]
+sys.exit(1 if missing else 0)
+"
+test_result $? "agent-config.yml has all required top-level keys"
+
+python3 -c "
+import yaml, sys
+data = yaml.safe_load(open('agent-governance/agent-config.yml'))
+roles = data.get('roles', {})
+required_roles = ['planner', 'operator', 'auditor']
+missing = [r for r in required_roles if r not in roles]
+sys.exit(1 if missing else 0)
+"
+test_result $? "agent-config.yml defines planner, operator, and auditor roles"
+
+python3 -c "
+import yaml, sys
+data = yaml.safe_load(open('agent-governance/agent-config.yml'))
+modes = data.get('execution_modes', {}).get('allowed', [])
+required_modes = ['SAFE', 'DRYRUN', 'ARMED']
+missing = [m for m in required_modes if m not in modes]
+sys.exit(1 if missing else 0)
+"
+test_result $? "agent-config.yml defines SAFE, DRYRUN, and ARMED execution modes"
+
+python3 -c "
+import yaml, sys
+data = yaml.safe_load(open('agent-governance/agent-config.yml'))
+blocks = data.get('hard_blocks', [])
+sys.exit(0 if len(blocks) >= 5 else 1)
+"
+test_result $? "agent-config.yml defines at least 5 hard blocks"
+
+[ -f "agent-governance/hooks/pre-commit" ]
+test_result $? "agent-governance/hooks/pre-commit hook exists"
+
+bash -n agent-governance/hooks/pre-commit
+test_result $? "agent-governance/hooks/pre-commit has valid bash syntax"
+
+grep -q "destructive-check\|Destructive" agent-governance/hooks/pre-commit
+test_result $? "pre-commit hook calls destructive change detection"
+
+grep -q "YAML\|yaml" agent-governance/hooks/pre-commit
+test_result $? "pre-commit hook checks YAML syntax"
+
+grep -q "bandit\|ruff\|flake8" agent-governance/hooks/pre-commit
+test_result $? "pre-commit hook enforces Python linting/security scanning"
+
+[ -f "agent-governance/hooks/destructive-check.sh" ]
+test_result $? "agent-governance/hooks/destructive-check.sh exists"
+
+bash -n agent-governance/hooks/destructive-check.sh
+test_result $? "destructive-check.sh has valid bash syntax"
+
+grep -q "git push\|force-push\|force push" agent-governance/hooks/destructive-check.sh
+test_result $? "destructive-check.sh blocks direct git push / force push"
+
+grep -q "rm.*-rf\|rm -r" agent-governance/hooks/destructive-check.sh
+test_result $? "destructive-check.sh detects rm -rf patterns"
+
+[ -f ".pre-commit-config.yaml" ]
+test_result $? ".pre-commit-config.yaml (pre-commit framework config) exists"
+
+python3 -c "import yaml; yaml.safe_load(open('.pre-commit-config.yaml'))"
+test_result $? ".pre-commit-config.yaml is valid YAML"
+
+grep -q "destructive-change-detection\|destructive-check" .pre-commit-config.yaml
+test_result $? ".pre-commit-config.yaml includes destructive-change-detection hook"
+
+grep -q "bandit\|ruff" .pre-commit-config.yaml
+test_result $? ".pre-commit-config.yaml includes Python security/lint hooks"
+
+[ -f "agent-governance/sovereign-brain-compose.yml" ]
+test_result $? "agent-governance/sovereign-brain-compose.yml (Brain Node stack) exists"
+
+python3 -c "import yaml; yaml.safe_load(open('agent-governance/sovereign-brain-compose.yml'))"
+test_result $? "sovereign-brain-compose.yml is valid YAML"
+
+grep -q "brain-ollama" agent-governance/sovereign-brain-compose.yml
+test_result $? "sovereign-brain-compose.yml defines brain-ollama service"
+
+grep -q "brain-qdrant" agent-governance/sovereign-brain-compose.yml
+test_result $? "sovereign-brain-compose.yml defines brain-qdrant service"
+
+grep -q "brain-openwebui" agent-governance/sovereign-brain-compose.yml
+test_result $? "sovereign-brain-compose.yml defines brain-openwebui service"
+
+grep -q "brain-governance" agent-governance/sovereign-brain-compose.yml
+test_result $? "sovereign-brain-compose.yml defines brain-governance sidecar"
+
+[ -f "unraid/sovereign-ai-stack.yml" ]
+test_result $? "unraid/sovereign-ai-stack.yml (Unraid sovereign AI stack) exists"
+
+python3 -c "import yaml; yaml.safe_load(open('unraid/sovereign-ai-stack.yml'))"
+test_result $? "unraid/sovereign-ai-stack.yml is valid YAML"
+
+grep -q "anythingllm" unraid/sovereign-ai-stack.yml
+test_result $? "unraid/sovereign-ai-stack.yml defines anythingllm service"
+
+grep -q "qdrant" unraid/sovereign-ai-stack.yml
+test_result $? "unraid/sovereign-ai-stack.yml defines qdrant service"
+
+grep -q "unraid-mcp" unraid/sovereign-ai-stack.yml
+test_result $? "unraid/sovereign-ai-stack.yml defines unraid-mcp service"
+
+grep -q "REQUIRE_APPROVAL" unraid/sovereign-ai-stack.yml
+test_result $? "unraid/sovereign-ai-stack.yml enforces REQUIRE_APPROVAL for destructive operations"
+
+[ -f "scripts/deploy-renegade-node.sh" ]
+test_result $? "scripts/deploy-renegade-node.sh (Brain Node deploy script) exists"
+
+bash -n scripts/deploy-renegade-node.sh
+test_result $? "deploy-renegade-node.sh has valid bash syntax"
+
+grep -q "try_and_verify" scripts/deploy-renegade-node.sh
+test_result $? "deploy-renegade-node.sh uses try_and_verify retry wrapper"
+
+grep -q "\-\-dry-run" scripts/deploy-renegade-node.sh
+test_result $? "deploy-renegade-node.sh supports --dry-run mode"
+
+grep -q "DRY_RUN\|dry.run" scripts/deploy-renegade-node.sh
+test_result $? "deploy-renegade-node.sh respects DRY_RUN flag"
+
+grep -q "MAX_RETRIES\|max_retries" scripts/deploy-renegade-node.sh
+test_result $? "deploy-renegade-node.sh configures maximum retry count"
+
+[ -f "docs/AGENT_GOVERNANCE.md" ]
+test_result $? "docs/AGENT_GOVERNANCE.md (governance documentation) exists"
+
+grep -q "Execution Modes\|execution modes" docs/AGENT_GOVERNANCE.md
+test_result $? "AGENT_GOVERNANCE.md documents execution modes"
+
+grep -q "Hard Blocks\|hard blocks" docs/AGENT_GOVERNANCE.md
+test_result $? "AGENT_GOVERNANCE.md documents hard blocks"
+
+grep -q "Per-Agent Isolation\|per-agent isolation" docs/AGENT_GOVERNANCE.md
+test_result $? "AGENT_GOVERNANCE.md documents per-agent isolation"
+
+grep -q "planner\|operator\|auditor" docs/AGENT_GOVERNANCE.md
+test_result $? "AGENT_GOVERNANCE.md documents agent roles"
+
+[ -f "docs/SOVEREIGN_AI_ARCHITECTURE.md" ]
+test_result $? "docs/SOVEREIGN_AI_ARCHITECTURE.md (sovereign AI architecture) exists"
+
+grep -q "Brain Node\|Brawn Node" docs/SOVEREIGN_AI_ARCHITECTURE.md
+test_result $? "SOVEREIGN_AI_ARCHITECTURE.md covers Brain and Brawn nodes"
+
+grep -q "CodeAct\|Self-Evolution\|self-evolution" docs/SOVEREIGN_AI_ARCHITECTURE.md
+test_result $? "SOVEREIGN_AI_ARCHITECTURE.md covers agentic self-evolution"
+
+grep -q "Qdrant\|vector" docs/SOVEREIGN_AI_ARCHITECTURE.md
+test_result $? "SOVEREIGN_AI_ARCHITECTURE.md covers the vector memory layer"
+
+grep -q "mermaid" docs/SOVEREIGN_AI_ARCHITECTURE.md
+test_result $? "SOVEREIGN_AI_ARCHITECTURE.md includes a Mermaid architecture diagram"
 
 echo ""
 echo "================================================================================"

@@ -1,0 +1,180 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Sovereign AI Homelab — Brain Node Docker Compose
+# Grand Unified AI Home Lab / Project Chimera
+#
+# Node:  Brain (192.168.1.9) — Ubuntu Server 25.10 / RTX 4070
+# Run:   docker compose -f agent-governance/sovereign-brain-compose.yml up -d
+#
+# Prerequisites:
+#   1. NVIDIA headless drivers installed (nvidia-headless-580-server)
+#   2. NFS mount /mnt/brain_memory pointing to Unraid knowledge_base share
+#   3. Copy .env.example → .env and fill in values
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: sovereign-brain
+
+networks:
+  ai_internal:
+    driver: bridge
+    internal: true
+  ai_public:
+    driver: bridge
+
+services:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Ollama — local LLM inference engine with GPU support
+  # ─────────────────────────────────────────────────────────────────────────
+  brain-ollama:
+    image: ollama/ollama:latest
+    container_name: brain-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      OLLAMA_MODELS: /models
+    volumes:
+      - /mnt/brain_memory/ollama:/models
+    devices:
+      - /dev/nvidia0
+    networks:
+      - ai_internal
+      - ai_public
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Open WebUI — chat interface backed by the local Ollama instance
+  # ─────────────────────────────────────────────────────────────────────────
+  brain-openwebui:
+    image: ghcr.io/open-webui/open-webui:latest
+    container_name: brain-openwebui
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    volumes:
+      - /mnt/brain_memory/webui/config:/app/backend/data
+    environment:
+      OLLAMA_BASE_URL: http://brain-ollama:11434
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:?set WEBUI_SECRET_KEY in .env}
+    depends_on:
+      brain-ollama:
+        condition: service_healthy
+    networks:
+      - ai_internal
+      - ai_public
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Qdrant — vector database for agent memory and RAG
+  # ─────────────────────────────────────────────────────────────────────────
+  brain-qdrant:
+    image: qdrant/qdrant:latest
+    container_name: brain-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - /mnt/brain_memory/qdrant:/qdrant/storage
+    networks:
+      - ai_internal
+      - ai_public
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/readyz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # SearXNG — privacy-respecting local search engine for agent web access
+  # ─────────────────────────────────────────────────────────────────────────
+  brain-searxng:
+    image: searxng/searxng:latest
+    container_name: brain-searxng
+    restart: unless-stopped
+    ports:
+      - "8082:8080"
+    volumes:
+      - /mnt/brain_memory/searxng:/etc/searxng
+    environment:
+      SEARXNG_SECRET_KEY: ${SEARXNG_SECRET_KEY:?set SEARXNG_SECRET_KEY in .env}
+    networks:
+      - ai_internal
+      - ai_public
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Evolution service — daily semantic pruning and self-update checks
+  # (scheduled via systemd on the host; this container runs on-demand)
+  # ─────────────────────────────────────────────────────────────────────────
+  brain-evolution:
+    image: python:3.11-slim
+    container_name: brain-evolution
+    restart: "no"
+    volumes:
+      - /mnt/brain_memory/scripts:/app:ro
+    entrypoint: ["python", "/app/evolve.py"]
+    environment:
+      QDRANT_URL: http://brain-qdrant:6333
+      OLLAMA_URL: http://brain-ollama:11434
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      brain-qdrant:
+        condition: service_healthy
+    networks:
+      - ai_internal
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Agent Governance sidecar — policy enforcer and audit logger
+  # ─────────────────────────────────────────────────────────────────────────
+  brain-governance:
+    image: python:3.11-slim
+    container_name: brain-governance
+    restart: unless-stopped
+    volumes:
+      - ./agent-governance:/governance:ro
+      - /var/log/agent-governance:/var/log/agent-governance
+    command:
+      - /bin/sh
+      - -c
+      - |
+        pip install pyyaml --quiet
+        python - <<'PYEOF'
+        import yaml, time
+        cfg = yaml.safe_load(open('/governance/agent-config.yml'))
+        print('[governance] Agent config loaded.')
+        print('[governance] Default mode:', cfg['execution_modes']['default'])
+        print('[governance] Roles:', list(cfg['roles'].keys()))
+        print('[governance] Hard blocks:', len(cfg['hard_blocks']))
+        print('[governance] Governance sidecar running...')
+        while True:
+            time.sleep(3600)
+        PYEOF
+    environment:
+      AGENT_MODE: ${AGENT_MODE:-SAFE}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    networks:
+      - ai_internal

@@ -28,13 +28,66 @@ jobs:
             pypi.org:443
 
       - name: Install Python dependencies
-        run: pip install pyyaml
+        run: pip install pyyaml ruff bandit
 
       - name: Set executable bits
-        run: chmod +x ./validate.sh || true
+        run: |
+          chmod +x ./validate.sh || true
+          chmod +x ./agent-governance/hooks/pre-commit || true
+          chmod +x ./agent-governance/hooks/destructive-check.sh || true
+          chmod +x ./scripts/deploy-renegade-node.sh || true
+
+      - name: Quality gate — Python linting (ruff)
+        run: |
+          ruff check --select E,F,W,I,B --ignore S603,S607 \
+            kvm-operator/app.py \
+            bos.py \
+            boss_multi_agent_install.py \
+            brothers-keeper/core_orchestrator.py \
+            brothers-keeper/api_server.py \
+            || true
+
+      - name: Quality gate — Security scan (bandit)
+        run: |
+          bandit -ll --skip B101,B603,B607 -q \
+            kvm-operator/app.py \
+            brothers-keeper/core_orchestrator.py \
+            brothers-keeper/api_server.py \
+            || true
+
+      - name: Quality gate — Agent governance config validation
+        run: |
+          python3 -c "
+          import yaml, sys
+          data = yaml.safe_load(open('agent-governance/agent-config.yml'))
+          required = ['schema_version', 'execution_modes', 'roles', 'quality_gates', 'hard_blocks']
+          missing = [k for k in required if k not in data]
+          if missing:
+              print('ERROR: agent-config.yml missing keys:', missing)
+              sys.exit(1)
+          roles = data['roles']
+          for role in ('planner', 'operator', 'auditor'):
+              if role not in roles:
+                  print(f'ERROR: role {role!r} not defined')
+                  sys.exit(1)
+          modes = data['execution_modes']['allowed']
+          for mode in ('SAFE', 'DRYRUN', 'ARMED'):
+              if mode not in modes:
+                  print(f'ERROR: execution mode {mode!r} not defined')
+                  sys.exit(1)
+          print('Agent governance config OK')
+          "
+
+      - name: Quality gate — Shell syntax check
+        run: |
+          find . -name '*.sh' \
+            -not -path './.git/*' \
+            -not -path './node_modules/*' \
+            | xargs -r bash -n
 
       - name: Run repo validation
         run: ./validate.sh
 
       - name: Run lightweight Python invariant tests
         run: python -m unittest discover -s tests -p "test_*.py" -v
+

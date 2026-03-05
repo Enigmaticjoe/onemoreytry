@@ -1,0 +1,310 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Agent Instruction Framework — Governance Configuration
+# Grand Unified AI Home Lab / Project Chimera
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# This file is the single source of truth for agent roles, execution modes,
+# quality gates, hard blocks, and isolation policies.  All agent tooling
+# MUST respect the settings below.
+#
+# See docs/AGENT_GOVERNANCE.md for the full design rationale.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+schema_version: "1.0"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EXECUTION MODES
+# ─────────────────────────────────────────────────────────────────────────────
+# Set the active mode via the AGENT_MODE environment variable.
+# Default: SAFE
+#
+#   SAFE    — read-only observation; no mutations, no network calls; ideal for
+#             planning and analysis tasks.
+#   DRYRUN  — simulate actions and log what would happen without executing;
+#             network calls are allowed in read-only form (GET/HEAD only).
+#   ARMED   — full execution; all write operations and state changes are
+#             permitted.  Requires explicit human confirmation for destructive
+#             commands (see hard_blocks).
+#
+execution_modes:
+  default: SAFE
+  allowed:
+    - SAFE
+    - DRYRUN
+    - ARMED
+  escalation_requires_human_approval: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AGENT ROLES
+# ─────────────────────────────────────────────────────────────────────────────
+# Each role defines the scope of work an agent is permitted to perform.
+# Roles are enforced by the pre-commit hooks and the quality-gate pipeline.
+#
+roles:
+  planner:
+    description: >
+      Analyses tasks, decomposes them into subtasks, and produces a structured
+      plan.  Never executes code or writes to production systems.
+    allowed_modes: [SAFE, DRYRUN]
+    allowed_tools:
+      - read_file
+      - search_code
+      - list_directory
+      - create_plan
+    forbidden_tools:
+      - execute_command
+      - write_file
+      - network_request
+    max_retries: 3
+
+  operator:
+    description: >
+      Implements the plan produced by the planner.  May read and write files,
+      execute safe shell commands, and interact with local services.  Requires
+      DRYRUN or ARMED mode.
+    allowed_modes: [DRYRUN, ARMED]
+    allowed_tools:
+      - read_file
+      - write_file
+      - execute_command
+      - network_request
+      - search_code
+    forbidden_tools: []
+    requires_approval_for:
+      - destructive_commands
+      - git_push
+      - production_deploy
+    max_retries: 3
+
+  auditor:
+    description: >
+      Reviews agent output for safety, correctness, and policy compliance.
+      Read-only access only.  Produces audit reports stored in the vector DB.
+    allowed_modes: [SAFE]
+    allowed_tools:
+      - read_file
+      - search_code
+      - list_directory
+      - query_vector_db
+    forbidden_tools:
+      - write_file
+      - execute_command
+      - network_request
+    max_retries: 1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# QUALITY GATES
+# ─────────────────────────────────────────────────────────────────────────────
+# Every agent output must pass ALL enabled gates before being accepted.
+# Gates are run in the order listed.
+#
+quality_gates:
+  - name: lint
+    tool: ruff
+    args: ["check", "--select", "E,F,W,I,N,S,B", "--ignore", "S603,S607"]
+    target: "**/*.py"
+    blocking: true
+
+  - name: type_check
+    tool: mypy
+    args: ["--ignore-missing-imports", "--no-strict-optional"]
+    target: "**/*.py"
+    blocking: true
+
+  - name: security_scan
+    tool: bandit
+    args: ["-r", "-ll", "--skip", "B101,B603,B607"]
+    target: "**/*.py"
+    blocking: true
+
+  - name: yaml_syntax
+    tool: python_yaml
+    target: "**/*.yml,**/*.yaml"
+    blocking: true
+
+  - name: shell_syntax
+    tool: bash_n
+    target: "**/*.sh"
+    blocking: true
+
+  - name: tests
+    tool: pytest
+    args: ["--tb=short", "-q"]
+    target: "tests/"
+    blocking: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HOOKS
+# ─────────────────────────────────────────────────────────────────────────────
+hooks:
+  pre_commit:
+    enabled: true
+    hooks:
+      - destructive_change_detection
+      - yaml_syntax_check
+      - shell_syntax_check
+      - python_lint
+      - security_scan
+      - policy_validation
+
+  post_commit:
+    enabled: true
+    hooks:
+      - agent_activity_log
+
+  pre_push:
+    enabled: true
+    hooks:
+      - full_test_suite
+      - security_scan
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HARD BLOCKS
+# ─────────────────────────────────────────────────────────────────────────────
+# These restrictions are NON-NEGOTIABLE and enforced by hooks.
+# No agent role or execution mode can override them without explicit human
+# approval recorded in the audit log.
+#
+hard_blocks:
+  # Git operations
+  - id: no_direct_push
+    description: "Agents must never execute 'git push' directly"
+    pattern: "git push"
+    action: block
+    message: "Direct git push is forbidden.  Use the report_progress tool or a PR workflow."
+
+  - id: no_force_push
+    description: "Force pushes destroy history and are never allowed"
+    pattern: "git push --force|git push -f"
+    action: block
+    message: "Force push is permanently blocked."
+
+  # Destructive filesystem operations
+  - id: no_rm_rf_system
+    description: "rm -rf on system paths is permanently blocked"
+    pattern: "rm\\s+-rf?\\s+/(bin|boot|dev|etc|lib|proc|run|sbin|sys|usr|var)"
+    action: block
+    message: "Destructive removal of system paths is forbidden."
+
+  - id: no_rm_rf_home
+    description: "rm -rf on home directory root is blocked"
+    pattern: "rm\\s+-rf?\\s+~/?\\s*$|rm\\s+-rf?\\s+/home/[^/]+/\\s*$"
+    action: block
+    message: "rm -rf on home directory root is forbidden."
+
+  # Disk operations
+  - id: no_disk_format
+    description: "Disk formatting utilities are blocked"
+    pattern: "mkfs\\.|fdisk|parted|dd if=/dev/zero|shred"
+    action: block
+    message: "Disk formatting and wiping tools require manual execution."
+
+  # Database
+  - id: no_raw_sql_delete
+    description: "Raw SQL DROP/TRUNCATE/DELETE without WHERE are blocked"
+    pattern: "DROP\\s+(TABLE|DATABASE)|TRUNCATE\\s+TABLE|DELETE\\s+FROM\\s+\\w+\\s*;"
+    action: block
+    message: "Raw destructive SQL requires human review."
+
+  # Secrets
+  - id: no_hardcoded_secrets
+    description: "Secrets must never be committed to source code"
+    pattern: "(password|secret|api_key|token)\\s*=\\s*['\"][^'\"]{8,}"
+    action: block
+    message: "Hardcoded secrets detected.  Use .env files and .env.example documentation."
+
+  # Network
+  - id: no_external_exfil
+    description: "Bulk data transfers to external IPs are blocked"
+    pattern: "curl.*\\|\\s*nc |wget.*\\-O.*\\|\\s*sh"
+    action: block
+    message: "Potential data exfiltration pattern blocked."
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PER-AGENT ISOLATION
+# ─────────────────────────────────────────────────────────────────────────────
+isolation:
+  mechanism: git_worktree          # primary isolation mechanism
+  fallback: docker_container       # used when worktree is unavailable
+  resource_limits:
+    cpu_shares: 512                # relative CPU weight (default 1024)
+    memory: "2g"                   # hard memory limit
+    pids_limit: 256                # maximum number of processes
+    network: internal              # isolated bridge network; no external egress
+  mount_restrictions:
+    - deny: /etc
+    - deny: /root
+    - deny: /var/run/docker.sock   # Docker socket requires explicit opt-in
+    - allow: /tmp/agent-workspace  # dedicated scratch space
+  env_whitelist:
+    - AGENT_MODE
+    - AGENT_ROLE
+    - AGENT_ID
+    - OLLAMA_URL
+    - QDRANT_URL
+    - LOG_LEVEL
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AGENT MEMORY LAYER
+# ─────────────────────────────────────────────────────────────────────────────
+memory:
+  backend: qdrant
+  collection_prefix: "agent_"
+  collections:
+    task_logs:
+      name: "agent_task_logs"
+      vector_size: 1536
+      distance: Cosine
+      retention_days: 90
+    tool_history:
+      name: "agent_tool_history"
+      vector_size: 1536
+      distance: Cosine
+      retention_days: 30
+    learnings:
+      name: "agent_learnings"
+      vector_size: 1536
+      distance: Cosine
+      retention_days: 365
+  pruning:
+    schedule: "0 3 * * 0"          # weekly at 03:00 on Sunday
+    strategy: cluster_and_merge
+    min_similarity: 0.92            # merge vectors closer than this
+
+# ─────────────────────────────────────────────────────────────────────────────
+# APPROVAL WORKFLOW
+# ─────────────────────────────────────────────────────────────────────────────
+approval:
+  required_for:
+    - destructive_commands
+    - production_deploys
+    - external_network_writes
+    - schema_migrations
+    - git_push
+  timeout_seconds: 300
+  auto_deny_on_timeout: true
+  audit_log_path: "/var/log/agent-governance/approvals.jsonl"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LOGGING & AUDIT
+# ─────────────────────────────────────────────────────────────────────────────
+logging:
+  level: INFO
+  format: json
+  destinations:
+    - type: file
+      path: "/var/log/agent-governance/activity.jsonl"
+      rotate: daily
+      keep: 30
+    - type: qdrant
+      collection: "agent_task_logs"
+      embed_on_write: true
+  fields:
+    required:
+      - timestamp
+      - agent_id
+      - agent_role
+      - execution_mode
+      - action
+      - outcome
+      - duration_ms
