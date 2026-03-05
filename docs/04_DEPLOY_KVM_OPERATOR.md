@@ -1,5 +1,8 @@
 # Deploy the AI KVM Operator service (FastAPI)
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 Install (recommended):
   sudo mkdir -p /opt/kvm-operator
   sudo cp -r kvm-operator/* /opt/kvm-operator/

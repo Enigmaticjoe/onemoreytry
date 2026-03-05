@@ -1,8 +1,8 @@
-# Grand Unified AI Homelab — Portainer-First Deployment
+# Grand Unified AI Homelab — Canonical 2026 Deployment
 
-A multi-node homelab with unified LLM access, vision AI, KVM automation,
-and a web-based control panel. Portainer is installed on every node first
-to give you full visibility and control before deploying application stacks.
+A multi-node homelab with a canonical baseline: Ollama on Nodes A/B/C, one Open WebUI on Node C, Portainer + n8n on Node B, and Home Assistant connected directly to Ollama.
+
+**Architecture authority:** [docs/ARCHITECTURE_CANONICAL_2026.md](docs/ARCHITECTURE_CANONICAL_2026.md).
 
 ## New-User Quickstart — BOS Installer
 
@@ -78,7 +78,7 @@ sudo python3 bos.py --legacy
 
 ---
 
-## Quick Start (advanced / Portainer-first)
+## Quick Start (canonical)
 
 ```bash
 # 1 — Set your node IPs and SSH users
@@ -87,27 +87,41 @@ nano config/node-inventory.env
 
 # 2 — Audit SSH connectivity and hardware on all nodes
 ./scripts/ssh-auditor.sh
-#     ↳ add --fix-firewall to auto-open ports
-#     ↳ add --install-keys to push SSH keys
 
-# 3 — Install Portainer on every reachable node
+# 3 — Install canonical operations services on Node B
+#     Portainer + n8n
 ./scripts/portainer-install.sh
 
-# 4 — Deploy application stacks
+# 4 — Deploy canonical stacks
+#     - Ollama on Nodes A/B/C
+#     - Single Open WebUI on Node C
+#     - Home Assistant direct to an Ollama endpoint
 ./scripts/deploy-all.sh
 ```
 
-Full guide: **[PORTAINER_GUIDE.md](PORTAINER_GUIDE.md)**
+Canonical architecture: **[docs/ARCHITECTURE_CANONICAL_2026.md](docs/ARCHITECTURE_CANONICAL_2026.md)**
 
 ---
 
-| Node | Role                  | Hardware          | Key Services           |
-|------|-----------------------|-------------------|------------------------|
-| A    | Brain — heavy LLM     | AMD RX 7900 XT    | vLLM :8000, Dashboard :3099 |
-| B    | Gateway — Unraid      | RTX 4070 12GB     | LiteLLM :4000, Portainer :9000 |
-| C    | Vision AI             | Intel Arc A770    | Ollama :11434, Open WebUI :3000 |
-| D    | Home Automation       | —                 | Home Assistant :8123   |
-| E    | Surveillance          | —                 | Blue Iris :81, Sentinel :3005 |
+| Node | Canonical role | Key canonical services |
+|------|----------------|------------------------|
+| A    | Inference node | Ollama :11434 |
+| B    | Operations node | Portainer :9000, n8n :5678, Ollama :11434 |
+| C    | User interface node | Open WebUI :3000, Ollama :11434 |
+| D    | Home automation | Home Assistant :8123 (direct to Ollama) |
+| E    | Surveillance / extras | Optional workloads |
+
+---
+
+## Legacy / Advanced paths
+
+The following are retained for compatibility and advanced operators, but are **not** the default flow:
+
+- LiteLLM gateway deployments
+- vLLM-based inference routes
+- OpenClaw orchestration patterns
+
+Use these only when you explicitly need legacy/advanced behavior.
 
 ---
 

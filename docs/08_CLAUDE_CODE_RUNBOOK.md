@@ -1,5 +1,8 @@
 # Claude 4.6 Code — Review & Deployment Runbook
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 ## What to give Claude
 - This whole bundle folder (or the zip produced by this script)
 - Your node OS/IP notes + VLAN policy

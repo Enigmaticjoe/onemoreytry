@@ -1,5 +1,8 @@
 # AI Sherpa — Installation Guide & Mobile Monitor
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 ## Overview
 
 The **AI Sherpa** is your digital IT guide for the Grand Unified AI Home Lab.  

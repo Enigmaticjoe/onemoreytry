@@ -2,20 +2,31 @@
 
 This is the canonical, high-level architecture reference for the **Grand Unified AI Home Lab** (`onemoreytry`).
 
+**Authority:** `docs/ARCHITECTURE_CANONICAL_2026.md` is the baseline source of truth.
+
+---
+
+## Status taxonomy
+
+- **canonical**: Required default path for normal installs and operations.
+- **optional**: Supported add-on not required for baseline functionality.
+- **legacy**: Older path kept for compatibility/migration.
+- **experimental**: Test-only path; not baseline.
+
 ---
 
 ## Node map
 
 | Node | Hostname / IP | Role | Key services |
 |------|--------------|------|--------------|
-| **Node A** | 192.168.1.9 | Brain (AMD RX 7900 XT) | vLLM (ROCm), Open WebUI, Qdrant, SearXNG, Embeddings, Command Center (port 3099) |
-| **Node B** | 192.168.1.222 | Brawn / Gateway (RTX 4070) | LiteLLM Gateway (port 4000), Portainer, OpenClaw, media stacks |
-| **Node C** | 192.168.1.6 | Intel Arc Vision | Ollama (Intel Arc SYCL), Open WebUI (Chimera Face) |
-| **Node D** | 192.168.1.149 | Home Assistant | HA Core (port 8123), AI conversation via LiteLLM |
-| **Node E** | 192.168.1.116 | Sentinel (Frigate/cameras) | Frigate NVR, Blue Iris relay |
-| **Unraid** | 192.168.1.222 | Media Server + AI Machine | Homepage, Uptime Kuma, Dozzle, Watchtower, Tailscale + DUMB AIO media stack (Plex, Riven, Decypharr, Zurg, rclone, Zilean) + Ollama + Open WebUI |
+| **Node A** | 192.168.1.9 | Inference (**canonical**) | Ollama (primary endpoint) |
+| **Node B** | 192.168.1.222 | Operations / orchestration (**canonical**) | Portainer (port 9000), n8n (port 5678), Ollama |
+| **Node C** | 192.168.1.6 | User interface (**canonical**) | Single Open WebUI (port 3000), Ollama |
+| **Node D** | 192.168.1.149 | Home automation (**canonical**) | HA Core (port 8123), direct Ollama integration |
+| **Node E** | 192.168.1.116 | Surveillance / extensions (**optional**) | Frigate / Blue Iris relay |
+| **Unraid** | 192.168.1.222 | Infrastructure host (**optional**) | Homepage, Uptime Kuma, Dozzle, media stack |
 
-> **Note:** Unraid and Node B share the same physical IP (192.168.1.222) in the reference homelab — Node B is a VM/Docker host on the same Unraid machine.
+> **Default policy:** LiteLLM, vLLM, and OpenClaw are not default routing components; treat them as **legacy/advanced** unless a guide explicitly requires them.
 
 ---
 
@@ -23,37 +34,22 @@ This is the canonical, high-level architecture reference for the **Grand Unified
 
 ```mermaid
 flowchart LR
-  U[User / Operator] -->|Browser| CC[Node A: Command Center :3099]
-  U -->|Browser| WB[Node B: Open WebUI :3000]
-  U -->|Browser| WC[Node C: Chimera Face :3000]
+  U[User / Operator] -->|Browser| WC[Node C: Open WebUI :3000]
   U -->|Browser| HA[Node D: Home Assistant :8123]
-  U -->|Browser| UHP[Unraid: Homepage :8010]
+  U -->|Browser| PB[Node B: Portainer :9000]
+  U -->|Browser| NB[Node B: n8n :5678]
 
-  CC -->|OpenAI API| LG[Node B: LiteLLM Gateway :4000]
-  WB -->|OpenAI API| LG
-  WC -->|OpenAI API| LG
-  HA -->|OpenAI API| LG
+  WC --> OA[Node A: Ollama :11434]
+  WC --> OB[Node B: Ollama :11434]
+  WC --> OC[Node C: Ollama :11434]
 
-  LG -->|brain-heavy| VA[Node A: vLLM :8000]
-  LG -->|brawn-fast| VB[Node B: vLLM :8880]
-  LG -->|intel-vision| OC[Node C: Ollama :11434]
-  LG -->|unraid-local| OU[Unraid: Ollama :11434]
+  HA -->|Direct Ollama API| OA
+  HA -->|Direct Ollama API (failover)| OB
 
-  VA --> QA[Node A: Qdrant :6333]
-  VA --> EA[Node A: Embeddings :8001]
-  VA --> SA[Node A: SearXNG :8888]
+  PB --> Ops[Container Ops / Deployments]
+  NB --> Auto[Automation Workflows]
 
-  CC -->|KVM control| KO[Node A: KVM Operator :5000]
-  KO -->|NanoKVM API| HW[Physical nodes via NanoKVM]
-
-  UHP --> UK[Unraid: Uptime Kuma :3010]
-  UHP --> DZ[Unraid: Dozzle :8888]
-
-  MR[Unraid: Riven :3005] -->|WebDAV| ZG[Unraid: Zurg :9999]
-  ZG -->|Real-Debrid API| RD[Real-Debrid Cloud]
-  MR --> PL[Unraid: Plex :32400]
-  MD[Unraid: Decypharr :8787] --> MR
-  MZ[Unraid: Zilean :8182] --> MR
+  E[Node E Optional Services] --> WC
 ```
 
 ---
@@ -105,33 +101,24 @@ flowchart LR
 
 ## Port reference
 
-| Port | Service | Node |
-|------|---------|------|
-| 3099 | Node A Command Center | Node A (192.168.1.9) |
-| 8000 | vLLM (brain) | Node A |
-| 8001 | Embeddings (TEI) | Node A |
-| 6333 | Qdrant REST | Node A |
-| 6334 | Qdrant gRPC | Node A |
-| 8888 | SearXNG | Node A |
-| 5000 | KVM Operator | Node A |
-| 4000 | LiteLLM Gateway | Node B (192.168.1.222) |
-| 8880 | vLLM (brawn) | Node B |
-| 9000 | Portainer | Node B |
-| 11434 | Ollama (Intel Arc) | Node C (192.168.1.6) |
-| 3000 | Chimera Face (Open WebUI) | Node C |
-| 8123 | Home Assistant | Node D (192.168.1.149) |
-| 8010 | Homepage | Unraid (192.168.1.222) |
-| 3010 | Uptime Kuma | Unraid |
-| 8888 | Dozzle | Unraid |
-| 11434 | Ollama (Unraid) | Unraid |
-| 3020 | Open WebUI (Unraid) | Unraid |
-| 3005 | Riven | Unraid |
-| 3006 | Riven Frontend | Unraid |
-| 8787 | Decypharr | Unraid |
-| 8182 | Zilean | Unraid |
-| 9999 | Zurg | Unraid |
-| 32400 | Plex | Unraid |
-| 7070 | Brothers Keeper | Node A |
+| Port | Service | Node | Status |
+|------|---------|------|--------|
+| 11434 | Ollama | Node A | canonical |
+| 11434 | Ollama | Node B | canonical |
+| 11434 | Ollama | Node C | canonical |
+| 3000 | Open WebUI (single shared instance) | Node C | canonical |
+| 9000 | Portainer | Node B | canonical |
+| 5678 | n8n | Node B | canonical |
+| 8123 | Home Assistant | Node D | canonical |
+| 81 | Blue Iris | Node E | optional |
+| 5000 | KVM Operator | Node A | optional |
+| 4000 | LiteLLM Gateway | Node B | legacy |
+| 8000 | vLLM (brain route) | Node A | legacy |
+| 8880 | vLLM (brawn route) | Node B | legacy |
+| 3005 | OpenClaw/Sentinel (env-specific) | Node E/B | legacy |
+| 8010 | Homepage | Unraid | optional |
+| 3010 | Uptime Kuma | Unraid | optional |
+
 
 ---
 
@@ -158,14 +145,12 @@ flowchart TD
 ```mermaid
 flowchart LR
   Inv[Configure node inventory + .env files] --> Pre[Connectivity preflight checks]
-  Pre --> P[Install/verify Portainer on Node B]
-  P --> A[Deploy Node A Brain stack]
-  P --> B[Deploy Node B LiteLLM + media stacks]
-  P --> C[Deploy Node C Intel Arc stack]
-  P --> D[Deploy Node D Home Assistant]
-  P --> E[Deploy Node E Sentinel]
-  P --> U[Deploy Unraid management + media + AI stacks]
-  A & B & C & D & E & U --> V[Health checks + status dashboards]
+  Pre --> B[Install Portainer + n8n on Node B]
+  B --> O[Deploy Ollama on Nodes A/B/C]
+  O --> W[Deploy single Open WebUI on Node C]
+  W --> H[Configure Home Assistant direct to Ollama endpoint]
+  H --> E[Deploy optional Node E surveillance services]
+  E --> V[Health checks + dashboards]
   V --> Op[Operate: upgrades, logs, backups]
 ```
 

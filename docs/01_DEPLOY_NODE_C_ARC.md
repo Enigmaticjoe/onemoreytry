@@ -1,5 +1,8 @@
 # Deploy Node C (Intel Arc A770 on Fedora 44 cosmic nightly) — Ollama via IPEX-LLM
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 ## Host prerequisites (Fedora)
 Install Intel userspace runtime packages (per your blueprint):
   sudo dnf install intel-compute-runtime intel-level-zero intel-gpu-tools

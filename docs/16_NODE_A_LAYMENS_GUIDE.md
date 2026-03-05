@@ -1,5 +1,8 @@
 # Node A — The Brain: Layman's Guide
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 > **Who this guide is for:** Anyone who wants to understand, set up, or use Node A — no technical background required. If you can follow a recipe, you can follow this guide.
 
 ---

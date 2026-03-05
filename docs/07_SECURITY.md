@@ -1,5 +1,8 @@
 # Security guidance (must-read)
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 Your blueprint warns that AI console control is high risk and recommends human-in-the-loop safeguards and low temperature sampling.
 
 This bundle adds:

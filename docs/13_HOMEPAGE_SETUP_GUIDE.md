@@ -1,5 +1,8 @@
 # Homepage Dashboard Setup Guide
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 This guide covers deploying and configuring the [gethomepage/homepage](https://gethomepage.dev/) dashboard on your Unraid server so that it reflects the full AI home-lab ecosystem.
 
 The finished dashboard is publicly accessible at: **https://homepage.happystrugglebus.us/**
