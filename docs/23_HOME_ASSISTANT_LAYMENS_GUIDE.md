@@ -1,5 +1,8 @@
 # Home Assistant: The Complete Layman's Guide
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 **Who this guide is for:** Anyone setting up Home Assistant for the first time, or anyone who wants to connect Home Assistant to their AI home-lab stack (LiteLLM, OpenClaw, Frigate, and more).
 
 ---

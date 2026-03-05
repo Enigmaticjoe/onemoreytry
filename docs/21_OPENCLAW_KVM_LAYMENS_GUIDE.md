@@ -1,5 +1,8 @@
 # OpenClaw + KVM Operator: The Complete Layman's Guide
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 **Who this guide is for:** Anyone who wants to use OpenClaw — an AI command center you host yourself — to chat with AI, run automated tasks, and even control physical computers remotely. No programming background required.
 
 ---

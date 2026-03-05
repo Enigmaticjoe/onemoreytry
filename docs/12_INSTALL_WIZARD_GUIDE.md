@@ -1,5 +1,8 @@
 # Chapter 12 — Installation Wizard & Portainer-First Setup Guide
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 ## Overview
 
 The **Installation Wizard** walks you through the complete homelab setup in six steps:

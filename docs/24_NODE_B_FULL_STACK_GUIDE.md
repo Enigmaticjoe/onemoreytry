@@ -1,4 +1,7 @@
 # Node B — Full Stack Layman's Guide
+
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
 ## AI-Integrated Media Server & AI Orchestration Hub
 
 > **Who this guide is for:** Anyone who wants to understand, install, and manage every container running on Node B — the big Unraid server at **192.168.1.222**. No command-line experience required. We'll explain every step in plain English.

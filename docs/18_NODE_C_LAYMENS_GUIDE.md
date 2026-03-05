@@ -1,5 +1,8 @@
 # Node C — The Command Center / Eyes: Layman's Guide
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 > **Who this guide is for:** Anyone who wants to chat with the AI, analyze images, or manage deployments from Node C. This is the most user-facing node — the one you'll interact with the most day-to-day.
 
 ---

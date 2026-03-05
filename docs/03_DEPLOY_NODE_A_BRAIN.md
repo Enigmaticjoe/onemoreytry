@@ -1,5 +1,8 @@
 # Deploy Node A — Brain Project (AMD RX 7900 XT)
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 Node A is the **self-evolving AI brain** of the home lab — a complete inference stack centred on the AMD RX 7900 XT.
 
 | Item | Value |

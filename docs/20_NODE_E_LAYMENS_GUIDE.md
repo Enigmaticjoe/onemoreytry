@@ -1,5 +1,8 @@
 # Node E — Sentinel / NVR Vision: Layman's Guide
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 > **Who this guide is for:** Anyone who wants to add AI-powered security camera analysis to their home lab. If you've ever wished your cameras could tell you *what* they see instead of just recording footage, this is for you.
 
 ---

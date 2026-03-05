@@ -1,5 +1,8 @@
 # 15 — LiteLLM + Open WebUI: Setup and User Guide
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 **Who this guide is for:** You've got your home AI stack running and now you want to actually *use* it. This guide explains what LiteLLM and Open WebUI are (in plain English), how to connect them together, and how to get the most out of them — including cloud AI providers, document chat, image analysis, and advanced features.
 
 ---

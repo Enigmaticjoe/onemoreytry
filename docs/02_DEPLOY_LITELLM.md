@@ -1,5 +1,8 @@
 # Deploy Node B (LiteLLM Proxy)
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 Canonical reference:
   https://docs.litellm.ai/docs/proxy/docker_quick_start
 

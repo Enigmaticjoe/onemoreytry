@@ -1,5 +1,8 @@
 # Unified Multi-Node Installation Guidebook
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 This is the single consolidated install document for Nodes A-E plus the KVM Operator.
 
 ## Reality checks first

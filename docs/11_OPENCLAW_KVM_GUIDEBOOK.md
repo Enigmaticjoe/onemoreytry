@@ -1,5 +1,8 @@
 # OpenClaw Installation & KVM Integration Guidebook
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 This guide walks you through installing OpenClaw on Unraid (Node B), wiring it to the
 AI KVM Operator, and connecting the rest of your lab ecosystem (vLLM, Ollama, Home
 Assistant, SearXNG, Open WebUI).

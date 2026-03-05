@@ -1,5 +1,8 @@
 # Node A Central Brain + Command Center Guidebook
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 > **Scope and evidence policy**
 >
 > This guidebook is based on the current repository state (compose files, config files, and docs) and is designed to avoid guessing. Real network values: Node C=`192.168.1.6`, Home Assistant=`192.168.1.149`, Proxmox=`192.168.1.174`, Brawn/Unraid=`192.168.1.222`, domain=`happystrugglebus.us`.

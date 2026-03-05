@@ -1,5 +1,8 @@
 # Home Assistant wiring
 
+> Canonical architecture authority: [`docs/ARCHITECTURE_CANONICAL_2026.md`](ARCHITECTURE_CANONICAL_2026.md).
+
+
 1) Point extended_openai_conversation at LiteLLM:
 - base_url: http://node-b-litellm:4000/v1
 - api_key: your LITELLM_MASTER_KEY
