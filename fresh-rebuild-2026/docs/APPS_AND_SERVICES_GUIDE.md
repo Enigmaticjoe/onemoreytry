@@ -648,7 +648,7 @@ Example real-world uses:
 💡 **Can't remember?** SSH into Node B and check:
 ```bash
 ssh root@192.168.1.222
-grep N8N /mnt/user/appdata/n8n/.env
+grep N8N /mnt/user/appdata/fresh-rebuild/.env
 ```
 
 ---
@@ -1070,10 +1070,10 @@ If you set `WATCHTOWER_NOTIFICATION_URL` in your `.env` file to a Discord webhoo
 
 If you haven't set this up yet:
 1. Go to your Discord server → right-click a channel (e.g., `#homelab-alerts`) → Edit Channel → Integrations → Webhooks → New Webhook → Copy Webhook URL.
-2. SSH into Node B:
+2. SSH into Node B and edit the shared `.env` file:
    ```bash
    ssh root@192.168.1.222
-   nano /mnt/user/appdata/watchtower/.env
+   nano /mnt/user/appdata/fresh-rebuild/.env
    ```
 3. Add or update the line:
    ```
@@ -1081,7 +1081,8 @@ If you haven't set this up yet:
    ```
 4. Restart Watchtower:
    ```bash
-   docker restart watchtower
+   cd /mnt/user/appdata/fresh-rebuild
+   docker compose -f stacks/01-infra.yml --env-file .env up -d watchtower
    ```
 
 ---
