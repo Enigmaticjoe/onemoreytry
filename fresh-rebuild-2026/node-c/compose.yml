@@ -1,0 +1,48 @@
+# Fresh Rebuild 2026 — Node C
+# Fedora 44 · Intel Arc A770 (16 GB) · 192.168.1.6
+#
+# SINGLE Open WebUI instance connecting to Ollama backends on:
+#   Node A — ollama/ollama:rocm at 192.168.1.9:11435  (AMD RX 7900 XT)
+#   Node B — ollama/ollama:latest at 192.168.1.222:11434  (NVIDIA RTX 4070)
+#
+# The Arc A770 may also run its own local Ollama; see the commented-out
+# environment variable OLLAMA_BASE_URLS below to add it when ready.
+#
+# IMPORTANT: This is the ONE AND ONLY Open WebUI instance in Phase 1.
+# Do NOT deploy additional Open WebUI containers on other nodes.
+#
+# Usage:
+#   cp node-c/.env.example node-c/.env
+#   # Confirm Node A (:11435) and Node B (:11434) are reachable first:
+#   curl http://192.168.1.9:11435/api/version
+#   curl http://192.168.1.222:11434/api/version
+#   docker compose -f node-c/compose.yml up -d
+
+services:
+
+  # ─── Open WebUI — the single chat/management interface for all Ollama nodes ──
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    environment:
+      - TZ=${TZ:-America/New_York}
+      # Multi-backend Ollama URLs separated by semicolons.
+      # Node A (ROCm :11435) first (heavier models), Node B (CUDA :11434) second.
+      # Add a third entry (http://host.docker.internal:11434) if a local Arc
+      # Ollama is deployed on Node C in a future phase.
+      - OLLAMA_BASE_URLS=${OLLAMA_BASE_URLS:-http://192.168.1.9:11435;http://192.168.1.222:11434}
+      # Web UI name shown in the browser tab
+      - WEBUI_NAME=${WEBUI_NAME:-Home Lab AI}
+      # Secret key for session signing — generate with: openssl rand -hex 32
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+    volumes:
+      - ${APPDATA_PATH:-/opt/open-webui}/data:/app/backend/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s

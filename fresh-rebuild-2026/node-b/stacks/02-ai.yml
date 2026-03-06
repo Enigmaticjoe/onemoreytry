@@ -1,0 +1,97 @@
+# Fresh Rebuild 2026 — Node B AI Stack
+# Unraid · RTX 4070 · 192.168.1.222
+#
+# Local LLM inference (NVIDIA CUDA) and workflow automation.
+#
+# Services:
+#   ollama — Ollama with NVIDIA GPU, OpenAI-compatible API on :11434.
+#            Consumed by: Node C Open WebUI, n8n AI nodes, Home Assistant.
+#   n8n    — Visual workflow automation: connects Ollama, Home Assistant,
+#            Discord, webhooks, and scheduled tasks.
+#
+# Unraid conventions:
+#   PUID=99  PGID=100  (nobody:users)
+#   Config: /mnt/user/appdata/<service>
+#
+# Deploy order: ollama → n8n
+#
+# Usage:
+#   cp node-b/.env.example node-b/.env
+#   docker compose -f node-b/stacks/02-ai.yml up -d
+#
+# Pull models after deploy:
+#   docker exec ollama ollama pull llama3.1:8b
+#   docker exec ollama ollama pull qwen2.5:7b
+#   docker exec ollama ollama pull nomic-embed-text
+
+services:
+
+  # ─── Ollama — NVIDIA CUDA inference ─────────────────────────────────────────
+  # OpenAI-compatible API on :11434 consumed by Node C Open WebUI, n8n, and HA.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ${APPDATA_PATH:-/mnt/user/appdata}/ollama:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_NUM_PARALLEL=2
+      - TZ=${TZ:-America/New_York}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:11434/api/version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ai-2026
+
+  # ─── n8n — workflow automation ───────────────────────────────────────────────
+  # Connects Ollama AI to Home Assistant, Discord, and external services.
+  # After first deploy, log in at http://192.168.1.222:5678 and import workflows.
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD}
+      - N8N_HOST=${NODE_B_IP:-192.168.1.222}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://${NODE_B_IP:-192.168.1.222}:5678/
+      # Ollama connection (same host, same stack network)
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - GENERIC_TIMEZONE=${TZ:-America/New_York}
+    volumes:
+      - ${APPDATA_PATH:-/mnt/user/appdata}/n8n:/home/node/.n8n
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - ai-2026
+
+networks:
+  ai-2026:
+    name: ai-2026
+    driver: bridge

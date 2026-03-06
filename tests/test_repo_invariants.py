@@ -10,6 +10,7 @@ Run with:  python -m unittest discover -s tests -p "test_*.py" -v
 """
 
 import unittest
+import glob as _glob
 from pathlib import Path
 
 try:
@@ -487,6 +488,228 @@ class TestAgentGovernanceDocs(unittest.TestCase):
     def test_sovereign_architecture_doc_covers_qdrant(self):
         text = _read("docs/SOVEREIGN_AI_ARCHITECTURE.md")
         self.assertIn("Qdrant", text, "SOVEREIGN_AI_ARCHITECTURE.md must reference Qdrant")
+
+
+class TestFreshRebuild2026Invariants(unittest.TestCase):
+    """Guard the Phase-1 Fresh Rebuild 2026 blueprint.
+
+    Rules:
+    - Exactly one Open WebUI compose file exists in fresh-rebuild-2026/.
+    - No forbidden Phase-1 services appear in any compose file under fresh-rebuild-2026/.
+    - Each node directory has a .env.example file.
+    - Core scripts exist and are executable.
+    - Architecture and layman's guide docs exist.
+    """
+
+    BASE = REPO_ROOT / "fresh-rebuild-2026"
+
+    # Services that must NOT appear in Phase-1 compose files.
+    FORBIDDEN = ("litellm", "openclaw", "vllm", "kvm-operator", "kvm_operator")
+
+    def _all_compose_texts(self):
+        """Return list of (path, text) for every compose YAML under fresh-rebuild-2026."""
+        results = []
+        for p in _glob.glob(str(self.BASE / "**" / "*.yml"), recursive=True):
+            results.append((p, Path(p).read_text()))
+        return results
+
+    # ── Structural checks ──────────────────────────────────────────────────────
+
+    def test_node_a_compose_exists(self):
+        self.assertTrue(
+            (self.BASE / "node-a" / "compose.yml").exists(),
+            "fresh-rebuild-2026/node-a/compose.yml must exist"
+        )
+
+    def test_node_b_infra_stack_exists(self):
+        self.assertTrue(
+            (self.BASE / "node-b" / "stacks" / "01-infra.yml").exists(),
+            "fresh-rebuild-2026/node-b/stacks/01-infra.yml must exist"
+        )
+
+    def test_node_b_ai_stack_exists(self):
+        self.assertTrue(
+            (self.BASE / "node-b" / "stacks" / "02-ai.yml").exists(),
+            "fresh-rebuild-2026/node-b/stacks/02-ai.yml must exist"
+        )
+
+    def test_node_c_compose_exists(self):
+        self.assertTrue(
+            (self.BASE / "node-c" / "compose.yml").exists(),
+            "fresh-rebuild-2026/node-c/compose.yml must exist"
+        )
+
+    # ── .env.example per node ──────────────────────────────────────────────────
+
+    def test_node_a_env_example_exists(self):
+        self.assertTrue(
+            (self.BASE / "node-a" / ".env.example").exists(),
+            "fresh-rebuild-2026/node-a/.env.example must exist"
+        )
+
+    def test_node_b_env_example_exists(self):
+        self.assertTrue(
+            (self.BASE / "node-b" / ".env.example").exists(),
+            "fresh-rebuild-2026/node-b/.env.example must exist"
+        )
+
+    def test_node_c_env_example_exists(self):
+        self.assertTrue(
+            (self.BASE / "node-c" / ".env.example").exists(),
+            "fresh-rebuild-2026/node-c/.env.example must exist"
+        )
+
+    def test_inventory_env_example_exists(self):
+        self.assertTrue(
+            (self.BASE / "inventory" / "node-inventory.env.example").exists(),
+            "fresh-rebuild-2026/inventory/node-inventory.env.example must exist"
+        )
+
+    # ── Exactly one Open WebUI instance ───────────────────────────────────────
+
+    def test_exactly_one_open_webui_compose(self):
+        webui_files = [
+            p for p, text in self._all_compose_texts()
+            if "open-webui" in text or "openwebui" in text.lower()
+        ]
+        self.assertEqual(
+            len(webui_files), 1,
+            f"Phase 1 must have exactly one Open WebUI compose; found {len(webui_files)}: {webui_files}"
+        )
+
+    def test_open_webui_is_on_node_c(self):
+        node_c_compose = self.BASE / "node-c" / "compose.yml"
+        text = node_c_compose.read_text()
+        self.assertIn(
+            "open-webui", text,
+            "Open WebUI must be defined in node-c/compose.yml"
+        )
+
+    # ── No forbidden services ──────────────────────────────────────────────────
+
+    def test_no_litellm_in_phase1(self):
+        for path, text in self._all_compose_texts():
+            self.assertNotIn(
+                "litellm", text.lower(),
+                f"Phase 1 must NOT include litellm; found in {path}"
+            )
+
+    def test_no_openclaw_in_phase1(self):
+        for path, text in self._all_compose_texts():
+            self.assertNotIn(
+                "openclaw", text.lower(),
+                f"Phase 1 must NOT include openclaw; found in {path}"
+            )
+
+    def test_no_vllm_in_phase1(self):
+        for path, text in self._all_compose_texts():
+            self.assertNotIn(
+                "vllm", text.lower(),
+                f"Phase 1 must NOT include vllm; found in {path}"
+            )
+
+    def test_no_kvm_operator_in_phase1(self):
+        for path, text in self._all_compose_texts():
+            for forbidden in ("kvm-operator", "kvm_operator"):
+                self.assertNotIn(
+                    forbidden, text.lower(),
+                    f"Phase 1 must NOT include kvm-operator; found in {path}"
+                )
+
+    # ── YAML validity ─────────────────────────────────────────────────────────
+
+    def test_all_phase1_composes_are_valid_yaml(self):
+        for path, text in self._all_compose_texts():
+            try:
+                _yaml.safe_load(text)
+            except (_yaml.YAMLError if _yaml else Exception) as exc:
+                self.fail(f"YAML parse error in {path}: {exc}")
+
+    # ── No hardcoded secrets ──────────────────────────────────────────────────
+
+    def test_no_hardcoded_postgres_password_in_composes(self):
+        """Compose files must use env-var substitution, not literal 'postgres' passwords."""
+        for path, text in self._all_compose_texts():
+            self.assertNotIn(
+                "POSTGRES_PASSWORD=postgres", text,
+                f"Hardcoded postgres:postgres password found in {path} — use ${{POSTGRES_PASSWORD}}"
+            )
+
+    # ── Scripts ───────────────────────────────────────────────────────────────
+
+    def test_preflight_script_exists(self):
+        self.assertTrue(
+            (self.BASE / "scripts" / "preflight.sh").exists(),
+            "fresh-rebuild-2026/scripts/preflight.sh must exist"
+        )
+
+    def test_deploy_all_script_exists(self):
+        self.assertTrue(
+            (self.BASE / "scripts" / "deploy-all.sh").exists(),
+            "fresh-rebuild-2026/scripts/deploy-all.sh must exist"
+        )
+
+    def test_scripts_support_dryrun(self):
+        for script in ("preflight.sh", "deploy-all.sh"):
+            text = (self.BASE / "scripts" / script).read_text()
+            self.assertIn(
+                "DRYRUN", text,
+                f"fresh-rebuild-2026/scripts/{script} must support DRYRUN mode"
+            )
+
+    def test_per_node_deploy_scripts_exist(self):
+        for node in ("node-a", "node-b", "node-c"):
+            p = self.BASE / "scripts" / node / "deploy.sh"
+            self.assertTrue(p.exists(), f"fresh-rebuild-2026/scripts/{node}/deploy.sh must exist")
+
+    def test_per_node_verify_scripts_exist(self):
+        for node in ("node-a", "node-b", "node-c"):
+            p = self.BASE / "scripts" / node / "verify.sh"
+            self.assertTrue(p.exists(), f"fresh-rebuild-2026/scripts/{node}/verify.sh must exist")
+
+    def test_scripts_read_inventory(self):
+        for script in ("preflight.sh", "deploy-all.sh"):
+            text = (self.BASE / "scripts" / script).read_text()
+            self.assertIn(
+                "node-inventory.env", text,
+                f"fresh-rebuild-2026/scripts/{script} must read inventory/node-inventory.env"
+            )
+
+    # ── Docs ──────────────────────────────────────────────────────────────────
+
+    def test_architecture_doc_exists(self):
+        self.assertTrue(
+            (self.BASE / "docs" / "ARCHITECTURE_FRESH_REBUILD_2026.md").exists(),
+            "fresh-rebuild-2026/docs/ARCHITECTURE_FRESH_REBUILD_2026.md must exist"
+        )
+
+    def test_architecture_doc_has_port_map(self):
+        text = (self.BASE / "docs" / "ARCHITECTURE_FRESH_REBUILD_2026.md").read_text()
+        self.assertIn("11435", text, "Architecture doc must include Node A Ollama port 11435")
+        self.assertIn("11434", text, "Architecture doc must include Node B Ollama port 11434")
+        self.assertIn("3000", text, "Architecture doc must include Node C Open WebUI port 3000")
+
+    def test_node_setup_guide_exists(self):
+        self.assertTrue(
+            (self.BASE / "docs" / "NODE_SETUP_GUIDE.md").exists(),
+            "fresh-rebuild-2026/docs/NODE_SETUP_GUIDE.md (layman's setup guide) must exist"
+        )
+
+    def test_apps_and_services_guide_exists(self):
+        self.assertTrue(
+            (self.BASE / "docs" / "APPS_AND_SERVICES_GUIDE.md").exists(),
+            "fresh-rebuild-2026/docs/APPS_AND_SERVICES_GUIDE.md (apps config guide) must exist"
+        )
+
+    def test_node_setup_guide_covers_all_nodes(self):
+        text = (self.BASE / "docs" / "NODE_SETUP_GUIDE.md").read_text()
+        for node in ("Node A", "Node B", "Node C", "Node D"):
+            self.assertIn(node, text, f"NODE_SETUP_GUIDE.md must cover {node}")
+
+    def test_apps_guide_covers_key_services(self):
+        text = (self.BASE / "docs" / "APPS_AND_SERVICES_GUIDE.md").read_text()
+        for service in ("Portainer", "Ollama", "Open WebUI", "n8n", "Uptime Kuma", "Watchtower", "Dozzle"):
+            self.assertIn(service, text, f"APPS_AND_SERVICES_GUIDE.md must cover {service}")
 
 
 if __name__ == "__main__":

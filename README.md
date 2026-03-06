@@ -4,6 +4,40 @@ A multi-node homelab with a canonical baseline: Ollama on Nodes A/B/C, one Open 
 
 **Architecture authority:** [docs/ARCHITECTURE_CANONICAL_2026.md](docs/ARCHITECTURE_CANONICAL_2026.md).
 
+---
+
+## 🚀 Fresh Rebuild 2026 — Recommended Baseline
+
+Starting from scratch or want a clean, minimal setup? Use the **Fresh Rebuild 2026** blueprint:
+
+> **[fresh-rebuild-2026/](fresh-rebuild-2026/)** — Phase 1 multi-node stack · No LiteLLM · No vLLM · No OpenClaw · Just Ollama + Open WebUI + n8n + monitoring
+
+| What | Where |
+|------|-------|
+| Architecture diagram & port map | [fresh-rebuild-2026/docs/ARCHITECTURE_FRESH_REBUILD_2026.md](fresh-rebuild-2026/docs/ARCHITECTURE_FRESH_REBUILD_2026.md) |
+| **Step-by-step node setup guide** (non-technical) | [fresh-rebuild-2026/docs/NODE_SETUP_GUIDE.md](fresh-rebuild-2026/docs/NODE_SETUP_GUIDE.md) |
+| **Configuring every app & service** (non-technical) | [fresh-rebuild-2026/docs/APPS_AND_SERVICES_GUIDE.md](fresh-rebuild-2026/docs/APPS_AND_SERVICES_GUIDE.md) |
+| Node A compose (Ollama ROCm + Portainer Agent) | [fresh-rebuild-2026/node-a/compose.yml](fresh-rebuild-2026/node-a/compose.yml) |
+| Node B stacks (Portainer + infra + Ollama CUDA + n8n) | [fresh-rebuild-2026/node-b/stacks/](fresh-rebuild-2026/node-b/stacks/) |
+| Node C compose (Single Open WebUI) | [fresh-rebuild-2026/node-c/compose.yml](fresh-rebuild-2026/node-c/compose.yml) |
+| Node D docs (Home Assistant → Ollama direct) | [fresh-rebuild-2026/node-d/README.md](fresh-rebuild-2026/node-d/README.md) |
+| Deploy & verify scripts | [fresh-rebuild-2026/scripts/](fresh-rebuild-2026/scripts/) |
+
+Quick start:
+```bash
+# 1. Copy inventory and fill in your node IPs
+cp fresh-rebuild-2026/inventory/node-inventory.env.example fresh-rebuild-2026/inventory/node-inventory.env
+nano fresh-rebuild-2026/inventory/node-inventory.env
+
+# 2. Pre-flight check
+cd fresh-rebuild-2026 && bash scripts/preflight.sh
+
+# 3. Deploy all nodes
+bash scripts/deploy-all.sh
+```
+
+---
+
 ## New-User Quickstart — BOS Installer
 
 For a guided, OS-like installation experience run `bos.py`:

@@ -1,0 +1,72 @@
+# Fresh Rebuild 2026 — Node A
+# Fedora 44 · RX 7900 XT (20 GB VRAM) · 192.168.1.9
+#
+# Services:
+#   ollama-rocm     — Ollama with ROCm for AMD RX 7900 XT inference (port 11435)
+#   portainer-agent — Docker management agent connecting to Portainer CE on Node B
+#
+# ROCm notes (RX 7900 XT / RDNA 3 / gfx1100):
+#   HSA_OVERRIDE_GFX_VERSION=11.0.0 is REQUIRED for ROCm to recognise gfx1100.
+#   /dev/kfd + /dev/dri are the ROCm device nodes.
+#   Port 11435 (not the default 11434) avoids conflicts if a local Ollama
+#   is ever added. Node B uses 11434; Node C's Open WebUI connects to both.
+#
+# Prerequisites:
+#   - ROCm drivers installed: https://docs.amd.com/bundle/ROCm-Installation-Guide
+#   - User added to 'render' and 'video' groups:
+#       sudo usermod -aG render,video $USER
+#
+# Usage:
+#   cp node-a/.env.example node-a/.env
+#   docker compose -f node-a/compose.yml up -d
+#
+# Pull models after deploy:
+#   docker exec ollama-rocm ollama pull llama3.1:8b
+#   docker exec ollama-rocm ollama pull qwen2.5:14b
+
+services:
+
+  # ─── Ollama ROCm — AMD RX 7900 XT inference ──────────────────────────────
+  ollama-rocm:
+    image: ollama/ollama:rocm
+    container_name: ollama-rocm
+    restart: unless-stopped
+    # Host networking: exposes the Ollama API on the host's LAN IP (192.168.1.9:11435)
+    # so Node B and Node C can reach it without bridge-network port-forwarding.
+    network_mode: host
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    volumes:
+      - ${APPDATA_PATH:-/opt/ollama}/models:/root/.ollama
+    environment:
+      # Expose on all interfaces — LAN access from Node B and Node C.
+      OLLAMA_HOST: "0.0.0.0:11435"
+      # REQUIRED: tells ROCm the exact ISA for RX 7900 XT (RDNA 3 / gfx1100)
+      HSA_OVERRIDE_GFX_VERSION: "11.0.0"
+      HIP_VISIBLE_DEVICES: "0"
+      OLLAMA_NUM_GPU: "999"
+      OLLAMA_KEEP_ALIVE: "24h"
+      TZ: ${TZ:-America/New_York}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11435/api/version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ─── Portainer Agent — managed by Portainer CE on Node B ──────────────────
+  portainer-agent:
+    image: portainer/agent:latest
+    container_name: portainer-agent
+    restart: unless-stopped
+    ports:
+      - "9001:9001"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
+    environment:
+      TZ: ${TZ:-America/New_York}

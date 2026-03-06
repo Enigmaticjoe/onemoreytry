@@ -1,0 +1,130 @@
+# Fresh Rebuild 2026 — Node B Infrastructure Stack
+# Unraid · RTX 4070 · 192.168.1.222
+#
+# Core infrastructure: Docker management, dashboard, monitoring, logging,
+# and automatic updates.
+#
+# Services:
+#   portainer   — Portainer CE: Docker management UI + Edge Agent tunnel server
+#   homepage    — Central dashboard (all services in one place)
+#   uptime-kuma — Service uptime monitoring and alerting
+#   dozzle      — Real-time Docker log viewer
+#   watchtower  — Automatic weekly container image updates
+#
+# Unraid conventions:
+#   PUID=99  PGID=100  (nobody:users)
+#   Config: /mnt/user/appdata/<service>
+#
+# Deploy order: portainer → homepage → uptime-kuma → dozzle → watchtower
+#
+# Usage:
+#   cp node-b/.env.example node-b/.env
+#   docker compose -f node-b/stacks/01-infra.yml up -d
+
+services:
+
+  # ─── Portainer CE — Docker management UI ────────────────────────────────────
+  # Manages all local containers and acts as the central point for remote
+  # Node A and Node C management via Portainer Agents.
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    ports:
+      - "8000:8000"   # Edge Agent tunnel server (for agents on Node A, Node C)
+      - "9000:9000"   # HTTP management UI
+      - "9443:9443"   # HTTPS management UI
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${APPDATA_PATH:-/mnt/user/appdata}/portainer:/data
+    environment:
+      - TZ=${TZ:-America/New_York}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9000/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - infra-2026
+
+  # ─── Homepage — unified service dashboard ────────────────────────────────────
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    restart: unless-stopped
+    ports:
+      - "8010:3000"
+    environment:
+      - HOMEPAGE_ALLOWED_HOSTS=*
+      - HOMEPAGE_VAR_HA_TOKEN=${HA_TOKEN:-}
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - ${APPDATA_PATH:-/mnt/user/appdata}/homepage/config:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/healthcheck || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - infra-2026
+
+  # ─── Uptime Kuma — service monitoring ───────────────────────────────────────
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    restart: unless-stopped
+    ports:
+      - "3010:3001"
+    volumes:
+      - ${APPDATA_PATH:-/mnt/user/appdata}/uptime-kuma:/app/data
+    environment:
+      - TZ=${TZ:-America/New_York}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - infra-2026
+
+  # ─── Dozzle — real-time Docker log viewer ───────────────────────────────────
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle
+    restart: unless-stopped
+    ports:
+      - "8888:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - TZ=${TZ:-America/New_York}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthcheck || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - infra-2026
+
+  # ─── Watchtower — automatic image updates (weekly, Sunday 03:00) ─────────────
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - WATCHTOWER_CLEANUP=true
+      # Cron: sec min hour day month weekday — Sunday at 03:00
+      - WATCHTOWER_SCHEDULE=0 0 3 * * 0
+      - WATCHTOWER_NOTIFICATIONS=shoutrrr
+      - WATCHTOWER_NOTIFICATION_URL=${WATCHTOWER_DISCORD_URL:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - infra-2026
+
+networks:
+  infra-2026:
+    name: infra-2026
+    driver: bridge
