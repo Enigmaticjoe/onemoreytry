@@ -1,0 +1,75 @@
+# Node B Final — Conditional Stack
+# Node B (Unraid) at 192.168.1.222
+#
+# Deploy these only if you actively use them.
+#
+#   lidarr        — music automation (only if you auto-download music)
+#   audiobookshelf — audiobook & podcast server (only if you listen to audiobooks)
+#
+# Checklist before deploying:
+#   lidarr:         Do you use it for music automation? If not, skip it.
+#   audiobookshelf: Do you listen to audiobooks or podcasts? If not, skip it.
+#
+# Usage:
+#   cp ../.env.example ../.env
+#   # Deploy only what you need:
+#   docker compose -f stacks/06-conditional-stack.yml up -d lidarr
+#   docker compose -f stacks/06-conditional-stack.yml up -d audiobookshelf
+#   # Or deploy everything:
+#   docker compose -f stacks/06-conditional-stack.yml up -d
+
+services:
+
+  # ─── Lidarr — music automation ──────────────────────────────────────────────
+  # Only deploy if you actively use it for music downloads.
+  # Connects to Prowlarr (port 9696) for indexer management.
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "8686:8686"
+    volumes:
+      - ${APPDATA_PATH}/lidarr:/config
+      - ${MEDIA_PATH}:/data
+    healthcheck:
+      # linuxserver/lidarr:latest exposes health at /api/v1/health
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8686/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - conditional
+
+  # ─── Audiobookshelf — audiobook & podcast server ────────────────────────────
+  # Best self-hosted audiobook/podcast server with progress sync across devices.
+  # Only deploy if you actively listen to audiobooks or podcasts.
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "13378:80"
+    volumes:
+      - ${APPDATA_PATH}/audiobookshelf:/config
+      - ${APPDATA_PATH}/audiobookshelf/metadata:/metadata
+      - ${MEDIA_PATH}/audiobooks:/audiobooks
+      - ${MEDIA_PATH}/podcasts:/podcasts
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/healthcheck || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - conditional
+
+networks:
+  conditional:
+    name: conditional
+    driver: bridge

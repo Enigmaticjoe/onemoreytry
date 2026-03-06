@@ -1,0 +1,36 @@
+---
+# Homepage top-bar widgets — Node B Final
+# https://gethomepage.dev/widgets/
+
+- resources:
+    cpu: true
+    memory: true
+    disk: /mnt/user
+    label: Node B (Unraid)
+
+- datetime:
+    text_size: xl
+    format:
+      timeStyle: short
+      dateStyle: short
+      hour12: true
+
+- search:
+    provider: duckduckgo
+    target: _blank
+
+# AI Daily Briefing — calls Ollama API for a morning summary card
+# Uncomment and adjust the URL after deploying the AI stack.
+#
+# - customapi:
+#     url: http://192.168.1.222:11434/api/generate
+#     method: POST
+#     headers:
+#       Content-Type: application/json
+#     body: >-
+#       {"model":"phi4-mini","prompt":"Give a one-sentence home lab status
+#       summary for today.","stream":false}
+#     mappings:
+#       - field: response
+#         label: AI Briefing
+#         format: text

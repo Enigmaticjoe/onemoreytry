@@ -1,0 +1,92 @@
+# Node B Final — Automation Stack
+# Node B (Unraid) at 192.168.1.222
+#
+# AI-powered workflow automation and media recommendation engine.
+#
+#   n8n          — visual workflow builder: the brain tying everything together.
+#                  Connects to Ollama, Home Assistant, Docker, webhooks, Discord.
+#   recommendarr — AI movie/TV recommendations from your actual library.
+#                  Uses Ollama for inference — 100% local, no cloud AI.
+#
+# Example n8n workflows (see ../n8n-workflows/ for importable JSON):
+#   - Morning briefing (cron → Ollama → Home Assistant TTS)
+#   - Container health monitor (Uptime Kuma alert → Ollama → Discord)
+#   - Weekly media digest (Tautulli stats → Ollama → Discord)
+#   - Smart content approval (Overseerr webhook → Ollama → auto-approve)
+#
+# Usage:
+#   cp ../.env.example ../.env
+#   docker compose -f stacks/04-automation-stack.yml up -d
+
+services:
+
+  # ─── n8n — self-hosted workflow automation ──────────────────────────────────
+  # The central automation hub connecting all services with AI.
+  # After first deploy, import workflows from ../n8n-workflows/
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD}
+      - N8N_HOST=${N8N_HOST:-192.168.1.222}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://${N8N_HOST:-192.168.1.222}:5678/
+      # Ollama connection for AI nodes
+      - OLLAMA_BASE_URL=http://192.168.1.222:11434
+      # Timezone for cron triggers
+      - GENERIC_TIMEZONE=${TZ:-America/New_York}
+    volumes:
+      - ${APPDATA_PATH}/n8n:/home/node/.n8n
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - automation
+
+  # ─── Recommendarr — AI media recommendation engine ──────────────────────────
+  # Connects to Sonarr, Radarr, Plex, and Jellyfin.
+  # Uses local Ollama for inference — no cloud API keys required.
+  # Access UI at http://192.168.1.222:3006
+  recommendarr:
+    image: tannermiddleton/recommendarr:latest
+    container_name: recommendarr
+    restart: unless-stopped
+    ports:
+      - "3006:3000"
+    environment:
+      - TZ=${TZ:-America/New_York}
+      # Ollama endpoint — local inference, no cloud dependency
+      - OLLAMA_BASE_URL=http://192.168.1.222:11434
+      - OLLAMA_MODEL=${RECOMMENDARR_MODEL:-qwen3:8b}
+      # Media server connections (fill in API keys after deploying those services)
+      - SONARR_URL=http://192.168.1.222:8989
+      - SONARR_API_KEY=${SONARR_API_KEY:-}
+      - RADARR_URL=http://192.168.1.222:7878
+      - RADARR_API_KEY=${RADARR_API_KEY:-}
+      - JELLYFIN_URL=http://192.168.1.222:8096
+      - JELLYFIN_API_KEY=${JELLYFIN_API_KEY:-}
+      - PLEX_URL=http://192.168.1.222:32400
+      - PLEX_TOKEN=${PLEX_TOKEN:-}
+    volumes:
+      - ${APPDATA_PATH}/recommendarr:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - automation
+
+networks:
+  automation:
+    name: automation
+    driver: bridge

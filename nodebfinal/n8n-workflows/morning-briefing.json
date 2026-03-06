@@ -1,0 +1,187 @@
+{
+  "name": "Morning Briefing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 30 7 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Cron — 7:30am Weekdays",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://wttr.in/?format=j1",
+        "options": {}
+      },
+      "id": "get-weather",
+      "name": "Get Weather",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://192.168.1.149:8123/api/states/sensor.house_temperature",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.HA_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-ha-temp",
+      "name": "Get HA House Temp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.1.222:11434/api/generate",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"model\": \"phi4-mini\",\n  \"prompt\": \"You are a helpful home assistant. Generate a concise morning briefing (3-4 sentences max). Current conditions:\\n- Outside temp: {{ $node['Get Weather'].json.current_condition[0].temp_F }}°F, {{ $node['Get Weather'].json.current_condition[0].weatherDesc[0].value }}\\n- House temp: {{ $node['Get HA House Temp'].json.state }}°F\\n- Time: 7:30 AM\\n\\nBe friendly and practical. Include a helpful tip for the day.\",\n  \"stream\": false\n}",
+        "options": {}
+      },
+      "id": "ollama-briefing",
+      "name": "Ollama — Generate Briefing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.1.149:8123/api/services/tts/speak",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.HA_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"entity_id\": \"tts.piper\",\n  \"message\": \"{{ $node['Ollama — Generate Briefing'].json.response }}\",\n  \"media_player_entity_id\": \"media_player.living_room_speaker\"\n}",
+        "options": {}
+      },
+      "id": "ha-tts",
+      "name": "HA — Speak via Piper TTS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK }}",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"username\": \"Node B Morning Bot\",\n  \"content\": \"🌅 **Good Morning Briefing**\\n{{ $node['Ollama — Generate Briefing'].json.response }}\"\n}",
+        "options": {}
+      },
+      "id": "discord-notify",
+      "name": "Discord — Post Briefing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 400]
+    }
+  ],
+  "connections": {
+    "Cron — 7:30am Weekdays": {
+      "main": [
+        [
+          {
+            "node": "Get Weather",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get HA House Temp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Weather": {
+      "main": [
+        [
+          {
+            "node": "Ollama — Generate Briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get HA House Temp": {
+      "main": [
+        [
+          {
+            "node": "Ollama — Generate Briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama — Generate Briefing": {
+      "main": [
+        [
+          {
+            "node": "HA — Speak via Piper TTS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Discord — Post Briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "ai",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "morning",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "meta": {
+    "description": "Fires at 7:30am on weekdays. Fetches weather and HA house temperature, sends both to Ollama (phi4-mini) for a friendly briefing, then speaks it via Home Assistant Piper TTS and posts to Discord."
+  }
+}

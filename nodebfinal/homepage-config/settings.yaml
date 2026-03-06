@@ -1,0 +1,30 @@
+---
+# Homepage dashboard settings — Node B Final
+# https://gethomepage.dev/configs/settings/
+
+title: Node B — Unraid
+
+# Appearance
+theme: dark
+color: slate
+headerStyle: boxed
+statusStyle: "dot"
+useEqualHeights: true
+
+# Link target
+target: _blank
+
+# Layout: display service groups in defined order
+layout:
+  Infrastructure:
+    style: row
+    columns: 4
+  AI:
+    style: row
+    columns: 4
+  Media:
+    style: row
+    columns: 4
+  Media Automation:
+    style: row
+    columns: 3
