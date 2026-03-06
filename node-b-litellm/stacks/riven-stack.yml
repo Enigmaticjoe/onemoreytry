@@ -1,0 +1,159 @@
+# Grand Unified AI Home Lab — Riven Stack
+# Node B (Brawn) at 192.168.1.222
+#
+# Riven is an AI-enhanced cloud-streaming engine that turns a Real-Debrid
+# subscription into an instant, auto-organised media library.  It replaces
+# the traditional Gluetun + qBittorrent + *arr pipeline with a lightweight
+# VFS-based approach: content is streamed directly from Real-Debrid via a
+# FUSE mount rather than downloaded.
+#
+# Services in this stack:
+#   riven-db       — PostgreSQL 17 (shared state for the Riven backend)
+#   riven          — Backend engine: scraper, downloader bridge, VFS manager
+#   riven-frontend — React dashboard for monitoring and configuration
+#
+# Media server integration:
+#   Riven updates Jellyfin automatically via its built-in updater.
+#   Set RIVEN_JELLYFIN_ENABLED=true and supply the Jellyfin API key.
+#   To use Plex instead, flip RIVEN_PLEX_ENABLED=true and set RIVEN_PLEX_TOKEN.
+#
+# Prerequisites (run on the host before starting this stack):
+#   sudo mkdir -p ${RIVEN_MOUNT_PATH}
+#   sudo mount --bind ${RIVEN_MOUNT_PATH} ${RIVEN_MOUNT_PATH}
+#   sudo mount --make-rshared ${RIVEN_MOUNT_PATH}
+#
+# Deploy order: riven-db → riven → riven-frontend
+#
+# Usage:
+#   cp stacks/.env.example stacks/.env   # fill in all RIVEN_* values
+#   docker compose -f stacks/riven-stack.yml up -d
+
+volumes:
+  riven-frontend-data:
+  riven-pg-data:
+
+services:
+
+  # ─── PostgreSQL — Riven backend database ────────────────────────────────────
+  riven-db:
+    image: postgres:17-alpine
+    container_name: riven-db
+    restart: unless-stopped
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - POSTGRES_USER=${RIVEN_POSTGRES_USER:-riven}
+      - POSTGRES_PASSWORD=${RIVEN_POSTGRES_PASSWORD}
+      - POSTGRES_DB=${RIVEN_POSTGRES_DB:-riven}
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - riven-pg-data:/var/lib/postgresql/data/pgdata
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${RIVEN_POSTGRES_USER:-riven}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - riven-network
+
+  # ─── Riven backend — VFS engine, scraper, downloader bridge ─────────────────
+  # Requires FUSE and the SYS_ADMIN capability for VFS mount propagation.
+  # shm_size is a fixed 1 GB allocation for the VFS read-ahead buffer.
+  # Adjust this value directly in the compose file if your system has less RAM.
+  riven:
+    image: spoked/riven:latest
+    container_name: riven
+    restart: unless-stopped
+    shm_size: 1024m
+    ports:
+      - "8080:8080"
+    tty: true
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+      # ── Database ──────────────────────────────────────────────────────────
+      - RIVEN_FORCE_ENV=true
+      - RIVEN_DATABASE_HOST=postgresql+psycopg2://${RIVEN_POSTGRES_USER:-riven}:${RIVEN_POSTGRES_PASSWORD}@riven-db:5432/${RIVEN_POSTGRES_DB:-riven}
+      # ── Real-Debrid downloader ─────────────────────────────────────────────
+      - RIVEN_DOWNLOADERS_REAL_DEBRID_ENABLED=true
+      - RIVEN_DOWNLOADERS_REAL_DEBRID_API_KEY=${RIVEN_REAL_DEBRID_API_KEY}
+      # ── VFS / filesystem ───────────────────────────────────────────────────
+      # The container always sees the library at /mount; RIVEN_MOUNT_PATH controls
+      # only the host-side bind source (default: /mnt/riven).
+      - RIVEN_FILESYSTEM_MOUNT_PATH=/mount
+      - RIVEN_UPDATERS_LIBRARY_PATH=/mount
+      # ── Media server — Jellyfin (default for Node B) ───────────────────────
+      - RIVEN_JELLYFIN_ENABLED=${RIVEN_JELLYFIN_ENABLED:-true}
+      - RIVEN_JELLYFIN_URL=${RIVEN_JELLYFIN_URL:-http://jellyfin:8096}
+      - RIVEN_JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
+      # ── Media server — Plex (optional; set RIVEN_PLEX_ENABLED=true to use) ──
+      - RIVEN_PLEX_ENABLED=${RIVEN_PLEX_ENABLED:-false}
+      - RIVEN_PLEX_URL=${RIVEN_PLEX_URL:-http://plex:32400}
+      - RIVEN_PLEX_TOKEN=${PLEX_TOKEN:-}
+      # ── Content services ───────────────────────────────────────────────────
+      - RIVEN_CONTENT_OVERSEERR_ENABLED=${RIVEN_OVERSEERR_ENABLED:-false}
+      - RIVEN_CONTENT_OVERSEERR_URL=${RIVEN_OVERSEERR_URL:-http://overseerr:5055}
+      - RIVEN_CONTENT_OVERSEERR_API_KEY=${RIVEN_OVERSEERR_API_KEY:-}
+      # ── Scrapers ───────────────────────────────────────────────────────────
+      - RIVEN_SCRAPERS_TORRENTIO_ENABLED=${RIVEN_TORRENTIO_ENABLED:-true}
+      - RIVEN_SCRAPERS_TORRENTIO_URL=http://torrentio.strem.fun
+      # ── API key (used by the frontend and external clients) ────────────────
+      - RIVEN_API_KEY=${RIVEN_API_KEY}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    volumes:
+      - ${APPDATA_PATH}/riven:/riven/data
+      - ${RIVEN_MOUNT_PATH:-/mnt/riven}:/mount:rshared,z
+    depends_on:
+      riven-db:
+        condition: service_healthy
+    networks:
+      - riven-network
+
+  # ─── Riven Frontend — React dashboard ────────────────────────────────────────
+  # DATABASE_URL points to the frontend's own SQLite file (used for SvelteKit
+  # session state only).  The main application data lives in the PostgreSQL
+  # riven-db service accessed by the backend.
+  riven-frontend:
+    image: spoked/riven-frontend:latest
+    container_name: riven-frontend
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - DATABASE_URL=/riven/data/riven.db
+      - BACKEND_URL=http://riven:8080
+      - BACKEND_API_KEY=${RIVEN_API_KEY}
+      # AUTH_SECRET: generate with: openssl rand -base64 32
+      - AUTH_SECRET=${RIVEN_AUTH_SECRET}
+      # ORIGIN: set to the URL you use to access the frontend
+      - ORIGIN=${RIVEN_ORIGIN:-http://192.168.1.222:3001}
+    volumes:
+      - riven-frontend-data:/riven/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      riven:
+        condition: service_healthy
+    networks:
+      - riven-network
+
+networks:
+  riven-network:
+    name: riven-network
+    driver: bridge
