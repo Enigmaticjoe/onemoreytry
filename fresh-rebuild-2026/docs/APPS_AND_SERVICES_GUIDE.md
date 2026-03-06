@@ -645,10 +645,10 @@ Example real-world uses:
 
 2. You'll see a login form. Use the credentials you set in your `.env` file — the values of `N8N_BASIC_AUTH_USER` and `N8N_BASIC_AUTH_PASSWORD`.
 
-💡 **Can't remember?** SSH into Node B and check:
+💡 **Can't remember?** SSH into Node B and check the `.env` file in whatever folder you deployed the Node B files to. If you followed the NODE_SETUP_GUIDE, that's:
 ```bash
 ssh root@192.168.1.222
-grep N8N /mnt/user/appdata/fresh-rebuild/.env
+grep N8N ~/homelab-node-b/.env
 ```
 
 ---
@@ -1070,10 +1070,10 @@ If you set `WATCHTOWER_NOTIFICATION_URL` in your `.env` file to a Discord webhoo
 
 If you haven't set this up yet:
 1. Go to your Discord server → right-click a channel (e.g., `#homelab-alerts`) → Edit Channel → Integrations → Webhooks → New Webhook → Copy Webhook URL.
-2. SSH into Node B and edit the shared `.env` file:
+2. SSH into Node B and edit the `.env` file in the folder where you deployed the Node B files (e.g., `~/homelab-node-b/`):
    ```bash
    ssh root@192.168.1.222
-   nano /mnt/user/appdata/fresh-rebuild/.env
+   nano ~/homelab-node-b/.env
    ```
 3. Add or update the line:
    ```
@@ -1081,7 +1081,7 @@ If you haven't set this up yet:
    ```
 4. Restart Watchtower:
    ```bash
-   cd /mnt/user/appdata/fresh-rebuild
+   cd ~/homelab-node-b
    docker compose -f stacks/01-infra.yml --env-file .env up -d watchtower
    ```
 

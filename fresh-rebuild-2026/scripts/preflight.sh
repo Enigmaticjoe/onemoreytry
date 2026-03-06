@@ -13,6 +13,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# REPO_ROOT is assumed to be exactly one level above SCRIPT_DIR (fresh-rebuild-2026/).
+# This script must live at fresh-rebuild-2026/scripts/preflight.sh.
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # ─── Dry-run support ──────────────────────────────────────────────────────────

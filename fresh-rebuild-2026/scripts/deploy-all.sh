@@ -70,34 +70,6 @@ info()  { echo -e "    $1"; }
 ERRORS=0
 note_error() { ((ERRORS++)) || true; }
 
-# ─── SSH deploy helper ────────────────────────────────────────────────────────
-# remote_compose USER HOST COMPOSE_FILE [extra args]
-# Copies the compose file + its .env to the remote host, then runs `docker compose up -d`.
-remote_compose() {
-  local user="$1" host="$2" compose_file="$3"
-  shift 3
-  local extra_args=("$@")
-  local remote_dir="/tmp/fresh-rebuild-2026-deploy"
-  local env_file
-  env_file="$(dirname "$compose_file")/.env"
-
-  info "Syncing compose file to ${user}@${host}:${remote_dir}"
-  if [[ "$DRYRUN" == "true" ]]; then
-    echo "[DRYRUN] ssh ${user}@${host} mkdir -p ${remote_dir}"
-    echo "[DRYRUN] scp ${compose_file} ${user}@${host}:${remote_dir}/compose.yml"
-    [[ -f "$env_file" ]] && echo "[DRYRUN] scp ${env_file} ${user}@${host}:${remote_dir}/.env"
-    echo "[DRYRUN] ssh ${user}@${host} docker compose -f ${remote_dir}/compose.yml up -d ${extra_args[*]:-}"
-    return
-  fi
-
-  ssh "${user}@${host}" "mkdir -p ${remote_dir}"
-  scp "$compose_file" "${user}@${host}:${remote_dir}/compose.yml"
-  if [[ -f "$env_file" ]]; then
-    scp "$env_file" "${user}@${host}:${remote_dir}/.env"
-  fi
-  ssh "${user}@${host}" "cd ${remote_dir} && docker compose -f compose.yml up -d ${extra_args[*]:-}"
-}
-
 # ─── Header ───────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}╔═══════════════════════════════════════════════════╗${NC}"

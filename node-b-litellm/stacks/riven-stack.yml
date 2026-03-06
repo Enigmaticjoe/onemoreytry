@@ -57,13 +57,14 @@ services:
 
   # ─── Riven backend — VFS engine, scraper, downloader bridge ─────────────────
   # Requires FUSE and the SYS_ADMIN capability for VFS mount propagation.
-  # shm_size is a fixed 1 GB allocation for the VFS read-ahead buffer.
-  # Adjust this value directly in the compose file if your system has less RAM.
+  # shm_size allocates shared memory for the VFS read-ahead buffer.
+  # Default is 1024m; reduce if your system has less than 4 GB free RAM.
+  # Override via RIVEN_SHM_SIZE in .env (e.g., RIVEN_SHM_SIZE=512m).
   riven:
     image: spoked/riven:latest
     container_name: riven
     restart: unless-stopped
-    shm_size: 1024m
+    shm_size: ${RIVEN_SHM_SIZE:-1024m}
     ports:
       - "8080:8080"
     tty: true

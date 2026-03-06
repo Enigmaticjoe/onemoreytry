@@ -196,7 +196,7 @@ Docker Compose version v2.29.7
 
 If you don't already have the project files, clone the repository:
 ```bash
-git clone https://github.com/yourrepo/onemoreytry.git
+git clone https://github.com/Enigmaticjoe/onemoreytry.git
 cd onemoreytry
 ```
 
