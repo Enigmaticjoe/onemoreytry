@@ -205,5 +205,289 @@ class TestArchitectureDoc(unittest.TestCase):
             self.assertIn(node, text, f"ARCHITECTURE.md must cover {node}")
 
 
+class TestAgentGovernanceInvariants(unittest.TestCase):
+    """Guard the Agent Instruction Framework configuration and hooks."""
+
+    def test_agent_config_exists(self):
+        self.assertTrue(
+            (REPO_ROOT / "agent-governance" / "agent-config.yml").exists(),
+            "agent-governance/agent-config.yml must exist"
+        )
+
+    def test_agent_config_yaml_valid(self):
+        if not _YAML_AVAILABLE:
+            self.skipTest("pyyaml not installed")
+        text = _read("agent-governance/agent-config.yml")
+        self.assertIsNotNone(_yaml.safe_load(text), "agent-config.yml must be valid YAML")
+
+    def test_agent_config_has_required_keys(self):
+        if not _YAML_AVAILABLE:
+            self.skipTest("pyyaml not installed")
+        data = _yaml.safe_load(_read("agent-governance/agent-config.yml"))
+        required = ["schema_version", "execution_modes", "roles", "quality_gates", "hard_blocks"]
+        for key in required:
+            self.assertIn(key, data, f"agent-config.yml must contain '{key}'")
+
+    def test_agent_config_defines_all_roles(self):
+        if not _YAML_AVAILABLE:
+            self.skipTest("pyyaml not installed")
+        data = _yaml.safe_load(_read("agent-governance/agent-config.yml"))
+        roles = data.get("roles", {})
+        for role in ("planner", "operator", "auditor"):
+            self.assertIn(role, roles, f"agent-config.yml must define the '{role}' role")
+
+    def test_agent_config_defines_all_execution_modes(self):
+        if not _YAML_AVAILABLE:
+            self.skipTest("pyyaml not installed")
+        data = _yaml.safe_load(_read("agent-governance/agent-config.yml"))
+        modes = data.get("execution_modes", {}).get("allowed", [])
+        for mode in ("SAFE", "DRYRUN", "ARMED"):
+            self.assertIn(mode, modes, f"agent-config.yml must allow execution mode '{mode}'")
+
+    def test_agent_config_has_hard_blocks(self):
+        if not _YAML_AVAILABLE:
+            self.skipTest("pyyaml not installed")
+        data = _yaml.safe_load(_read("agent-governance/agent-config.yml"))
+        blocks = data.get("hard_blocks", [])
+        self.assertGreaterEqual(
+            len(blocks), 5,
+            "agent-config.yml must define at least 5 hard blocks"
+        )
+
+    def test_agent_config_escalation_requires_approval(self):
+        if not _YAML_AVAILABLE:
+            self.skipTest("pyyaml not installed")
+        data = _yaml.safe_load(_read("agent-governance/agent-config.yml"))
+        self.assertTrue(
+            data.get("execution_modes", {}).get("escalation_requires_human_approval"),
+            "execution mode escalation must require human approval"
+        )
+
+    def test_pre_commit_hook_exists(self):
+        self.assertTrue(
+            (REPO_ROOT / "agent-governance" / "hooks" / "pre-commit").exists(),
+            "agent-governance/hooks/pre-commit must exist"
+        )
+
+    def test_pre_commit_hook_is_shell(self):
+        text = _read("agent-governance/hooks/pre-commit")
+        self.assertTrue(
+            text.startswith("#!/"),
+            "pre-commit hook must start with a shebang line"
+        )
+
+    def test_pre_commit_hook_calls_destructive_check(self):
+        text = _read("agent-governance/hooks/pre-commit")
+        self.assertIn("destructive", text.lower(), "pre-commit hook must call destructive change detection")
+
+    def test_pre_commit_hook_checks_yaml(self):
+        text = _read("agent-governance/hooks/pre-commit")
+        self.assertIn("yaml", text.lower(), "pre-commit hook must validate YAML syntax")
+
+    def test_pre_commit_hook_checks_security(self):
+        text = _read("agent-governance/hooks/pre-commit")
+        self.assertTrue(
+            "bandit" in text or "ruff" in text or "flake8" in text,
+            "pre-commit hook must invoke a Python linter or security scanner"
+        )
+
+    def test_destructive_check_script_exists(self):
+        self.assertTrue(
+            (REPO_ROOT / "agent-governance" / "hooks" / "destructive-check.sh").exists(),
+            "agent-governance/hooks/destructive-check.sh must exist"
+        )
+
+    def test_destructive_check_blocks_force_push(self):
+        text = _read("agent-governance/hooks/destructive-check.sh")
+        self.assertIn("force", text.lower(), "destructive-check.sh must block force-push")
+
+    def test_destructive_check_blocks_rm_rf(self):
+        text = _read("agent-governance/hooks/destructive-check.sh")
+        self.assertIn("rm", text, "destructive-check.sh must detect rm -rf patterns")
+
+    def test_pre_commit_config_exists(self):
+        self.assertTrue(
+            (REPO_ROOT / ".pre-commit-config.yaml").exists(),
+            ".pre-commit-config.yaml must exist"
+        )
+
+    def test_pre_commit_config_yaml_valid(self):
+        if not _YAML_AVAILABLE:
+            self.skipTest("pyyaml not installed")
+        text = _read(".pre-commit-config.yaml")
+        self.assertIsNotNone(_yaml.safe_load(text), ".pre-commit-config.yaml must be valid YAML")
+
+    def test_pre_commit_config_includes_destructive_detection(self):
+        text = _read(".pre-commit-config.yaml")
+        self.assertIn("destructive", text.lower(), ".pre-commit-config.yaml must include destructive-change-detection")
+
+    def test_pre_commit_config_includes_security_hook(self):
+        text = _read(".pre-commit-config.yaml")
+        self.assertTrue(
+            "bandit" in text or "ruff" in text,
+            ".pre-commit-config.yaml must include a Python security or linting hook"
+        )
+
+
+class TestSovereignAIStackInvariants(unittest.TestCase):
+    """Guard the sovereign AI homelab stack files."""
+
+    def test_brain_compose_exists(self):
+        self.assertTrue(
+            (REPO_ROOT / "agent-governance" / "sovereign-brain-compose.yml").exists(),
+            "agent-governance/sovereign-brain-compose.yml must exist"
+        )
+
+    def test_brain_compose_yaml_valid(self):
+        if not _YAML_AVAILABLE:
+            self.skipTest("pyyaml not installed")
+        text = _read("agent-governance/sovereign-brain-compose.yml")
+        self.assertIsNotNone(_yaml.safe_load(text), "sovereign-brain-compose.yml must be valid YAML")
+
+    def test_brain_compose_defines_ollama(self):
+        text = _read("agent-governance/sovereign-brain-compose.yml")
+        self.assertIn("brain-ollama", text, "sovereign-brain-compose.yml must define brain-ollama")
+
+    def test_brain_compose_defines_qdrant(self):
+        text = _read("agent-governance/sovereign-brain-compose.yml")
+        self.assertIn("brain-qdrant", text, "sovereign-brain-compose.yml must define brain-qdrant")
+
+    def test_brain_compose_defines_openwebui(self):
+        text = _read("agent-governance/sovereign-brain-compose.yml")
+        self.assertIn("brain-openwebui", text, "sovereign-brain-compose.yml must define brain-openwebui")
+
+    def test_brain_compose_defines_governance(self):
+        text = _read("agent-governance/sovereign-brain-compose.yml")
+        self.assertIn("brain-governance", text, "sovereign-brain-compose.yml must define brain-governance sidecar")
+
+    def test_brain_compose_no_hardcoded_secrets(self):
+        text = _read("agent-governance/sovereign-brain-compose.yml")
+        import re
+        # Check that secret values use variable substitution, not literal strings
+        self.assertNotRegex(
+            text,
+            r'SECRET_KEY:\s+[a-zA-Z0-9]{16,}',
+            "sovereign-brain-compose.yml must not contain hardcoded secret values"
+        )
+
+    def test_unraid_sovereign_stack_exists(self):
+        self.assertTrue(
+            (REPO_ROOT / "unraid" / "sovereign-ai-stack.yml").exists(),
+            "unraid/sovereign-ai-stack.yml must exist"
+        )
+
+    def test_unraid_sovereign_stack_yaml_valid(self):
+        if not _YAML_AVAILABLE:
+            self.skipTest("pyyaml not installed")
+        text = _read("unraid/sovereign-ai-stack.yml")
+        self.assertIsNotNone(_yaml.safe_load(text), "unraid/sovereign-ai-stack.yml must be valid YAML")
+
+    def test_unraid_sovereign_stack_defines_anythingllm(self):
+        text = _read("unraid/sovereign-ai-stack.yml")
+        self.assertIn("anythingllm", text, "unraid/sovereign-ai-stack.yml must define anythingllm")
+
+    def test_unraid_sovereign_stack_defines_qdrant(self):
+        text = _read("unraid/sovereign-ai-stack.yml")
+        self.assertIn("qdrant", text, "unraid/sovereign-ai-stack.yml must define qdrant")
+
+    def test_unraid_sovereign_stack_defines_unraid_mcp(self):
+        text = _read("unraid/sovereign-ai-stack.yml")
+        self.assertIn("unraid-mcp", text, "unraid/sovereign-ai-stack.yml must define unraid-mcp")
+
+    def test_unraid_sovereign_stack_requires_approval(self):
+        text = _read("unraid/sovereign-ai-stack.yml")
+        self.assertIn("REQUIRE_APPROVAL", text, "unraid/sovereign-ai-stack.yml must enforce REQUIRE_APPROVAL")
+
+
+class TestDeployRenegadeNodeScript(unittest.TestCase):
+    """Guard the Brain Node deployment script."""
+
+    def test_deploy_script_exists(self):
+        self.assertTrue(
+            (REPO_ROOT / "scripts" / "deploy-renegade-node.sh").exists(),
+            "scripts/deploy-renegade-node.sh must exist"
+        )
+
+    def test_deploy_script_is_shell(self):
+        text = _read("scripts/deploy-renegade-node.sh")
+        self.assertTrue(text.startswith("#!/"), "deploy-renegade-node.sh must start with a shebang")
+
+    def test_deploy_script_has_try_and_verify(self):
+        text = _read("scripts/deploy-renegade-node.sh")
+        self.assertIn("try_and_verify", text, "deploy-renegade-node.sh must define try_and_verify")
+
+    def test_deploy_script_supports_dry_run(self):
+        text = _read("scripts/deploy-renegade-node.sh")
+        self.assertIn("dry-run", text, "deploy-renegade-node.sh must support --dry-run")
+
+    def test_deploy_script_configures_max_retries(self):
+        text = _read("scripts/deploy-renegade-node.sh")
+        self.assertIn("MAX_RETRIES", text, "deploy-renegade-node.sh must define MAX_RETRIES")
+
+    def test_deploy_script_does_not_hardcode_secrets(self):
+        text = _read("scripts/deploy-renegade-node.sh")
+        import re
+        self.assertNotRegex(
+            text,
+            r'(password|secret|api_key)\s*=\s*["\'][^"\']{8,}',
+            "deploy-renegade-node.sh must not contain hardcoded secrets"
+        )
+
+
+class TestAgentGovernanceDocs(unittest.TestCase):
+    """Guard the Agent Governance and Sovereign AI Architecture documentation."""
+
+    def test_agent_governance_doc_exists(self):
+        self.assertTrue(
+            (REPO_ROOT / "docs" / "AGENT_GOVERNANCE.md").exists(),
+            "docs/AGENT_GOVERNANCE.md must exist"
+        )
+
+    def test_agent_governance_doc_covers_execution_modes(self):
+        text = _read("docs/AGENT_GOVERNANCE.md")
+        for mode in ("SAFE", "DRYRUN", "ARMED"):
+            self.assertIn(mode, text, f"AGENT_GOVERNANCE.md must document execution mode '{mode}'")
+
+    def test_agent_governance_doc_covers_roles(self):
+        text = _read("docs/AGENT_GOVERNANCE.md")
+        for role in ("planner", "operator", "auditor"):
+            self.assertIn(role, text, f"AGENT_GOVERNANCE.md must document role '{role}'")
+
+    def test_agent_governance_doc_covers_hard_blocks(self):
+        text = _read("docs/AGENT_GOVERNANCE.md")
+        self.assertIn("Hard Block", text, "AGENT_GOVERNANCE.md must document hard blocks")
+
+    def test_agent_governance_doc_covers_isolation(self):
+        text = _read("docs/AGENT_GOVERNANCE.md")
+        self.assertIn("isolation", text.lower(), "AGENT_GOVERNANCE.md must cover per-agent isolation")
+
+    def test_agent_governance_doc_covers_memory_layer(self):
+        text = _read("docs/AGENT_GOVERNANCE.md")
+        self.assertIn("Memory", text, "AGENT_GOVERNANCE.md must cover the agent memory layer")
+
+    def test_sovereign_architecture_doc_exists(self):
+        self.assertTrue(
+            (REPO_ROOT / "docs" / "SOVEREIGN_AI_ARCHITECTURE.md").exists(),
+            "docs/SOVEREIGN_AI_ARCHITECTURE.md must exist"
+        )
+
+    def test_sovereign_architecture_doc_has_mermaid(self):
+        text = _read("docs/SOVEREIGN_AI_ARCHITECTURE.md")
+        self.assertIn("```mermaid", text, "SOVEREIGN_AI_ARCHITECTURE.md must contain a Mermaid diagram")
+
+    def test_sovereign_architecture_doc_covers_brain_and_brawn(self):
+        text = _read("docs/SOVEREIGN_AI_ARCHITECTURE.md")
+        for node in ("Brain Node", "Brawn Node"):
+            self.assertIn(node, text, f"SOVEREIGN_AI_ARCHITECTURE.md must cover {node}")
+
+    def test_sovereign_architecture_doc_covers_codeact(self):
+        text = _read("docs/SOVEREIGN_AI_ARCHITECTURE.md")
+        self.assertIn("CodeAct", text, "SOVEREIGN_AI_ARCHITECTURE.md must cover the CodeAct loop")
+
+    def test_sovereign_architecture_doc_covers_qdrant(self):
+        text = _read("docs/SOVEREIGN_AI_ARCHITECTURE.md")
+        self.assertIn("Qdrant", text, "SOVEREIGN_AI_ARCHITECTURE.md must reference Qdrant")
+
+
 if __name__ == "__main__":
     unittest.main()

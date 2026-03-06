@@ -1,0 +1,112 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Sovereign AI Homelab — Unraid Brawn Node Docker Compose
+# Grand Unified AI Home Lab / Project Chimera
+#
+# Node:  Unraid (192.168.1.222) — Brawn / media + AI machine
+# Run:   Deploy via Portainer → Stacks → Add Stack (paste this file)
+#
+# Services:
+#   - anythingllm   Document ingestion and RAG chat interface
+#   - qdrant         Vector database for agent memory
+#   - ollama         Base LLM hosting (fallback / embeddings)
+#   - unraid-mcp     Exposes Unraid API functions via Model Context Protocol
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: sovereign-ai
+
+services:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # AnythingLLM — document ingestion, RAG pipeline, and chat interface
+  # ─────────────────────────────────────────────────────────────────────────
+  anythingllm:
+    image: mintplexlabs/anythingllm:latest
+    container_name: anythingllm
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - /mnt/cache/appdata/chimera_ai/anythingllm/storage:/app/server/storage
+    environment:
+      STORAGE_DIR: /app/server/storage
+      UID: ${PUID:-99}
+      GID: ${PGID:-100}
+    cap_add:
+      - SYS_ADMIN
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3001/api/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Qdrant — vector database (agent memory, RAG embeddings)
+  # ─────────────────────────────────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: chimera-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - /mnt/cache/appdata/chimera_ai/qdrant:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: "6334"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/readyz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Ollama — base LLM hosting (used for embeddings and local fallback)
+  # ─────────────────────────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: chimera-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - /mnt/cache/appdata/chimera_ai/ollama:/root/.ollama
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Unraid MCP Server — exposes Unraid management functions via MCP
+  # Allows the AI to call: list_docker_containers, get_array_status,
+  # get_system_info, restart_container (with approval gate)
+  # ─────────────────────────────────────────────────────────────────────────
+  unraid-mcp:
+    image: ghcr.io/unraid/unraid-mcp:latest
+    container_name: unraid-mcp
+    restart: unless-stopped
+    ports:
+      - "6970:6970"
+    environment:
+      UNRAID_API_KEY: ${UNRAID_API_KEY:?set UNRAID_API_KEY in .env}
+      MCP_PORT: "6970"
+      # Destructive operations require human approval via the governance layer
+      REQUIRE_APPROVAL: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6970/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

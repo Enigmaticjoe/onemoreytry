@@ -1,0 +1,94 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Agent Instruction Framework — Pre-commit Configuration
+# Grand Unified AI Home Lab / Project Chimera
+#
+# Install the pre-commit framework:
+#   pip install pre-commit
+#   pre-commit install          # installs hooks into .git/hooks/
+#   pre-commit run --all-files  # run all hooks manually
+# ═══════════════════════════════════════════════════════════════════════════════
+
+default_language_version:
+  python: python3
+
+# Run hooks on all files when CI pushes (not just changed files)
+ci:
+  autofix_commit_msg: "style: auto-fix lint issues [pre-commit]"
+  autoupdate_commit_msg: "chore: pre-commit hook updates [pre-commit]"
+
+repos:
+  # ─────────────────────────────────────────────────────────────────────────
+  # General file hygiene
+  # ─────────────────────────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: no-commit-to-branch
+        args: [--branch, main]
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Python linting — ruff (replaces flake8, isort, pyupgrade)
+  # ─────────────────────────────────────────────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.7
+    hooks:
+      - id: ruff
+        args: [--select, "E,F,W,I,N,B", --ignore, "S603,S607", --fix]
+      - id: ruff-format
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Security scanning — bandit
+  # ─────────────────────────────────────────────────────────────────────────
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.8
+    hooks:
+      - id: bandit
+        args: [-ll, --skip, "B101,B603,B607", -q]
+        exclude: tests/
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Shell script linting — shellcheck
+  # ─────────────────────────────────────────────────────────────────────────
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        args: [--severity=warning]
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # YAML linting — yamllint
+  # ─────────────────────────────────────────────────────────────────────────
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args: [-c, .yamllint.yml]
+        exclude: |
+          (?x)^(
+            node-b-litellm/config.yaml|
+            unraid/homepage-config/.*|
+            home-assistant/.*
+          )$
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Agent Instruction Framework — custom destructive-change check
+  # ─────────────────────────────────────────────────────────────────────────
+  - repo: local
+    hooks:
+      - id: destructive-change-detection
+        name: Destructive change detection
+        entry: agent-governance/hooks/destructive-check.sh
+        language: script
+        pass_filenames: false
+        stages: [pre-commit]

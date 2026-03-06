@@ -1,0 +1,15 @@
+---
+# yamllint configuration for the Grand Unified AI Home Lab
+# Permissive enough for Ansible-style YAML but catches common mistakes.
+extends: default
+
+rules:
+  line-length:
+    max: 120
+    level: warning
+  truthy:
+    allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
+  comments:
+    min-spaces-from-content: 1
+  document-start: disable
+  comments-indentation: disable
