@@ -1,0 +1,178 @@
+---
+# Homepage service groups for Node B Final optimized stack
+# https://gethomepage.dev/configs/services/
+#
+# Node B (Unraid): 192.168.1.222
+# Node A Brain:    192.168.1.9
+# Node C Arc:      192.168.1.6
+# Node D HA:       192.168.1.149
+
+- Infrastructure:
+    - Portainer:
+        href: https://192.168.1.222:9443
+        description: Docker management UI
+        icon: portainer.svg
+        server: my-docker
+        container: portainer-be
+        widget:
+          type: portainer
+          url: https://192.168.1.222:9443
+          env: 1
+          key: ${PORTAINER_API_KEY}
+
+    - Uptime Kuma:
+        href: http://192.168.1.222:3010
+        description: Service uptime and alerting
+        icon: uptime-kuma.svg
+        server: my-docker
+        container: uptime-kuma
+        widget:
+          type: uptimekuma
+          url: http://192.168.1.222:3010
+          slug: default
+
+    - Dozzle:
+        href: http://192.168.1.222:8888
+        description: Live Docker log viewer
+        icon: dozzle.svg
+        server: my-docker
+        container: dozzle
+
+    - n8n:
+        href: http://192.168.1.222:5678
+        description: Workflow automation engine
+        icon: n8n.svg
+        server: my-docker
+        container: n8n
+
+- AI:
+    - Ollama (Node B):
+        href: http://192.168.1.222:11434
+        description: Local NVIDIA GPU inference — Node B
+        icon: ollama.svg
+        ping: http://192.168.1.222:11434/api/version
+
+    - Ollama (Node A):
+        href: http://192.168.1.9:11435
+        description: AMD ROCm inference — Node A Brain
+        icon: ollama.svg
+        ping: http://192.168.1.9:11435/api/version
+
+    - Open WebUI (Node C):
+        href: http://192.168.1.6:3000
+        description: AI chat UI — Node C workstation
+        icon: open-webui.svg
+        ping: http://192.168.1.6:3000/health
+
+    - Recommendarr:
+        href: http://192.168.1.222:3006
+        description: AI media recommendations
+        icon: dashboard.svg
+        server: my-docker
+        container: recommendarr
+
+- Media:
+    - Jellyfin:
+        href: http://192.168.1.222:8096
+        description: Free open-source media server
+        icon: jellyfin.svg
+        server: my-docker
+        container: jellyfin
+        widget:
+          type: jellyfin
+          url: http://192.168.1.222:8096
+          key: ${JELLYFIN_API_KEY}
+          enableBlocks: true
+          enableNowPlaying: true
+
+    - Plex:
+        href: http://192.168.1.222:32400
+        description: Plex media server
+        icon: plex.svg
+        server: my-docker
+        container: plex
+        widget:
+          type: plex
+          url: http://192.168.1.222:32400
+          key: ${PLEX_TOKEN}
+
+    - Overseerr:
+        href: http://192.168.1.222:5055
+        description: Media request portal
+        icon: overseerr.svg
+        server: my-docker
+        container: overseerr
+        widget:
+          type: overseerr
+          url: http://192.168.1.222:5055
+          key: ${OVERSEERR_API_KEY}
+
+    - Tautulli:
+        href: http://192.168.1.222:8181
+        description: Watch analytics
+        icon: tautulli.svg
+        server: my-docker
+        container: tautulli
+        widget:
+          type: tautulli
+          url: http://192.168.1.222:8181
+          key: ${TAUTULLI_API_KEY}
+
+- Media Automation:
+    - Sonarr:
+        href: http://192.168.1.222:8989
+        description: TV show automation
+        icon: sonarr.svg
+        server: my-docker
+        container: sonarr
+        widget:
+          type: sonarr
+          url: http://192.168.1.222:8989
+          key: ${SONARR_API_KEY}
+
+    - Radarr:
+        href: http://192.168.1.222:7878
+        description: Movie automation
+        icon: radarr.svg
+        server: my-docker
+        container: radarr
+        widget:
+          type: radarr
+          url: http://192.168.1.222:7878
+          key: ${RADARR_API_KEY}
+
+    - Prowlarr:
+        href: http://192.168.1.222:9696
+        description: Indexer management
+        icon: prowlarr.svg
+        server: my-docker
+        container: prowlarr
+        widget:
+          type: prowlarr
+          url: http://192.168.1.222:9696
+          key: ${PROWLARR_API_KEY}
+
+    - Bazarr:
+        href: http://192.168.1.222:6767
+        description: Subtitle automation (AI Whisper)
+        icon: bazarr.svg
+        server: my-docker
+        container: bazarr
+        widget:
+          type: bazarr
+          url: http://192.168.1.222:6767
+          key: ${BAZARR_API_KEY}
+
+    - RDT Client:
+        href: http://192.168.1.222:6500
+        description: Real-Debrid torrent manager
+        icon: qbittorrent.svg
+        server: my-docker
+        container: rdt-client
+
+    - FlareSolverr:
+        href: http://192.168.1.222:8191
+        description: Cloudflare bypass for Prowlarr
+        icon: flaresolverr.svg
+        server: my-docker
+        container: flaresolverr

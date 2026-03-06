@@ -1,0 +1,83 @@
+# Node B Final — AI Stack
+# Node B (Unraid) at 192.168.1.222
+#
+# Lean, single-user AI inference stack replacing the old 7-container vLLM setup.
+# Ollama handles model serving with NVIDIA GPU acceleration.
+# Browserless provides headless Chrome for n8n web-scraping workflows.
+#
+# Replaces: hf-vllm, hf-openwebui, hf-qdrant, hf-redis, hf-searxng,
+#           hf-tei-embed, hf-browserless (duplicate)
+#
+# RAM savings: ~12 GB → ~4 GB
+#
+# After deploy, pull models:
+#   docker exec ollama ollama pull qwen3:8b
+#   docker exec ollama ollama pull phi4-mini
+#   docker exec ollama ollama pull nomic-embed-text
+#
+# Usage:
+#   cp ../.env.example ../.env
+#   docker compose -f stacks/02-ai-stack.yml up -d
+
+services:
+
+  # ─── Ollama — local LLM inference with NVIDIA GPU ──────────────────────────
+  # OpenAI-compatible API on :11434 — used by n8n, Recommendarr, Homepage widget,
+  # and Node C Open WebUI. One command to pull any model: ollama pull <name>
+  #
+  # Replaces: hf-vllm (overkill PagedAttention not needed for single user)
+  # GPU: NVIDIA (CUDA) — pass full GPU to Ollama for best performance
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ${APPDATA_PATH}/ollama:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_NUM_PARALLEL=2
+      - TZ=${TZ:-America/New_York}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:11434/api/version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - ai
+
+  # ─── Browserless — headless Chrome for n8n web-automation workflows ─────────
+  # Used by n8n for web scraping, screenshot capture, and form automation.
+  # Single instance replacing the duplicate hf-browserless (port 3000).
+  browserless:
+    image: browserless/chrome:latest
+    container_name: browserless
+    restart: unless-stopped
+    environment:
+      - MAX_CONCURRENT_SESSIONS=5
+      - MAX_QUEUE_LENGTH=20
+      - TOKEN=${BROWSERLESS_TOKEN}
+      - TIMEOUT=30000
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "3005:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/pressure || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - ai
+
+networks:
+  ai:
+    name: ai
+    driver: bridge

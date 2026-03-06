@@ -1,0 +1,72 @@
+# Node B Final — Voice Stack
+# Node B (Unraid) at 192.168.1.222
+#
+# Local speech-to-text and text-to-speech for Home Assistant voice pipeline.
+# Zero cloud dependency — all processing happens on Node B's CPU.
+#
+#   wyoming-whisper — speech-to-text (Faster Whisper, small-int8 model)
+#   wyoming-piper   — text-to-speech (natural-sounding voices)
+#
+# Home Assistant integration:
+#   Settings → Devices & Services → Add Integration → Wyoming Protocol
+#   Add Whisper: host=192.168.1.222, port=10300
+#   Add Piper:   host=192.168.1.222, port=10200
+#
+# Bazarr AI subtitles:
+#   Point Bazarr's Whisper provider at http://192.168.1.222:10300
+#
+# Usage:
+#   cp ../.env.example ../.env
+#   docker compose -f stacks/05-voice-stack.yml up -d
+
+services:
+
+  # ─── Wyoming Whisper — local speech-to-text ─────────────────────────────────
+  # Used by: Home Assistant voice pipeline, n8n voice workflows, Bazarr subtitles.
+  # Model: small-int8 — fast enough on CPU, good accuracy.
+  # GPU not required for this model size.
+  wyoming-whisper:
+    image: rhasspy/wyoming-whisper:latest
+    container_name: wyoming-whisper
+    restart: unless-stopped
+    ports:
+      - "10300:10300"
+    environment:
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - ${APPDATA_PATH}/wyoming-whisper:/data
+    command: --model ${WHISPER_MODEL:-small-int8} --language en
+    healthcheck:
+      test: ["CMD-SHELL", "wyoming-whisper --help > /dev/null 2>&1 || exit 0"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+    networks:
+      - voice
+
+  # ─── Wyoming Piper — local text-to-speech ───────────────────────────────────
+  # Used by: Home Assistant voice responses, n8n morning briefing automation.
+  # Provides natural-sounding voices with no cloud dependency.
+  wyoming-piper:
+    image: rhasspy/wyoming-piper:latest
+    container_name: wyoming-piper
+    restart: unless-stopped
+    ports:
+      - "10200:10200"
+    environment:
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - ${APPDATA_PATH}/wyoming-piper:/data
+    command: --voice ${PIPER_VOICE:-en_US-lessac-medium}
+    healthcheck:
+      test: ["CMD-SHELL", "wyoming-piper --help > /dev/null 2>&1 || exit 0"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+    networks:
+      - voice
+
+networks:
+  voice:
+    name: voice
+    driver: bridge
