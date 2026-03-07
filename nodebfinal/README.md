@@ -10,7 +10,7 @@ with a **unified LiteLLM API gateway** on port 4000 — one endpoint for all AI 
 
 | Category | Before | After | Savings |
 |----------|--------|-------|---------|
-| AI Stack | 8 containers, ~12 GB RAM | 3 containers, ~5 GB RAM | −5 containers, −7 GB |
+| AI Stack | 8 containers, ~12 GB RAM | 3 containers, ~5.5 GB RAM | −5 containers, −6.5 GB |
 | Media Stack | Unchanged | Unchanged | — |
 | Infrastructure | Unchanged | Unchanged | — |
 | New AI additions | 0 | 4 containers, ~2 GB RAM | +4 containers |
@@ -129,7 +129,7 @@ docker compose -f stacks/06-conditional-stack.yml up -d audiobookshelf
 > requests across nodes transparently. Swap backends without touching client configs.
 >
 > **Why Ollama instead of vLLM?**
-> vLLM's PagedAttention optimises for multi-user, high-concurrency scenarios. For a single user
+> vLLM's PagedAttention optimizes for multi-user, high-concurrency scenarios. For a single user
 > on consumer NVIDIA, Ollama gives 90% of the performance with ~10% of the configuration overhead.
 
 ### Stack 3 — Media (13 containers)

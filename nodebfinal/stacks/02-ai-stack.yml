@@ -13,7 +13,7 @@
 # Replaces: hf-vllm, hf-openwebui, hf-qdrant, hf-redis, hf-searxng,
 #           hf-tei-embed, hf-browserless (duplicate)
 #
-# RAM savings: ~12 GB → ~5 GB (Ollama 4 GB + LiteLLM 1 GB + Browserless 0.5 GB)
+# RAM savings: ~12 GB → ~5.5 GB (Ollama ~4 GB + LiteLLM ~1 GB + Browserless ~0.5 GB)
 #
 # After deploy, pull models:
 #   docker exec ollama ollama pull qwen3:8b
