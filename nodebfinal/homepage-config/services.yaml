@@ -46,6 +46,12 @@
         container: n8n
 
 - AI:
+    - LiteLLM Gateway:
+        href: http://192.168.1.222:4000
+        description: Unified OpenAI-compatible AI gateway — Node B
+        icon: openai.svg
+        ping: http://192.168.1.222:4000/health
+
     - Ollama (Node B):
         href: http://192.168.1.222:11434
         description: Local NVIDIA GPU inference — Node B

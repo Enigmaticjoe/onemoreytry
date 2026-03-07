@@ -1,0 +1,93 @@
+# LiteLLM Proxy configuration for Node B Final (nodebfinal)
+#
+# Node B (Unraid) at 192.168.1.222 — RTX/CUDA with Ollama on :11434
+#
+# This config gives the entire lab a single OpenAI-compatible endpoint at
+# http://192.168.1.222:4000/v1 — one URL, any model, zero vendor lock-in.
+#
+# Model routing:
+#   Local (Node B Ollama):
+#     brawn-fast      → qwen3:8b      (best quality/speed balance)
+#     brawn-mini      → phi4-mini     (ultra-fast, low VRAM)
+#     brawn-embed     → nomic-embed-text (local embeddings)
+#   Cross-node:
+#     brain-heavy     → Node A ROCm Ollama at 192.168.1.9:11435
+#     intel-vision    → Node C Arc Ollama at 192.168.1.6:11434 (vision)
+#
+# Client config examples:
+#   curl:     Authorization: Bearer $LITELLM_MASTER_KEY
+#   Home Assistant / OpenWebUI base_url: http://192.168.1.222:4000/v1
+#   n8n:      POST http://192.168.1.222:4000/v1/chat/completions
+#
+# Master key is read from the LITELLM_MASTER_KEY environment variable.
+# Never hard-code secrets here — use the .env file.
+
+model_list:
+
+  # ── Node B Local: Ollama on NVIDIA GPU ──────────────────────────────────────
+
+  # Primary smart model — best for reasoning, summarisation, and chat.
+  # Pull first: docker exec ollama ollama pull qwen3:8b
+  - model_name: brawn-fast
+    litellm_params:
+      model: ollama/qwen3:8b
+      api_base: http://localhost:11434
+      timeout: 120
+      rpm: 60
+
+  # Fast/cheap model — ideal for quick classifications and simple prompts.
+  # Pull first: docker exec ollama ollama pull phi4-mini
+  - model_name: brawn-mini
+    litellm_params:
+      model: ollama/phi4-mini
+      api_base: http://localhost:11434
+      timeout: 60
+      rpm: 120
+
+  # Embedding model — used by n8n AI nodes and Open WebUI RAG.
+  # Pull first: docker exec ollama ollama pull nomic-embed-text
+  - model_name: brawn-embed
+    litellm_params:
+      model: ollama/nomic-embed-text
+      api_base: http://localhost:11434
+      timeout: 30
+      rpm: 200
+
+  # ── Cross-node: Node A (AMD ROCm, port 11435) ────────────────────────────────
+  # Node A Brain: i9-265F, 128 GB DDR5, RX 7900 XT (20 GB VRAM)
+  # Requires Node A to be running: cd node-a-vllm && docker compose up -d
+  - model_name: brain-heavy
+    litellm_params:
+      model: ollama/qwen3:8b
+      api_base: http://192.168.1.9:11435
+      timeout: 180
+      rpm: 30
+
+  # ── Cross-node: Node C (Intel Arc A770, port 11434) ─────────────────────────
+  # Node C Workstation: Ryzen 7 7700X, 32 GB RAM, Intel Arc A770 (16 GB VRAM)
+  # Supports image inputs via Llava — send base64 images in messages.
+  - model_name: intel-vision
+    litellm_params:
+      model: ollama/llava
+      api_base: http://192.168.1.6:11434
+      timeout: 180
+      rpm: 20
+    model_info:
+      supports_vision: true
+
+general_settings:
+  # Read master key from environment variable — never hard-code here.
+  master_key: os.environ/LITELLM_MASTER_KEY
+
+  # Batch DB writes every 60 s to reduce write pressure.
+  proxy_batch_write_at: 60
+
+  # Disable telemetry — keep all data local.
+  disable_error_logs: false
+  json_logs: true
+
+router_settings:
+  # Prefer the fastest healthy backend; fall back on errors.
+  routing_strategy: simple-shuffle
+  num_retries: 2
+  retry_after: 5

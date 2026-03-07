@@ -12,7 +12,10 @@
       "name": "Webhook — Uptime Kuma Alert",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [240, 300],
+      "position": [
+        240,
+        300
+      ],
       "webhookId": "uptime-kuma-health"
     },
     {
@@ -41,22 +44,41 @@
       "name": "Is Service Down?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [460, 300]
+      "position": [
+        460,
+        300
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "http://192.168.1.222:11434/api/generate",
+        "url": "http://192.168.1.222:4000/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.LITELLM_MASTER_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
         "sendBody": true,
         "contentType": "json",
-        "body": "={\n  \"model\": \"phi4-mini\",\n  \"prompt\": \"A home lab service is down. Analyze this alert and provide:\\n1. What likely went wrong (1-2 sentences)\\n2. The most likely fix (numbered steps, max 3)\\n3. A command to check container logs if applicable\\n\\nAlert details:\\n- Service: {{ $node['Webhook — Uptime Kuma Alert'].json.monitor.name }}\\n- URL: {{ $node['Webhook — Uptime Kuma Alert'].json.monitor.url }}\\n- Message: {{ $node['Webhook — Uptime Kuma Alert'].json.heartbeat.msg }}\\n- Down duration: {{ $node['Webhook — Uptime Kuma Alert'].json.heartbeat.duration }} seconds\\n\\nBe concise and actionable.\",\n  \"stream\": false\n}",
+        "body": "={\n  \"model\": \"brawn-mini\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a home lab troubleshooting assistant. Be concise and actionable.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"A home lab service is down. Analyze this alert and provide:\\n1. What likely went wrong (1-2 sentences)\\n2. The most likely fix (numbered steps, max 3)\\n3. A command to check container logs if applicable\\n\\nAlert details:\\n- Service: {{ $node['Webhook — Uptime Kuma Alert'].json.monitor.name }}\\n- URL: {{ $node['Webhook — Uptime Kuma Alert'].json.monitor.url }}\\n- Message: {{ $node['Webhook — Uptime Kuma Alert'].json.heartbeat.msg }}\\n- Down duration: {{ $node['Webhook — Uptime Kuma Alert'].json.heartbeat.duration }} seconds\"\n    }\n  ],\n  \"stream\": false\n}",
         "options": {}
       },
-      "id": "ollama-analyze",
-      "name": "Ollama — Analyze Error",
+      "id": "litellm-analyze",
+      "name": "LiteLLM — Analyze Error",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [680, 200]
+      "position": [
+        680,
+        200
+      ]
     },
     {
       "parameters": {
@@ -64,14 +86,17 @@
         "url": "={{ $env.DISCORD_WEBHOOK }}",
         "sendBody": true,
         "contentType": "json",
-        "body": "={\n  \"username\": \"Node B Health Monitor\",\n  \"embeds\": [\n    {\n      \"title\": \"🔴 Service Down: {{ $node['Webhook — Uptime Kuma Alert'].json.monitor.name }}\",\n      \"description\": \"{{ $node['Ollama — Analyze Error'].json.response }}\",\n      \"color\": 16711680,\n      \"fields\": [\n        {\n          \"name\": \"URL\",\n          \"value\": \"{{ $node['Webhook — Uptime Kuma Alert'].json.monitor.url }}\",\n          \"inline\": true\n        },\n        {\n          \"name\": \"Down for\",\n          \"value\": \"{{ Math.round($node['Webhook — Uptime Kuma Alert'].json.heartbeat.duration / 60) }} min\",\n          \"inline\": true\n        }\n      ],\n      \"footer\": {\n        \"text\": \"Node B Health Monitor via n8n + Ollama\"\n      }\n    }\n  ]\n}",
+        "body": "={\n  \"username\": \"Node B Health Monitor\",\n  \"embeds\": [\n    {\n      \"title\": \"🔴 Service Down: {{ $node['Webhook — Uptime Kuma Alert'].json.monitor.name }}\",\n      \"description\": \"{{ $node['LiteLLM — Analyze Error'].json.choices[0].message.content }}\",\n      \"color\": 16711680,\n      \"fields\": [\n        {\n          \"name\": \"URL\",\n          \"value\": \"{{ $node['Webhook — Uptime Kuma Alert'].json.monitor.url }}\",\n          \"inline\": true\n        },\n        {\n          \"name\": \"Down for\",\n          \"value\": \"{{ Math.round($node['Webhook — Uptime Kuma Alert'].json.heartbeat.duration / 60) }} min\",\n          \"inline\": true\n        }\n      ],\n      \"footer\": {\n        \"text\": \"Node B Health Monitor via n8n + LiteLLM\"\n      }\n    }\n  ]\n}",
         "options": {}
       },
       "id": "discord-alert",
       "name": "Discord — Send Fix Suggestion",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [900, 200]
+      "position": [
+        900,
+        200
+      ]
     },
     {
       "parameters": {
@@ -81,7 +106,10 @@
       "name": "No Action (Service Up)",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [680, 400]
+      "position": [
+        680,
+        400
+      ]
     }
   ],
   "connections": {
@@ -100,7 +128,7 @@
       "main": [
         [
           {
-            "node": "Ollama — Analyze Error",
+            "node": "LiteLLM — Analyze Error",
             "type": "main",
             "index": 0
           }
@@ -114,7 +142,7 @@
         ]
       ]
     },
-    "Ollama — Analyze Error": {
+    "LiteLLM — Analyze Error": {
       "main": [
         [
           {
@@ -142,7 +170,7 @@
     }
   ],
   "meta": {
-    "description": "Receives Uptime Kuma webhook alerts. When a service goes down, sends the error details to Ollama (phi4-mini) for analysis and fix suggestions, then posts an AI-generated remediation guide to Discord.",
+    "description": "Receives Uptime Kuma webhook alerts. When a service goes down, sends error details to LiteLLM Gateway (brawn-mini / phi4-mini) for analysis and fix suggestions, then posts an AI-generated remediation guide to Discord.",
     "setup": "In Uptime Kuma: Settings → Notifications → Add → Webhook → URL: http://192.168.1.222:5678/webhook/uptime-kuma-alert"
   }
 }

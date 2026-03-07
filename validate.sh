@@ -1332,6 +1332,100 @@ grep -q "mermaid" docs/SOVEREIGN_AI_ARCHITECTURE.md
 test_result $? "SOVEREIGN_AI_ARCHITECTURE.md includes a Mermaid architecture diagram"
 
 echo ""
+
+# Test 17: Validate nodebfinal Node B LiteLLM integration
+echo "17. Validating nodebfinal Node B LiteLLM integration..."
+echo "--------------------------------------------------------"
+
+[ -d "nodebfinal" ]
+test_result $? "nodebfinal/ directory exists"
+
+[ -f "nodebfinal/litellm-config.yaml" ]
+test_result $? "nodebfinal/litellm-config.yaml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('nodebfinal/litellm-config.yaml'))"
+test_result $? "nodebfinal/litellm-config.yaml is valid YAML"
+
+grep -q "brawn-fast" nodebfinal/litellm-config.yaml
+test_result $? "nodebfinal/litellm-config.yaml defines brawn-fast model"
+
+grep -q "brawn-mini" nodebfinal/litellm-config.yaml
+test_result $? "nodebfinal/litellm-config.yaml defines brawn-mini model"
+
+grep -q "brain-heavy" nodebfinal/litellm-config.yaml
+test_result $? "nodebfinal/litellm-config.yaml defines brain-heavy cross-node route"
+
+grep -q "intel-vision" nodebfinal/litellm-config.yaml
+test_result $? "nodebfinal/litellm-config.yaml defines intel-vision cross-node route"
+
+grep -q "LITELLM_MASTER_KEY" nodebfinal/litellm-config.yaml
+test_result $? "nodebfinal/litellm-config.yaml reads master key from env (no hardcoded secret)"
+
+grep -q "supports_vision" nodebfinal/litellm-config.yaml
+test_result $? "nodebfinal/litellm-config.yaml enables vision support for intel-vision model"
+
+[ -f "nodebfinal/stacks/02-ai-stack.yml" ]
+test_result $? "nodebfinal/stacks/02-ai-stack.yml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('nodebfinal/stacks/02-ai-stack.yml'))"
+test_result $? "nodebfinal/stacks/02-ai-stack.yml is valid YAML"
+
+grep -q "container_name: litellm" nodebfinal/stacks/02-ai-stack.yml
+test_result $? "nodebfinal/stacks/02-ai-stack.yml defines litellm container"
+
+grep -q '"4000:4000"' nodebfinal/stacks/02-ai-stack.yml
+test_result $? "nodebfinal/stacks/02-ai-stack.yml exposes LiteLLM on port 4000"
+
+grep -q "container_name: ollama" nodebfinal/stacks/02-ai-stack.yml
+test_result $? "nodebfinal/stacks/02-ai-stack.yml defines ollama container"
+
+grep -q "healthcheck:" nodebfinal/stacks/02-ai-stack.yml
+test_result $? "nodebfinal/stacks/02-ai-stack.yml has healthchecks defined"
+
+[ -f "nodebfinal/.env.example" ]
+test_result $? "nodebfinal/.env.example exists"
+
+grep -q "LITELLM_MASTER_KEY" nodebfinal/.env.example
+test_result $? "nodebfinal/.env.example documents LITELLM_MASTER_KEY"
+
+[ -f "nodebfinal/homepage-config/services.yaml" ]
+test_result $? "nodebfinal/homepage-config/services.yaml exists"
+
+python3 -c "import yaml; yaml.safe_load(open('nodebfinal/homepage-config/services.yaml'))"
+test_result $? "nodebfinal/homepage-config/services.yaml is valid YAML"
+
+grep -q "LiteLLM\|litellm" nodebfinal/homepage-config/services.yaml
+test_result $? "nodebfinal/homepage-config/services.yaml includes LiteLLM Gateway entry"
+
+grep -q "192.168.1.222:4000" nodebfinal/homepage-config/services.yaml
+test_result $? "nodebfinal/homepage-config/services.yaml points to LiteLLM on port 4000"
+
+# Verify n8n workflows use LiteLLM (OpenAI-compatible API) not raw Ollama
+grep -q "4000/v1/chat/completions" nodebfinal/n8n-workflows/morning-briefing.json
+test_result $? "morning-briefing.json uses LiteLLM endpoint (4000/v1/chat/completions)"
+
+grep -q "4000/v1/chat/completions" nodebfinal/n8n-workflows/container-health-monitor.json
+test_result $? "container-health-monitor.json uses LiteLLM endpoint"
+
+grep -q "4000/v1/chat/completions" nodebfinal/n8n-workflows/weekly-media-digest.json
+test_result $? "weekly-media-digest.json uses LiteLLM endpoint"
+
+grep -q "4000/v1/chat/completions" nodebfinal/n8n-workflows/smart-content-approval.json
+test_result $? "smart-content-approval.json uses LiteLLM endpoint"
+
+# Verify workflows use OpenAI response format (choices[]) not Ollama native (.response)
+grep -q "choices\[0\].message.content\|choices\\\[0\\\]" nodebfinal/n8n-workflows/morning-briefing.json
+test_result $? "morning-briefing.json reads OpenAI response format (choices[0].message.content)"
+
+grep -q "choices\[0\].message.content\|choices\\\[0\\\]" nodebfinal/n8n-workflows/container-health-monitor.json
+test_result $? "container-health-monitor.json reads OpenAI response format"
+
+grep -q "LITELLM_MASTER_KEY" nodebfinal/n8n-workflows/morning-briefing.json
+test_result $? "morning-briefing.json passes LITELLM_MASTER_KEY for auth"
+
+echo ""
+
+echo ""
 echo "================================================================================"
 echo "  TEST RESULTS"
 echo "================================================================================"

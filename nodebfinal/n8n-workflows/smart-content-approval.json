@@ -47,6 +47,269 @@
     {
       "parameters": {
         "method": "POST",
+        "url": "http://192.168.1.222:4000/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.LITELLM_MASTER_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"model\": \"brawn-fast\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a media curator AI. Respond ONLY with a valid JSON object — no markdown, no explanation. Keys: approve (boolean), reason (string ≤50 words), confidence (integer 0-100).\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Should I approve this media request based on watch history?\\n\\nRequested:\\n- Title: {{ $node['Webhook — Overseerr Request'].json.subject }}\\n- Type: {{ $node['Webhook — Overseerr Request'].json.media.media_type }}\\n- Requested by: {{ $node['Webhook — Overseerr Request'].json.request.requestedBy_username }}\\n\\nRecent watch history (last 30 days): {{ JSON.stringify($node['Tautulli — Get Watch History'].json.response.data) }}\\n\\nApprove if it matches the taste profile. Reject only if wildly off-genre with low confidence.\"\n    }\n  ],\n  \"stream\": false\n}",
+        "options": {}
+      },
+      "id": "litellm-decision",
+      "name": "LiteLLM — Evaluate Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $node['LiteLLM — Evaluate Request'].json.choices[0].message.content;\nconst match = raw.match(/\\{[\\s\\S]*\\}/);\nconst decision = match ? JSON.parse(match[0]) : { approve: true, reason: 'Parse error — defaulting to approve', confidence: 50 };\nreturn [{ json: decision }];"
+      },
+      "id": "parse-decision",
+      "name": "Parse LiteLLM Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.approve }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "route-decision",
+      "name": "Approve or Hold?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.1.222:5055/api/v1/request/{{ $node['Webhook — Overseerr Request'].json.request.request_id }}/approve",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Key",
+              "value": "={{ $env.OVERSEERR_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "overseerr-approve",
+      "name": "Overseerr — Auto Approve",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1320, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK }}",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"username\": \"Node B Content Gatekeeper\",\n  \"embeds\": [\n    {\n      \"title\": \"✅ Request Auto-Approved: {{ $node['Webhook — Overseerr Request'].json.subject }}\",\n      \"description\": \"{{ $node['Parse LiteLLM Decision'].json.reason }}\",\n      \"color\": 65280,\n      \"footer\": {\n        \"text\": \"Confidence: {{ $node['Parse LiteLLM Decision'].json.confidence }}% — approved by LiteLLM\"\n      }\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "discord-approved",
+      "name": "Discord — Notify Approved",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1540, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK }}",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"username\": \"Node B Content Gatekeeper\",\n  \"embeds\": [\n    {\n      \"title\": \"⏸️ Request Needs Review: {{ $node['Webhook — Overseerr Request'].json.subject }}\",\n      \"description\": \"**AI Analysis:** {{ $node['Parse LiteLLM Decision'].json.reason }}\\n\\n**Action needed:** Visit Overseerr to approve or deny: http://192.168.1.222:5055/requests\",\n      \"color\": 16776960,\n      \"footer\": {\n        \"text\": \"Confidence: {{ $node['Parse LiteLLM Decision'].json.confidence }}% — held for manual review\"\n      }\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "discord-hold",
+      "name": "Discord — Notify Hold for Review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1320, 400]
+    }
+  ],
+  "connections": {
+    "Webhook — Overseerr Request": {
+      "main": [
+        [
+          {
+            "node": "Tautulli — Get Watch History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tautulli — Get Watch History": {
+      "main": [
+        [
+          {
+            "node": "LiteLLM — Evaluate Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LiteLLM — Evaluate Request": {
+      "main": [
+        [
+          {
+            "node": "Parse LiteLLM Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse LiteLLM Decision": {
+      "main": [
+        [
+          {
+            "node": "Approve or Hold?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approve or Hold?": {
+      "main": [
+        [
+          {
+            "node": "Overseerr — Auto Approve",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Discord — Notify Hold for Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Overseerr — Auto Approve": {
+      "main": [
+        [
+          {
+            "node": "Discord — Notify Approved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "media",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "ai",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "automation",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "meta": {
+    "description": "Receives Overseerr new-request webhooks. Checks 30-day Tautulli watch history, asks LiteLLM Gateway to evaluate if the request matches taste. Auto-approves good matches; holds questionable ones and pings Discord for manual review.",
+    "setup": "In Overseerr: Settings → Notifications → Webhook → URL: http://192.168.1.222:5678/webhook/overseerr-request. Enable 'Request Pending Approval' event. Set LITELLM_MASTER_KEY in n8n environment variables."
+  }
+}
+
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "overseerr-request",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-overseerr",
+      "name": "Webhook — Overseerr Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "overseerr-new-request"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://192.168.1.222:8181/api/v2",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.TAUTULLI_API_KEY }}"
+            },
+            {
+              "name": "cmd",
+              "value": "get_home_stats"
+            },
+            {
+              "name": "time_range",
+              "value": "30"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "tautulli-history",
+      "name": "Tautulli — Get Watch History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
         "url": "http://192.168.1.222:11434/api/generate",
         "sendBody": true,
         "contentType": "json",

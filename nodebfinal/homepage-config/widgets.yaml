@@ -19,18 +19,23 @@
     provider: duckduckgo
     target: _blank
 
-# AI Daily Briefing — calls Ollama API for a morning summary card
-# Uncomment and adjust the URL after deploying the AI stack.
+# AI Daily Briefing — calls LiteLLM Gateway for a morning summary card.
+# LiteLLM routes to the best available model automatically.
+# Uncomment and adjust after deploying the AI stack and setting LITELLM_MASTER_KEY.
 #
 # - customapi:
-#     url: http://192.168.1.222:11434/api/generate
+#     url: http://192.168.1.222:4000/v1/chat/completions
 #     method: POST
 #     headers:
 #       Content-Type: application/json
+#       Authorization: Bearer {{HOMEPAGE_VAR_LITELLM_KEY}}
 #     body: >-
-#       {"model":"phi4-mini","prompt":"Give a one-sentence home lab status
-#       summary for today.","stream":false}
+#       {"model":"brawn-mini","messages":[{"role":"user","content":
+#       "Give a one-sentence home lab status summary for today."}],"stream":false}
 #     mappings:
-#       - field: response
+#       - field:
+#           choices:
+#             - message:
+#                 - content
 #         label: AI Briefing
 #         format: text
