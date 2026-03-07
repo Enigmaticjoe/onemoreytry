@@ -1,40 +1,80 @@
 # LiteLLM Proxy configuration for Grand Unified AI Home Lab
 #
 # This configuration routes requests to the correct physical nodes:
-# - Brain (Node A): RX 7900 XT at 192.168.1.9:8000
-# - Brawn (Node B): RTX 4070 running vLLM at 192.168.1.222:8002
-# - Command Center (Node C): Intel Arc A770 running Ollama at 192.168.1.6:11434
+# - Brain (Node A): RX 7900 XT at 192.168.1.9:11435 (Ollama / ROCm)
+# - Brawn (Node B): RTX 4070 at 192.168.1.222:11434 (Ollama / CUDA)
+# - Command Center (Node C): Intel Arc A770 at 192.168.1.6:11434 (Ollama / OneAPI)
 #
-# API Key for Home Assistant and other clients: sk-master-key
+# Pull models before enabling routes:
+#   Node A: ./scripts/pull-models.sh --node a
+#   Node B: ./scripts/pull-models.sh --node b
+#   Node C: ./scripts/pull-models.sh --node c
 
 model_list:
-  # Brain (Node A) - Heavy Logic/Reasoning
-  # Hardware: Intel i9-265F, 128GB DDR5, RX 7900 XT (20GB)
-  # Model: cognitivecomputations/dolphin-2.9.3-llama-3.1-8b-AWQ (uncensored, AWQ quantised)
-  # Served by vLLM as: dolphin-2.9.3-llama-3.1-8b
+  # Brain (Node A) — qwen2.5:32b: powerful 32B thinker; fits in 20 GB VRAM
+  # Hardware: i9-265F, 128GB DDR5, RX 7900 XT (20GB)
+  # Pull: docker exec ollama_brain ollama pull qwen2.5:32b
   - model_name: brain-heavy
     litellm_params:
-      model: openai/dolphin-2.9.3-llama-3.1-8b
-      api_base: http://192.168.1.9:8000/v1
-      rpm: 60
-      timeout: 180
+      model: ollama/qwen2.5:32b
+      api_base: http://192.168.1.9:11435
+      rpm: 20
+      timeout: 240
 
-  # Brawn (Node B) - Fast Chat (local vLLM)
+  # Brain (Node A) — llava:13b: vision-language model for multimodal tasks
+  # Pull: docker exec ollama_brain ollama pull llava:13b
+  - model_name: brain-vision
+    litellm_params:
+      model: ollama/llava:13b
+      api_base: http://192.168.1.9:11435
+      rpm: 15
+      timeout: 180
+    model_info:
+      supports_vision: true
+
+  # Brawn (Node B) — dolphin-mistral:7b: uncensored all-rounder for chat
   # Hardware: i5-13600K, 96GB DDR5, RTX 4070 (12GB)
-  # Running: vLLM on port 8002 (mapped from internal 8000)
+  # Pull: docker exec ollama ollama pull dolphin-mistral:7b
   - model_name: brawn-fast
     litellm_params:
-      model: openai/chat
-      api_base: http://192.168.1.222:8002/v1
-      rpm: 100
+      model: ollama/dolphin-mistral:7b
+      api_base: http://192.168.1.222:11434
+      rpm: 60
       timeout: 120
 
-  # Command Center (Node C) - Vision AI
+  # Brawn (Node B) — qwen2.5-coder:14b: specialised code generation
+  # Pull: docker exec ollama ollama pull qwen2.5-coder:14b
+  - model_name: brawn-code
+    litellm_params:
+      model: ollama/qwen2.5-coder:14b
+      api_base: http://192.168.1.222:11434
+      rpm: 30
+      timeout: 180
+
+  # Command Center (Node C) — phi4:latest: fast conversational model on Arc
   # Hardware: Ryzen 7 7700X, 32GB RAM, Intel Arc A770 (16GB)
-  # Running: Ollama with Llava for vision tasks
+  # Pull: docker exec ollama_intel_arc ollama pull phi4:latest
+  - model_name: intel-fast
+    litellm_params:
+      model: ollama/phi4:latest
+      api_base: http://192.168.1.6:11434
+      rpm: 40
+      timeout: 120
+
+  # Command Center (Node C) — dolphin3:8b: uncensored model on Intel Arc
+  # Pull: docker exec ollama_intel_arc ollama pull dolphin3:8b
+  - model_name: intel-uncensored
+    litellm_params:
+      model: ollama/dolphin3:8b
+      api_base: http://192.168.1.6:11434
+      rpm: 40
+      timeout: 120
+
+  # Command Center (Node C) — llava:13b: vision tasks (legacy alias)
+  # Pull: docker exec ollama_intel_arc ollama pull llava:13b
   - model_name: intel-vision
     litellm_params:
-      model: ollama/llava
+      model: ollama/llava:13b
       api_base: http://192.168.1.6:11434
       timeout: 180
     model_info:

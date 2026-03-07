@@ -64,18 +64,18 @@ grep -q "intel-vision" node-b-litellm/config.yaml
 test_result $? "intel-vision model defined"
 
 # Check for correct IPs
-grep -q "192.168.1.9:8000" node-b-litellm/config.yaml
-test_result $? "Brain IP (192.168.1.9:8000) configured"
+grep -q "192.168.1.9:11435" node-b-litellm/config.yaml
+test_result $? "Brain IP (192.168.1.9:11435) configured"
 
-grep -q "192.168.1.222:8002" node-b-litellm/config.yaml
-test_result $? "Brawn IP (192.168.1.222:8002) configured"
+grep -q "192.168.1.222:11434" node-b-litellm/config.yaml
+test_result $? "Brawn IP (192.168.1.222:11434) configured"
 
 grep -q "192.168.1.6:11434" node-b-litellm/config.yaml
 test_result $? "Command Center IP (192.168.1.6:11434) configured"
 
-# Check for API key
-grep -q "sk-master-key" node-b-litellm/config.yaml
-test_result $? "API key (sk-master-key) configured"
+# Check for API key (either hardcoded or env-var reference)
+grep -qE "sk-master-key|LITELLM_MASTER_KEY" node-b-litellm/config.yaml
+test_result $? "API key configured (sk-master-key or LITELLM_MASTER_KEY)"
 
 # Check for vision support
 grep -q "supports_vision: True" node-b-litellm/config.yaml

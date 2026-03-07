@@ -7,12 +7,22 @@
 #
 # Model routing:
 #   Local (Node B Ollama):
-#     brawn-fast      → qwen3:8b      (best quality/speed balance)
-#     brawn-mini      → phi4-mini     (ultra-fast, low VRAM)
-#     brawn-embed     → nomic-embed-text (local embeddings)
+#     brawn-fast      → dolphin-mistral:7b  (uncensored all-rounder)
+#     brawn-code      → qwen2.5-coder:14b   (specialised code generation)
+#     brawn-mini      → phi4-mini           (ultra-fast, low VRAM)
+#     brawn-embed     → nomic-embed-text    (local embeddings)
 #   Cross-node:
-#     brain-heavy     → Node A ROCm Ollama at 192.168.1.9:11435
-#     intel-vision    → Node C Arc Ollama at 192.168.1.6:11434 (vision)
+#     brain-heavy     → Node A qwen2.5:32b  (powerful 32B thinker, 20 GB VRAM)
+#     brain-vision    → Node A llava:13b    (vision-language model)
+#     intel-fast      → Node C phi4:latest  (fast Arc conversation)
+#     intel-uncensored → Node C dolphin3:8b (uncensored Arc model)
+#     intel-vision    → Node C llava:13b    (vision, legacy alias)
+#
+# Pull models on each node before enabling these routes:
+#   Node A: ./scripts/pull-models.sh --node a
+#   Node B: ./scripts/pull-models.sh --node b
+#   Node C: ./scripts/pull-models.sh --node c
+#   All:    ./scripts/pull-models.sh --all
 #
 # Client config examples:
 #   curl:     Authorization: Bearer $LITELLM_MASTER_KEY
@@ -24,19 +34,28 @@
 
 model_list:
 
-  # ── Node B Local: Ollama on NVIDIA GPU ──────────────────────────────────────
+  # ── Node B Local: Ollama on NVIDIA RTX 4070 (12 GB VRAM) ────────────────────
 
-  # Primary smart model — best for reasoning, summarisation, and chat.
-  # Pull first: docker exec ollama ollama pull qwen3:8b
+  # Uncensored all-rounder — chat, summarisation, light coding.
+  # Pull: docker exec ollama ollama pull dolphin-mistral:7b
   - model_name: brawn-fast
     litellm_params:
-      model: ollama/qwen3:8b
+      model: ollama/dolphin-mistral:7b
       api_base: http://localhost:11434
       timeout: 120
       rpm: 60
 
-  # Fast/cheap model — ideal for quick classifications and simple prompts.
-  # Pull first: docker exec ollama ollama pull phi4-mini
+  # Specialised code model — generation, review, debugging.
+  # Pull: docker exec ollama ollama pull qwen2.5-coder:14b
+  - model_name: brawn-code
+    litellm_params:
+      model: ollama/qwen2.5-coder:14b
+      api_base: http://localhost:11434
+      timeout: 180
+      rpm: 30
+
+  # Ultra-fast lightweight model — quick classifications and simple prompts.
+  # Pull: docker exec ollama ollama pull phi4-mini
   - model_name: brawn-mini
     litellm_params:
       model: ollama/phi4-mini
@@ -45,7 +64,7 @@ model_list:
       rpm: 120
 
   # Embedding model — used by n8n AI nodes and Open WebUI RAG.
-  # Pull first: docker exec ollama ollama pull nomic-embed-text
+  # Pull: docker exec ollama ollama pull nomic-embed-text
   - model_name: brawn-embed
     litellm_params:
       model: ollama/nomic-embed-text
@@ -53,22 +72,53 @@ model_list:
       timeout: 30
       rpm: 200
 
-  # ── Cross-node: Node A (AMD ROCm, port 11435) ────────────────────────────────
+  # ── Cross-node: Node A (AMD RX 7900 XT, ROCm, port 11435) ───────────────────
   # Node A Brain: i9-265F, 128 GB DDR5, RX 7900 XT (20 GB VRAM)
-  # Requires Node A to be running: cd node-a-vllm && docker compose up -d
+  # Start Node A: docker compose -f node-a-vllm/docker-compose.ollama.yml up -d
+  # Pull model:   ./scripts/pull-models.sh --node a
+
+  # 32B reasoning model — best quality thinker, fits in 20 GB VRAM.
   - model_name: brain-heavy
     litellm_params:
-      model: ollama/qwen3:8b
+      model: ollama/qwen2.5:32b
+      api_base: http://192.168.1.9:11435
+      timeout: 240
+      rpm: 20
+
+  # Vision-language model — send base64 images in the messages array.
+  - model_name: brain-vision
+    litellm_params:
+      model: ollama/llava:13b
       api_base: http://192.168.1.9:11435
       timeout: 180
-      rpm: 30
+      rpm: 15
+    model_info:
+      supports_vision: true
 
   # ── Cross-node: Node C (Intel Arc A770, port 11434) ─────────────────────────
-  # Node C Workstation: Ryzen 7 7700X, 32 GB RAM, Intel Arc A770 (16 GB VRAM)
-  # Supports image inputs via Llava — send base64 images in messages.
+  # Node C Arc: Ryzen 7 7700X, 32 GB RAM, Intel Arc A770 (16 GB VRAM)
+  # Pull models: ./scripts/pull-models.sh --node c
+
+  # Fast conversational model on Intel Arc.
+  - model_name: intel-fast
+    litellm_params:
+      model: ollama/phi4:latest
+      api_base: http://192.168.1.6:11434
+      timeout: 120
+      rpm: 40
+
+  # Uncensored model on Intel Arc — low-latency unfiltered responses.
+  - model_name: intel-uncensored
+    litellm_params:
+      model: ollama/dolphin3:8b
+      api_base: http://192.168.1.6:11434
+      timeout: 120
+      rpm: 40
+
+  # Legacy vision alias — kept for backward compatibility.
   - model_name: intel-vision
     litellm_params:
-      model: ollama/llava
+      model: ollama/llava:13b
       api_base: http://192.168.1.6:11434
       timeout: 180
       rpm: 20
