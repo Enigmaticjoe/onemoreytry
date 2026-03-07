@@ -11,9 +11,16 @@
 #
 # Port: 11435  (non-default to avoid conflict if another Ollama runs locally)
 #
+# Recommended models (pull after starting this stack):
+#   docker exec ollama_brain ollama pull qwen2.5:32b   # ~19.4 GB — primary thinker
+#   docker exec ollama_brain ollama pull llava:13b      # ~ 8.0 GB — vision tasks
+#
+#   Or use the installer script (auto-detects container name):
+#   ./scripts/pull-models.sh --node a
+#
 # Usage:
 #   docker compose -f docker-compose.ollama.yml up -d
-#   docker exec ollama_brain ollama pull llama3.1:8b
+#   docker exec ollama_brain ollama pull qwen2.5:32b
 #   curl http://localhost:11435/api/version
 
 services:
