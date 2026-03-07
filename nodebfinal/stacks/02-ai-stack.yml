@@ -1,14 +1,19 @@
 # Node B Final — AI Stack
 # Node B (Unraid) at 192.168.1.222
 #
-# Lean, single-user AI inference stack replacing the old 7-container vLLM setup.
-# Ollama handles model serving with NVIDIA GPU acceleration.
-# Browserless provides headless Chrome for n8n web-scraping workflows.
+# Three-tier AI stack:
+#   1. Ollama  — local NVIDIA GPU inference engine (port 11434)
+#   2. LiteLLM — OpenAI-compatible API gateway (port 4000)
+#                Routes requests to Ollama locally AND cross-node to Node A / Node C.
+#   3. Browserless — headless Chrome for n8n web-scraping workflows (port 3005)
+#
+# Single unified endpoint for all AI clients (Home Assistant, Open WebUI, n8n):
+#   http://192.168.1.222:4000/v1
 #
 # Replaces: hf-vllm, hf-openwebui, hf-qdrant, hf-redis, hf-searxng,
 #           hf-tei-embed, hf-browserless (duplicate)
 #
-# RAM savings: ~12 GB → ~4 GB
+# RAM savings: ~12 GB → ~5 GB (Ollama 4 GB + LiteLLM 1 GB + Browserless 0.5 GB)
 #
 # After deploy, pull models:
 #   docker exec ollama ollama pull qwen3:8b
@@ -17,13 +22,17 @@
 #
 # Usage:
 #   cp ../.env.example ../.env
+#   # Fill in LITELLM_MASTER_KEY (and optional OPENAI_API_KEY for upstream models)
 #   docker compose -f stacks/02-ai-stack.yml up -d
 
 services:
 
   # ─── Ollama — local LLM inference with NVIDIA GPU ──────────────────────────
-  # OpenAI-compatible API on :11434 — used by n8n, Recommendarr, Homepage widget,
-  # and Node C Open WebUI. One command to pull any model: ollama pull <name>
+  # OpenAI-compatible API on :11434 — used directly by LiteLLM (below).
+  # Pull models: docker exec ollama ollama pull qwen3:8b
+  #
+  # NOTE: Clients should call LiteLLM at :4000, not Ollama directly.
+  #       Ollama is an implementation detail behind the LiteLLM gateway.
   #
   # Replaces: hf-vllm (overkill PagedAttention not needed for single user)
   # GPU: NVIDIA (CUDA) — pass full GPU to Ollama for best performance
@@ -48,6 +57,46 @@ services:
               capabilities: [gpu]
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:11434/api/version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - ai
+
+  # ─── LiteLLM — OpenAI-compatible API gateway ───────────────────────────────
+  # Single unified endpoint at :4000 for all AI clients in the lab.
+  # Routes requests to Ollama locally and cross-node to Node A / Node C.
+  #
+  # Model aliases exposed on the gateway:
+  #   brawn-fast    → Ollama qwen3:8b   (best quality on Node B)
+  #   brawn-mini    → Ollama phi4-mini  (fast/cheap on Node B)
+  #   brawn-embed   → Ollama nomic-embed-text (embeddings)
+  #   brain-heavy   → Node A ROCm Ollama at 192.168.1.9:11435
+  #   intel-vision  → Node C Arc Ollama at 192.168.1.6:11434 (supports images)
+  #
+  # All clients use:  http://192.168.1.222:4000/v1
+  # Auth:             Authorization: Bearer <LITELLM_MASTER_KEY>
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: litellm
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+      - LITELLM_LOG=INFO
+      - JSON_LOGS=true
+      - WORKERS=2
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      # Mount the LiteLLM model-routing config (one directory up from stacks/)
+      - ../litellm-config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -1,7 +1,8 @@
 # Node B Final — Optimized Unraid Stack
 
-**Node B** (Unraid at `192.168.1.222`) running **23–26 containers** with full AI integration.  
-Reduced from 37 containers (including 3 dead, ~15 redundant) to a lean, AI-powered ecosystem.
+**Node B** (Unraid at `192.168.1.222`) running **24–27 containers** with full AI integration.  
+Reduced from 37 containers (including 3 dead, ~15 redundant) to a lean, AI-powered ecosystem  
+with a **unified LiteLLM API gateway** on port 4000 — one endpoint for all AI clients.
 
 ---
 
@@ -9,11 +10,11 @@ Reduced from 37 containers (including 3 dead, ~15 redundant) to a lean, AI-power
 
 | Category | Before | After | Savings |
 |----------|--------|-------|---------|
-| AI Stack | 8 containers, ~12 GB RAM | 2 containers, ~4 GB RAM | −6 containers, −8 GB |
+| AI Stack | 8 containers, ~12 GB RAM | 3 containers, ~5 GB RAM | −5 containers, −7 GB |
 | Media Stack | Unchanged | Unchanged | — |
 | Infrastructure | Unchanged | Unchanged | — |
 | New AI additions | 0 | 4 containers, ~2 GB RAM | +4 containers |
-| **Total** | **~37, ~22 GB** | **~23–26, ~16 GB** | **~−6 GB RAM** |
+| **Total** | **~37, ~22 GB** | **~24–27, ~17 GB** | **~−5 GB RAM** |
 
 **Containers dropped:** `hf-vllm`, `hf-openwebui`, `hf-qdrant`, `hf-redis`, `hf-searxng`,
 `hf-tei-embed`, `hf-browserless` (duplicate), `qBittorrent` (dead), `Stremio Server`,
@@ -28,9 +29,10 @@ nodebfinal/
 ├── .env.example                    ← copy to .env and fill in values
 ├── .gitignore
 ├── README.md
+├── litellm-config.yaml             ← LiteLLM model routing config (mounts into container)
 ├── stacks/
 │   ├── 01-infra-stack.yml          ← Homepage, Uptime Kuma, Dozzle, Watchtower, Tailscale, Portainer BE, Cloudflared
-│   ├── 02-ai-stack.yml             ← Ollama (CUDA), Browserless
+│   ├── 02-ai-stack.yml             ← Ollama (CUDA) + LiteLLM gateway (port 4000) + Browserless
 │   ├── 03-media-stack.yml          ← Gluetun, Zurg, rclone-zurg, rdt-client, Prowlarr, Sonarr, Radarr, Bazarr, Overseerr, Tautulli, Plex, Jellyfin, FlareSolverr
 │   ├── 04-automation-stack.yml     ← n8n, Recommendarr
 │   ├── 05-voice-stack.yml          ← Wyoming Whisper, Wyoming Piper
@@ -70,13 +72,17 @@ nano .env   # fill in your values
 # Step 1: Infrastructure (dashboard, monitoring, VPN mesh)
 docker compose -f stacks/01-infra-stack.yml up -d
 
-# Step 2: AI stack (Ollama GPU inference + Browserless)
+# Step 2: AI stack (Ollama GPU inference + LiteLLM gateway + Browserless)
 docker compose -f stacks/02-ai-stack.yml up -d
 
 # Step 3: Pull AI models (first time only, takes a few minutes)
 docker exec ollama ollama pull qwen3:8b
 docker exec ollama ollama pull phi4-mini
 docker exec ollama ollama pull nomic-embed-text
+
+# Step 3b: Verify LiteLLM gateway is routing models correctly
+curl -fsS http://192.168.1.222:4000/v1/models \
+  -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" | python3 -m json.tool
 
 # Step 4: Media stack
 docker compose -f stacks/03-media-stack.yml up -d
@@ -108,18 +114,23 @@ docker compose -f stacks/06-conditional-stack.yml up -d audiobookshelf
 | Watchtower | — | Weekly auto-updates (Sunday 3am, prevents mid-shift surprises) |
 | Cloudflared | — | Zero-Trust tunnel — exposes Overseerr + Homepage externally without open ports |
 
-### Stack 2 — AI (2 containers)
+### Stack 2 — AI (3 containers)
 
 | Container | Port | Purpose |
 |-----------|------|---------|
 | Ollama | 11434 | NVIDIA CUDA inference. Pull any model with `ollama pull <name>` |
+| LiteLLM | 4000 | OpenAI-compatible gateway. Single endpoint for all AI clients: `http://192.168.1.222:4000/v1` |
 | Browserless | 3005 | Headless Chrome for n8n web-scraping workflows |
 
-> **Why Ollama instead of vLLM?**  
-> vLLM's PagedAttention and continuous batching optimize for multi-user, high-concurrency
-> scenarios. For a single user on consumer NVIDIA, Ollama gives 90% of the performance
-> with ~10% of the configuration overhead. One command to pull models, built-in
-> OpenAI-compatible API, and native embedding support (`nomic-embed-text`).
+> **Why LiteLLM?**
+> LiteLLM sits in front of Ollama and exposes a single OpenAI-compatible endpoint (`/v1/chat/completions`).
+> Every client — Home Assistant, Open WebUI, n8n, Recommendarr — speaks to one URL with one API key.
+> LiteLLM also provides model aliases (`brawn-fast`, `brain-heavy`, `intel-vision`) that route
+> requests across nodes transparently. Swap backends without touching client configs.
+>
+> **Why Ollama instead of vLLM?**
+> vLLM's PagedAttention optimises for multi-user, high-concurrency scenarios. For a single user
+> on consumer NVIDIA, Ollama gives 90% of the performance with ~10% of the configuration overhead.
 
 ### Stack 3 — Media (13 containers)
 
@@ -168,10 +179,40 @@ docker compose -f stacks/06-conditional-stack.yml up -d audiobookshelf
 
 ## AI Integration
 
+### LiteLLM Gateway — Unified AI Endpoint
+
+The LiteLLM container exposes a single OpenAI-compatible API at `http://192.168.1.222:4000/v1`.
+
+```bash
+# Test the gateway (replace sk-yourkey with your LITELLM_MASTER_KEY value)
+curl -X POST http://192.168.1.222:4000/v1/chat/completions \
+  -H "Authorization: Bearer sk-yourkey" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"brawn-fast","messages":[{"role":"user","content":"Hello from Node B!"}]}'
+
+# List all available models
+curl http://192.168.1.222:4000/v1/models -H "Authorization: Bearer sk-yourkey"
+```
+
+**Model aliases:**
+
+| Alias | Routes to | Best for |
+|-------|-----------|----------|
+| `brawn-fast` | Ollama `qwen3:8b` on Node B | Smart local chat, analysis |
+| `brawn-mini` | Ollama `phi4-mini` on Node B | Quick prompts, low VRAM |
+| `brawn-embed` | Ollama `nomic-embed-text` | RAG embeddings |
+| `brain-heavy` | Node A ROCm Ollama `:11435` | Heavy reasoning (requires Node A up) |
+| `intel-vision` | Node C Arc Ollama `:11434` | Image + vision tasks (requires Node C up) |
+
+**Connect other clients to LiteLLM:**
+- **Home Assistant:** Base URL `http://192.168.1.222:4000/v1`, API key `${LITELLM_MASTER_KEY}`
+- **Open WebUI:** OpenAI API URL `http://192.168.1.222:4000/v1`
+- **Anything OpenAI-compatible:** Point base URL to `http://192.168.1.222:4000/v1`
+
 ### Homepage AI Briefing Widget
 
 Edit `homepage-config/widgets.yaml` and uncomment the `customapi` block at the bottom.
-This adds a live "AI Briefing" card to the top of your dashboard that calls Ollama.
+This adds a live "AI Briefing" card to the top of your dashboard via LiteLLM.
 
 ### n8n Workflows
 
@@ -180,14 +221,14 @@ Import the JSON files from `n8n-workflows/` into n8n at
 
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
-| `morning-briefing.json` | Cron 7:30am weekdays | Weather + HA sensors → Ollama → spoken via Piper TTS + Discord |
-| `container-health-monitor.json` | Uptime Kuma webhook | Service down → Ollama analyzes error → Discord fix suggestion |
-| `weekly-media-digest.json` | Cron Sunday 8am | Tautulli stats → Ollama summary → Discord weekly digest |
-| `smart-content-approval.json` | Overseerr webhook | New request → check watch history → Ollama decides → auto-approve or hold |
+| `morning-briefing.json` | Cron 7:30am weekdays | Weather + HA sensors → LiteLLM → spoken via Piper TTS + Discord |
+| `container-health-monitor.json` | Uptime Kuma webhook | Service down → LiteLLM analyzes error → Discord fix suggestion |
+| `weekly-media-digest.json` | Cron Sunday 8am | Tautulli stats → LiteLLM summary → Discord weekly digest |
+| `smart-content-approval.json` | Overseerr webhook | New request → check watch history → LiteLLM decides → auto-approve or hold |
 
 **Workflow setup checklist:**
 1. In n8n: set environment variables `DISCORD_WEBHOOK`, `TAUTULLI_API_KEY`,
-   `HA_TOKEN`, `OVERSEERR_API_KEY`
+   `HA_TOKEN`, `OVERSEERR_API_KEY`, `LITELLM_MASTER_KEY`
 2. In Uptime Kuma: add webhook notification → `http://192.168.1.222:5678/webhook/uptime-kuma-alert`
 3. In Overseerr: Settings → Notifications → Webhook → `http://192.168.1.222:5678/webhook/overseerr-request`
 
@@ -250,16 +291,18 @@ Cron format: `sec min hour day month weekday`
 
 - [ ] Stop old containers: `hf-vllm`, `hf-openwebui`, `hf-qdrant`, `hf-redis`, `hf-searxng`, `hf-tei-embed`, `hf-browserless`, `Stremio Server`, `binhex-krusader`
 - [ ] Remove dead containers: `qbittorrent` (exit 128), `github-desktop` (exited), `13Feet-Ladder` (OOM)
-- [ ] Copy `.env.example` to `.env` and fill in values
+- [ ] Copy `.env.example` to `.env` and fill in values — **set `LITELLM_MASTER_KEY`**
 - [ ] Deploy Stack 1 (infra) → verify Homepage loads at :8010
-- [ ] Deploy Stack 2 (AI) → pull `qwen3:8b` and `phi4-mini`
+- [ ] Deploy Stack 2 (AI) → pull `qwen3:8b`, `phi4-mini`, `nomic-embed-text`
 - [ ] Test Ollama: `curl http://192.168.1.222:11434/api/version`
+- [ ] Test LiteLLM: `curl http://192.168.1.222:4000/health`
+- [ ] Verify models via LiteLLM: `curl http://192.168.1.222:4000/v1/models -H "Authorization: Bearer <your-key>"`
 - [ ] Deploy Stack 3 (media) → configure Prowlarr first
-- [ ] Deploy Stack 4 (automation) → import n8n workflows
+- [ ] Deploy Stack 4 (automation) → import n8n workflows; set `LITELLM_MASTER_KEY` env var in n8n
 - [ ] Deploy Stack 5 (voice) → add Wyoming to Home Assistant
 - [ ] Evaluate Stack 6 (conditional) — deploy only what you use
 - [ ] Copy homepage-config to appdata
-- [ ] Configure Uptime Kuma to monitor all new services
+- [ ] Configure Uptime Kuma to monitor all new services (including LiteLLM at :4000)
 - [ ] After 2 weeks: decide Plex vs. Jellyfin, comment out the other
 
 ---
@@ -270,6 +313,7 @@ Cron format: `sec min hour day month weekday`
 |------|---------|-------|
 | 3005 | Browserless | AI |
 | 3006 | Recommendarr | Automation |
+| 4000 | LiteLLM Gateway | AI |
 | 5055 | Overseerr | Media |
 | 5678 | n8n | Automation |
 | 6500 | rdt-client | Media |
@@ -289,6 +333,6 @@ Cron format: `sec min hour day month weekday`
 | 9999 | Zurg | Media |
 | 10200 | Wyoming Piper | Voice |
 | 10300 | Wyoming Whisper | Voice |
-| 11434 | Ollama | AI |
+| 11434 | Ollama (internal — use LiteLLM :4000) | AI |
 | 13378 | Audiobookshelf (cond.) | Conditional |
 | 32400 | Plex | Media |

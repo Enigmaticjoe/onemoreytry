@@ -54,14 +54,27 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://192.168.1.222:11434/api/generate",
+        "url": "http://192.168.1.222:4000/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.LITELLM_MASTER_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
         "sendBody": true,
         "contentType": "json",
-        "body": "={\n  \"model\": \"phi4-mini\",\n  \"prompt\": \"You are a helpful home assistant. Generate a concise morning briefing (3-4 sentences max). Current conditions:\\n- Outside temp: {{ $node['Get Weather'].json.current_condition[0].temp_F }}°F, {{ $node['Get Weather'].json.current_condition[0].weatherDesc[0].value }}\\n- House temp: {{ $node['Get HA House Temp'].json.state }}°F\\n- Time: 7:30 AM\\n\\nBe friendly and practical. Include a helpful tip for the day.\",\n  \"stream\": false\n}",
+        "body": "={\n  \"model\": \"brawn-mini\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a helpful home assistant. Be friendly and concise — 3-4 sentences max.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Generate a morning briefing. Current conditions:\\n- Outside temp: {{ $node['Get Weather'].json.current_condition[0].temp_F }}°F, {{ $node['Get Weather'].json.current_condition[0].weatherDesc[0].value }}\\n- House temp: {{ $node['Get HA House Temp'].json.state }}°F\\n- Time: 7:30 AM\\n\\nInclude a practical tip for the day.\"\n    }\n  ],\n  \"stream\": false\n}",
         "options": {}
       },
-      "id": "ollama-briefing",
-      "name": "Ollama — Generate Briefing",
+      "id": "litellm-briefing",
+      "name": "LiteLLM — Generate Briefing",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
       "position": [680, 300]
@@ -85,7 +98,7 @@
         },
         "sendBody": true,
         "contentType": "json",
-        "body": "={\n  \"entity_id\": \"tts.piper\",\n  \"message\": \"{{ $node['Ollama — Generate Briefing'].json.response }}\",\n  \"media_player_entity_id\": \"media_player.living_room_speaker\"\n}",
+        "body": "={\n  \"entity_id\": \"tts.piper\",\n  \"message\": \"{{ $node['LiteLLM — Generate Briefing'].json.choices[0].message.content }}\",\n  \"media_player_entity_id\": \"media_player.living_room_speaker\"\n}",
         "options": {}
       },
       "id": "ha-tts",
@@ -100,7 +113,7 @@
         "url": "={{ $env.DISCORD_WEBHOOK }}",
         "sendBody": true,
         "contentType": "json",
-        "body": "={\n  \"username\": \"Node B Morning Bot\",\n  \"content\": \"🌅 **Good Morning Briefing**\\n{{ $node['Ollama — Generate Briefing'].json.response }}\"\n}",
+        "body": "={\n  \"username\": \"Node B Morning Bot\",\n  \"content\": \"🌅 **Good Morning Briefing**\\n{{ $node['LiteLLM — Generate Briefing'].json.choices[0].message.content }}\"\n}",
         "options": {}
       },
       "id": "discord-notify",
@@ -131,7 +144,7 @@
       "main": [
         [
           {
-            "node": "Ollama — Generate Briefing",
+            "node": "LiteLLM — Generate Briefing",
             "type": "main",
             "index": 0
           }
@@ -142,14 +155,14 @@
       "main": [
         [
           {
-            "node": "Ollama — Generate Briefing",
+            "node": "LiteLLM — Generate Briefing",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Ollama — Generate Briefing": {
+    "LiteLLM — Generate Briefing": {
       "main": [
         [
           {
@@ -182,6 +195,7 @@
     }
   ],
   "meta": {
-    "description": "Fires at 7:30am on weekdays. Fetches weather and HA house temperature, sends both to Ollama (phi4-mini) for a friendly briefing, then speaks it via Home Assistant Piper TTS and posts to Discord."
+    "description": "Fires at 7:30am on weekdays. Fetches weather and HA house temperature, sends both to LiteLLM Gateway (brawn-mini / phi4-mini) for a friendly briefing, then speaks it via Home Assistant Piper TTS and posts to Discord."
   }
 }
+
