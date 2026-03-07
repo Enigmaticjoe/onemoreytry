@@ -11,9 +11,9 @@
 #   cp stacks/.env.example stacks/.env   # fill in your values
 #   docker compose -f stacks/media-stack.yml up -d
 #
-# Deploy order: gluetun → zurg → rclone-zurg → rdt-client → qbittorrent
-#               → prowlarr → sonarr → radarr → lidarr → bazarr
-#               → overseerr → tautulli → jellyfin
+# Deploy order: gluetun → zurg → rclone-zurg → rdt-client
+#               → prowlarr → flaresolverr → sonarr → radarr → lidarr → bazarr
+#               → overseerr → tautulli → plex → jellyfin
 
 services:
 
@@ -35,8 +35,6 @@ services:
       - TZ=${TZ:-America/New_York}
     ports:
       - "8090:8090"    # Gluetun HTTP proxy / control
-      - "6881:6881"    # qBittorrent torrent port (routed through VPN)
-      - "6881:6881/udp"
     volumes:
       - ${APPDATA_PATH}/gluetun:/gluetun
     healthcheck:
@@ -119,28 +117,6 @@ services:
     networks:
       - media
 
-  # ─── qBittorrent — torrent client (traffic goes through Gluetun VPN) ────────
-  qbittorrent:
-    image: lscr.io/linuxserver/qbittorrent:latest
-    container_name: qbittorrent
-    restart: unless-stopped
-    # Route all qBittorrent traffic through the Gluetun VPN container.
-    # Because this container shares Gluetun's network stack it cannot define
-    # its own ports or healthcheck — monitor it via Gluetun's control port
-    # (http://192.168.1.222:8090) or check Dozzle for its logs.
-    network_mode: "service:gluetun"
-    environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - TZ=${TZ:-America/New_York}
-      - WEBUI_PORT=8080
-    volumes:
-      - ${APPDATA_PATH}/qbittorrent:/config
-      - ${MEDIA_PATH}/downloads:/downloads
-    depends_on:
-      gluetun:
-        condition: service_healthy
-
   # ─── Prowlarr — indexer / torrent-site manager ──────────────────────────────
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
@@ -156,6 +132,24 @@ services:
       - ${APPDATA_PATH}/prowlarr:/config
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:9696/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - media
+
+  # ─── FlareSolverr — Cloudflare challenge bypass for Prowlarr ────────────────
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=info
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "8191:8191"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8191/v1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -261,7 +255,7 @@ services:
 
   # ─── Overseerr — media request portal for users ─────────────────────────────
   overseerr:
-    image: sctx/overseerr:develop
+    image: sctx/overseerr:latest
     container_name: overseerr
     restart: unless-stopped
     environment:
@@ -293,12 +287,53 @@ services:
     volumes:
       - ${APPDATA_PATH}/tautulli:/config
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8181/api/v2?apikey=${TAUTULLI_API_KEY}&cmd=arnold || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8181/status || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
     networks:
       - media
+
+  # ─── Plex — media server (host networking for GDM/DLNA discovery) ────────────
+  # Keep if sharing with family (better client ecosystem for non-technical users).
+  # Comment out this service if you choose Jellyfin as your sole media server.
+  #
+  # host network_mode is required for Plex GDM broadcast (UDP 32412-32414) and
+  # DLNA/UPnP multicast — bridge networking breaks automatic LAN client discovery.
+  # Ports used: 32400 (web/API), 32469 (DLNA), 1900/udp (DLNA), 32410-32414/udp (GDM).
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+      - VERSION=docker
+      - PLEX_CLAIM=${PLEX_CLAIM_TOKEN:-}
+      # NVIDIA GPU hardware transcoding
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
+    volumes:
+      - ${APPDATA_PATH}/plex:/config
+      - ${MEDIA_PATH}/tv:/data/tv
+      - ${MEDIA_PATH}/movies:/data/movies
+      - ${MEDIA_PATH}/music:/data/music
+      - ${MEDIA_PATH}/realdebrid:/data/realdebrid:ro    # Real-Debrid cloud content mounted via rclone-zurg
+      - /dev/shm:/transcode    # RAM-based transcode buffer; limit with shm_size if RAM is constrained
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:32400/identity || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # ─── Jellyfin — media server (AI-enhanced via Intro Skipper plugin) ──────────
   jellyfin:
