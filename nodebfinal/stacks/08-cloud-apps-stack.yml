@@ -1,0 +1,58 @@
+# Node B Final — Cloud Apps Stack (optional companions)
+# Preserves currently-used companion services from your existing runtime.
+
+services:
+  nextcloud-db:
+    image: lscr.io/linuxserver/mariadb:latest
+    container_name: nextcloud-db
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+      - TZ=${TZ:-America/New_York}
+      - MYSQL_ROOT_PASSWORD=${NEXTCLOUD_DB_ROOT_PASSWORD}
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=${NEXTCLOUD_DB_PASSWORD}
+    volumes:
+      - ${APPDATA_PATH}/nextcloud-db:/config
+    networks:
+      - cloud_apps
+
+  nextcloud:
+    image: lscr.io/linuxserver/nextcloud:latest
+    container_name: nextcloud
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "9443:443"
+    volumes:
+      - ${APPDATA_PATH}/nextcloud:/config
+      - ${MEDIA_PATH}/nextcloud-data:/data
+    depends_on:
+      - nextcloud-db
+    networks:
+      - cloud_apps
+
+  stremio-server:
+    image: stremio/server:latest
+    container_name: stremio-server
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - NO_CORS=1
+    ports:
+      - "11470:11470"
+      - "12470:12470"
+    volumes:
+      - ${APPDATA_PATH}/stremio-server:/root/.stremio-server
+    networks:
+      - cloud_apps
+
+networks:
+  cloud_apps:
+    name: cloud_apps
+    driver: bridge
