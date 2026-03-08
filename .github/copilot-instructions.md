@@ -91,4 +91,83 @@ These guardrails always apply when relevant:
 4. **If you CAN run commands** (agent environment): do so. Run `./validate.sh` early and after changes. Run `python -m unittest discover -s tests -p "test_*.py"`.
 5. **If you CANNOT run commands**: give exact commands to run locally and ask the user to paste output; then iterate.
 </agent_directives>
+
+<jcodemunch_mcp>
+## jCodeMunch MCP — Precision Code Retrieval
+
+**Always prefer jCodeMunch MCP over reading full files when exploring this repository.**
+jCodeMunch indexes the codebase once using tree-sitter AST parsing and lets you retrieve only the exact symbols you need — functions, classes, methods, constants — with byte-level precision. This cuts code-reading token costs by up to 99%.
+
+### Recommended Workflow
+
+1. **Start with an overview:** `get_repo_outline` → understand the repo structure without reading any files.
+2. **Drill into a file:** `get_file_outline` → see the symbol hierarchy before loading source.
+3. **Find a symbol:** `search_symbols` with `query`, `kind`, or `language` filters.
+4. **Read exact source:** `get_symbol` or `get_symbols` → retrieve only the implementation you need.
+5. **Fallback for non-symbol content:** `search_text` for string literals, comments, config values, TODOs.
+6. **Read a file slice:** `get_file_content` with `start_line` / `end_line` when you need a specific range.
+
+### Tool Quick Reference
+
+| Tool               | Purpose                                      | Example parameters                                              |
+| ------------------ | -------------------------------------------- | --------------------------------------------------------------- |
+| `index_repo`       | Index a GitHub repository                    | `{ "url": "Enigmaticjoe/onemoreytry" }`                        |
+| `index_folder`     | Index a local folder                         | `{ "path": "/path/to/project" }`                               |
+| `list_repos`       | List all indexed repositories                | `{}`                                                            |
+| `get_repo_outline` | High-level repo overview                     | `{ "repo": "onemoreytry" }`                                    |
+| `get_file_tree`    | Browse file structure                        | `{ "repo": "onemoreytry", "path_prefix": "scripts" }`         |
+| `get_file_outline` | Symbol hierarchy for a file                  | `{ "repo": "onemoreytry", "file_path": "bos.py" }`            |
+| `get_file_content` | Retrieve a cached file slice                 | `{ "repo": "onemoreytry", "file_path": "bos.py", "start_line": 10, "end_line": 40 }` |
+| `get_symbol`       | Full source of one symbol                    | `{ "repo": "onemoreytry", "symbol_id": "bos.py::run_health_checks#function" }` |
+| `get_symbols`      | Batch retrieve symbols                       | `{ "repo": "onemoreytry", "symbol_ids": ["bos.py::run_health_checks#function"] }` |
+| `search_symbols`   | Search symbols by name, kind, or language    | `{ "repo": "onemoreytry", "query": "deploy", "kind": "function" }` |
+| `search_text`      | Full-text search with context                | `{ "repo": "onemoreytry", "query": "REQUIRE_APPROVAL", "context_lines": 1 }` |
+| `invalidate_cache` | Remove cached index and force re-index       | `{ "repo": "onemoreytry" }`                                    |
+
+### Symbol ID Format
+
+```
+{file_path}::{qualified_name}#{kind}
+```
+
+Examples:
+- `bos.py::run_health_checks#function`
+- `brothers-keeper/core_orchestrator.py::confirmAction#function`
+- `node-a-vllm/docker-compose.yml` — use `get_file_outline` or `search_text` for YAML/config files
+
+### Installation (if not already available)
+
+```bash
+pip install jcodemunch-mcp
+# or via uvx (recommended for MCP clients):
+uvx jcodemunch-mcp
+```
+
+MCP client config (Claude Desktop / Claude Code):
+
+```json
+{
+  "mcpServers": {
+    "jcodemunch": {
+      "command": "uvx",
+      "args": ["jcodemunch-mcp"],
+      "env": {
+        "GITHUB_TOKEN": "<YOUR_GITHUB_TOKEN>"
+      }
+    }
+  }
+}
+```
+
+For local LLM summaries (e.g., Ollama on Node B at the IP defined in `config/node-inventory.env`):
+
+```json
+"env": {
+  "OPENAI_API_BASE": "http://<NODE_B_IP>:11434/v1",
+  "OPENAI_MODEL": "qwen3:8b"
+}
+```
+
+> Source: https://github.com/jgravelle/jcodemunch-mcp
+</jcodemunch_mcp>
 </system_prompt>
