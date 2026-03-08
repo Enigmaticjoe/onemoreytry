@@ -34,7 +34,11 @@ nodebfinal/
 │   ├── 03-media-stack.yml          ← Gluetun, Zurg, rclone-zurg, rdt-client, Prowlarr, Sonarr, Radarr, Bazarr, Overseerr, Tautulli, Plex, Jellyfin, FlareSolverr
 │   ├── 04-automation-stack.yml     ← n8n, Recommendarr
 │   ├── 05-voice-stack.yml          ← Wyoming Whisper, Wyoming Piper
-│   └── 06-conditional-stack.yml   ← Lidarr, Audiobookshelf (only if you use them)
+│   ├── 06-conditional-stack.yml    ← Lidarr, Audiobookshelf (only if you use them)
+│   ├── 07-ai-orchestration-stack.yml ← Open WebUI, Qdrant, Redis, SearXNG, TEI embeddings
+│   └── 08-cloud-apps-stack.yml     ← Nextcloud + DB + Stremio (optional)
+├── scripts/
+│   └── reconcile-nodeb.sh          ← dry-run/apply cleanup + optional redeploy
 ├── homepage-config/
 │   ├── services.yaml
 │   ├── settings.yaml
@@ -90,6 +94,12 @@ docker compose -f stacks/05-voice-stack.yml up -d
 # Step 7: Optional — deploy only what you use
 docker compose -f stacks/06-conditional-stack.yml up -d lidarr
 docker compose -f stacks/06-conditional-stack.yml up -d audiobookshelf
+
+# Step 8: AI orchestration workbench (Open WebUI + RAG + private search)
+docker compose -f stacks/07-ai-orchestration-stack.yml up -d
+
+# Step 9: Optional cloud companion services
+docker compose -f stacks/08-cloud-apps-stack.yml up -d
 ```
 
 ---
@@ -292,3 +302,20 @@ Cron format: `sec min hour day month weekday`
 | 11434 | Ollama | AI |
 | 13378 | Audiobookshelf (cond.) | Conditional |
 | 32400 | Plex | Media |
+
+
+## Cleanup / Reconcile Script
+
+Use the included reconciler to remove containers not in the canonical Node B stack set.
+
+```bash
+cd /mnt/user/appdata/nodebfinal
+# Preview only
+MODE=dry-run ./scripts/reconcile-nodeb.sh
+
+# Apply cleanup
+MODE=apply ./scripts/reconcile-nodeb.sh
+
+# Cleanup + redeploy canonical stacks
+MODE=apply DEPLOY=1 ./scripts/reconcile-nodeb.sh
+```

@@ -31,6 +31,10 @@
 # Usage:
 #   cp ../.env.example ../.env
 #   docker compose -f stacks/03-media-stack.yml up -d
+#
+# Networking note:
+#   rdt-client shares gluetun's network namespace (network_mode: service:gluetun),
+#   so all Real-Debrid download-client traffic egresses through the VPN tunnel.
 
 services:
 
@@ -52,6 +56,7 @@ services:
       - TZ=${TZ:-America/New_York}
     ports:
       - "8090:8090"    # Gluetun HTTP proxy / control panel
+      - "6500:6500"    # rdt-client UI/API (runs through gluetun network namespace)
     volumes:
       - ${APPDATA_PATH}/gluetun:/gluetun
     healthcheck:
@@ -121,20 +126,20 @@ services:
     restart: unless-stopped
     environment:
       - TZ=${TZ:-America/New_York}
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-    ports:
-      - "6500:6500"
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
     volumes:
       - ${APPDATA_PATH}/rdtclient:/data/db
       - ${MEDIA_PATH}:/mnt/user/data
+    network_mode: "service:gluetun"
+    depends_on:
+      gluetun:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:6500 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-    networks:
-      - media
 
   # ─── Prowlarr — unified indexer manager ─────────────────────────────────────
   prowlarr:
@@ -142,15 +147,15 @@ services:
     container_name: prowlarr
     restart: unless-stopped
     environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
       - TZ=${TZ:-America/New_York}
     ports:
       - "9696:9696"
     volumes:
       - ${APPDATA_PATH}/prowlarr:/config
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9696/api/v1/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9696 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -181,8 +186,8 @@ services:
     container_name: sonarr
     restart: unless-stopped
     environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
       - TZ=${TZ:-America/New_York}
     ports:
       - "8989:8989"
@@ -190,12 +195,15 @@ services:
       - ${APPDATA_PATH}/sonarr:/config
       - ${MEDIA_PATH}:/data
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8989/api/v3/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8989 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
     depends_on:
-      - prowlarr
+      prowlarr:
+        condition: service_started
+      rdt-client:
+        condition: service_started
     networks:
       - media
 
@@ -205,8 +213,8 @@ services:
     container_name: radarr
     restart: unless-stopped
     environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
       - TZ=${TZ:-America/New_York}
     ports:
       - "7878:7878"
@@ -214,12 +222,15 @@ services:
       - ${APPDATA_PATH}/radarr:/config
       - ${MEDIA_PATH}:/data
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:7878/api/v3/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7878 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
     depends_on:
-      - prowlarr
+      prowlarr:
+        condition: service_started
+      rdt-client:
+        condition: service_started
     networks:
       - media
 
@@ -231,8 +242,8 @@ services:
     container_name: bazarr
     restart: unless-stopped
     environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
       - TZ=${TZ:-America/New_York}
     ports:
       - "6767:6767"
@@ -240,7 +251,7 @@ services:
       - ${APPDATA_PATH}/bazarr:/config
       - ${MEDIA_PATH}:/data
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:6767/api/system/status || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6767 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -282,8 +293,8 @@ services:
     container_name: tautulli
     restart: unless-stopped
     environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
       - TZ=${TZ:-America/New_York}
     ports:
       - "8181:8181"
@@ -307,8 +318,8 @@ services:
     restart: unless-stopped
     network_mode: host
     environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
       - TZ=${TZ:-America/New_York}
       - VERSION=docker
       - PLEX_CLAIM=${PLEX_CLAIM_TOKEN:-}
@@ -344,8 +355,8 @@ services:
     container_name: jellyfin
     restart: unless-stopped
     environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
       - TZ=${TZ:-America/New_York}
       # NVIDIA GPU hardware transcoding
       - NVIDIA_VISIBLE_DEVICES=all

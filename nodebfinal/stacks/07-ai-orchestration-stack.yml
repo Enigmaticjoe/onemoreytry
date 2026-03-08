@@ -1,0 +1,127 @@
+# Node B Final — AI Orchestration Stack (RAG + Web UI)
+# Adds back the legacy AI capabilities (Open WebUI, Qdrant, Redis, SearXNG, TEI)
+# while using canonical Ollama + Browserless from stack 02.
+
+services:
+  hf-redis:
+    image: redis:alpine
+    container_name: hf-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - ${APPDATA_PATH}/hf-redis:/data
+    networks:
+      - ai_orchestration
+
+  hf-qdrant:
+    image: qdrant/qdrant:latest
+    container_name: hf-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - ${APPDATA_PATH}/hf-qdrant:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/readyz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - ai_orchestration
+
+  hf-tei-embed:
+    image: ghcr.io/huggingface/text-embeddings-inference:89-1.8
+    container_name: hf-tei-embed
+    restart: unless-stopped
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "8881:80"
+    volumes:
+      - ${APPDATA_PATH}/hf-tei-data:/data
+    command: ["--model-id", "${TEI_MODEL_ID:-BAAI/bge-small-en-v1.5}", "--port", "80"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - ai_orchestration
+
+  hf-searxng:
+    image: searxng/searxng:latest
+    container_name: hf-searxng
+    restart: unless-stopped
+    environment:
+      - SEARXNG_BASE_URL=http://${NODE_B_HOST:-192.168.1.222}:8082
+      - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY}
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "8082:8080"
+    volumes:
+      - ${APPDATA_PATH}/hf-searxng:/etc/searxng
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - ai_orchestration
+
+  hf-openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: hf-openwebui
+    restart: unless-stopped
+    environment:
+      - OPENAI_API_BASE_URL=http://ollama:11434/v1
+      - OPENAI_API_KEY=none
+      - VECTOR_DB=qdrant
+      - QDRANT_URI=http://hf-qdrant:6333
+      - RAG_EMBEDDING_ENGINE=openai
+      - RAG_OPENAI_API_BASE_URL=http://hf-tei-embed:80/v1
+      - RAG_OPENAI_API_KEY=none
+      - ENABLE_RAG_WEB_SEARCH=true
+      - RAG_WEB_SEARCH_ENGINE=searxng
+      - SEARXNG_QUERY_URL=http://hf-searxng:8080/search?q=<query>&format=json
+      - REDIS_URL=redis://hf-redis:6379/0
+      - WEBUI_NAME=Node B AI Workbench
+      - WEBUI_SECRET_KEY=${OPENWEBUI_SECRET_KEY}
+      - TZ=${TZ:-America/New_York}
+    ports:
+      - "3002:8080"
+    volumes:
+      - ${APPDATA_PATH}/hf-openwebui:/app/backend/data
+    depends_on:
+      hf-qdrant:
+        condition: service_started
+      hf-redis:
+        condition: service_started
+      hf-searxng:
+        condition: service_started
+      hf-tei-embed:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ai_orchestration
+      - ai
+
+networks:
+  ai_orchestration:
+    name: ai_orchestration
+    driver: bridge
+  ai:
+    external: true
+    name: ai
