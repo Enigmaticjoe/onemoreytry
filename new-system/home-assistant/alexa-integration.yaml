@@ -1,0 +1,345 @@
+# Home Assistant — Full Alexa + Voice Pipeline Integration
+# Project Chimera · Node D (192.168.1.149)
+#
+# This file covers the complete Alexa → HA → Chimera voice pipeline.
+# Split into logical sections — use HA packages or merge into configuration.yaml.
+#
+# ─── Setup Checklist ─────────────────────────────────────────────────────────
+# [ ] Wyoming Whisper running: docker ps | grep wyoming-whisper
+# [ ] Wyoming Piper running:   docker ps | grep wyoming-piper
+# [ ] n8n webhook active:      curl http://192.168.1.222:5678/webhook/media-request
+# [ ] HACS installed:          hacs.xyz
+# [ ] Extended OpenAI Conv.:   HACS → Integrations → Extended OpenAI Conversation
+# [ ] Nabu Casa OR Alexa skill configured for HA
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ─── 1. Alexa Custom Intents ─────────────────────────────────────────────────
+# These intents are registered with the Alexa skill via HA's alexa integration.
+# They map spoken slot values to HA actions.
+#
+# Alexa says: "Alexa, ask Chimera to add Dune 3 to my movies"
+# HA receives: ChimeraAddMediaIntent with slot media_title="Dune 3"
+
+alexa:
+  smart_home:
+    # Expose HA entities to Alexa (lights, switches, media players, etc.)
+    # filter: optionally limit which entities are exposed
+    filter:
+      include_domains:
+        - light
+        - switch
+        - media_player
+        - scene
+        - script
+      exclude_entity_globs:
+        - sensor.*_battery
+        - binary_sensor.*_battery
+
+  intents:
+    # "Alexa, ask Chimera to add [title]"
+    ChimeraAddMediaIntent:
+      action:
+        - service: script.chimera_media_request
+          data:
+            command: "add {{ media_title }}"
+            source: alexa
+      card:
+        type: simple
+        title: "Chimera Media Request"
+        content: "Adding {{ media_title }} to your library."
+
+    # "Alexa, ask Chimera to search for [title]"
+    ChimeraSearchIntent:
+      action:
+        - service: script.chimera_media_request
+          data:
+            command: "search {{ media_title }}"
+            source: alexa
+
+    # "Alexa, ask Chimera what's in the queue"
+    ChimeraQueueStatusIntent:
+      action:
+        - service: script.chimera_media_request
+          data:
+            command: "status"
+            source: alexa
+
+    # "Alexa, ask Chimera to start movie night"
+    ChimeraMovieNightIntent:
+      action:
+        - service: scene.turn_on
+          target:
+            entity_id: scene.movie_night
+
+# ─── 2. Conversation intents (HA voice pipeline / Wyoming) ───────────────────
+# These fire when the HA voice assistant (using Wyoming STT) hears these phrases.
+# No Alexa skill needed — works with any wake word or push-to-talk button.
+intent:
+  - intent: ChimeraAddMediaIntent
+    patterns:
+      - "add {media_title} to my library"
+      - "add {media_title}"
+      - "download {media_title}"
+      - "get me {media_title}"
+      - "I want to watch {media_title}"
+      - "add the movie {media_title}"
+      - "add the show {media_title}"
+      - "add the book {media_title}"
+
+  - intent: ChimeraSearchIntent
+    patterns:
+      - "search for {media_title}"
+      - "find {media_title}"
+      - "do you have {media_title}"
+      - "is {media_title} available"
+
+  - intent: ChimeraQueueStatusIntent
+    patterns:
+      - "what's in the queue"
+      - "what's downloading"
+      - "how many requests are active"
+      - "queue status"
+
+  - intent: ChimeraMovieNightIntent
+    patterns:
+      - "movie night"
+      - "start movie night"
+      - "set up movie night"
+      - "cinema mode"
+
+  - intent: ChimeraWhatsPlayingIntent
+    patterns:
+      - "what's playing"
+      - "what are we watching"
+      - "what's on Plex"
+      - "what's on now"
+
+# ─── 3. Intent script handlers ───────────────────────────────────────────────
+intent_script:
+
+  ChimeraAddMediaIntent:
+    speech:
+      text: >
+        {% if error is defined %}
+          Sorry, I had trouble with that request.
+        {% else %}
+          {{ response_text | default("Got it! Sending " + (media_title | default("that")) + " to the media queue.") }}
+        {% endif %}
+    action:
+      - service: rest_command.chimera_media_request
+        data:
+          command: "add {{ media_title }}"
+          source: "voice_pipeline"
+        response_variable: api_response
+      - variables:
+          response_text: >
+            {{ api_response.content.message
+               | default("Your request for " + (media_title | default("that")) + " is on its way.") }}
+
+  ChimeraSearchIntent:
+    speech:
+      text: "Searching for {{ media_title }}. I'll tell you what I find."
+    action:
+      - service: rest_command.chimera_media_request
+        data:
+          command: "search {{ media_title }}"
+          source: "voice_pipeline"
+
+  ChimeraQueueStatusIntent:
+    speech:
+      text: >
+        Checking the download queue now.
+    action:
+      - service: rest_command.chimera_media_request
+        data:
+          command: "status"
+          source: "voice_pipeline"
+
+  ChimeraMovieNightIntent:
+    speech:
+      text: "Lights dimmed, TV on. Enjoy the film!"
+    action:
+      - service: scene.turn_on
+        target:
+          entity_id: scene.movie_night
+
+  ChimeraWhatsPlayingIntent:
+    speech:
+      text: >
+        {% set playing = states.media_player
+           | selectattr('state', 'eq', 'playing') | list %}
+        {% if playing | length > 0 %}
+          {{ playing[0].attributes.media_title | default("something") }}
+          is playing on {{ playing[0].attributes.friendly_name | default("a device") }}.
+        {% else %}
+          Nothing is playing right now.
+        {% endif %}
+
+# ─── 4. rest_command — n8n webhook ───────────────────────────────────────────
+rest_command:
+  chimera_media_request:
+    url: "http://192.168.1.222:5678/webhook/media-request"
+    method: POST
+    content_type: application/json
+    verify_ssl: false
+    timeout: 30
+    payload: >
+      {
+        "command": "{{ command }}",
+        "source": "{{ source | default('home_assistant') }}",
+        "user":   "{{ user   | default('household') }}"
+      }
+
+  # General-purpose n8n trigger for other workflows
+  n8n_trigger:
+    url: "http://192.168.1.222:5678/webhook/{{ workflow_id }}"
+    method: POST
+    content_type: application/json
+    verify_ssl: false
+    payload: >
+      {
+        "trigger": "{{ trigger_name | default('manual') }}",
+        "data":    {{ data | default('{}') }}
+      }
+
+  # Speak a message directly via HA TTS (n8n calls this after processing)
+  chimera_speak_remote:
+    url: "http://192.168.1.149:8123/api/services/tts/speak"
+    method: POST
+    content_type: application/json
+    headers:
+      Authorization: "Bearer {{ states('input_text.ha_token') }}"
+    payload: >
+      {
+        "entity_id": "tts.piper",
+        "media_player_entity_id": "media_player.living_room_speaker",
+        "message": "{{ message }}"
+      }
+
+# ─── 5. Scripts ──────────────────────────────────────────────────────────────
+script:
+  chimera_media_request:
+    alias: "Chimera: Send Media Request"
+    description: "Dispatch a natural-language media request to n8n for AI processing"
+    mode: queued
+    max_exceeded: silent
+    fields:
+      command:
+        description: "Natural language request, e.g. 'add Dune 3 to movies'"
+        example: "add Dune 3 to movies"
+        required: true
+      source:
+        description: "Request origin: alexa, voice_pipeline, chat, manual"
+        example: "alexa"
+      user:
+        description: "Who made the request"
+        example: "living_room"
+    sequence:
+      - service: rest_command.chimera_media_request
+        data:
+          command: "{{ command }}"
+          source:  "{{ source  | default('script') }}"
+          user:    "{{ user    | default('household') }}"
+
+  chimera_speak:
+    alias: "Chimera: Speak Message"
+    description: "Speak a message via Piper TTS on any configured speaker"
+    mode: queued
+    fields:
+      message:
+        description: "Text to speak"
+        example: "Dune 3 is ready to watch in 4K."
+        required: true
+      speaker:
+        description: "media_player entity to use (defaults to living room)"
+        example: "media_player.kitchen_speaker"
+    sequence:
+      - service: tts.speak
+        target:
+          entity_id: tts.piper
+        data:
+          message: "{{ message }}"
+          media_player_entity_id: "{{ speaker | default('media_player.living_room_speaker') }}"
+
+  movie_night:
+    alias: "Chimera: Movie Night Scene"
+    description: "Dim lights, turn on TV, open Plex"
+    sequence:
+      - service: scene.turn_on
+        target:
+          entity_id: scene.movie_night
+      - delay: "00:00:02"
+      - service: media_player.turn_on
+        target:
+          entity_id: media_player.living_room_tv
+      - service: script.chimera_speak
+        data:
+          message: "Movie night is ready. Enjoy!"
+
+# ─── 6. Automations ──────────────────────────────────────────────────────────
+automation:
+  # n8n calls this webhook when a media request is fulfilled
+  - alias: "Chimera: Announce media ready"
+    id: chimera_announce_media_ready
+    trigger:
+      - platform: webhook
+        webhook_id: chimera_media_ready
+        allowed_methods: [POST]
+        local_only: false
+    action:
+      - service: script.chimera_speak
+        data:
+          message: "{{ trigger.json.message | default('Your media request is ready.') }}"
+          speaker: "{{ trigger.json.speaker | default('media_player.living_room_speaker') }}"
+    mode: queued
+
+  # Tautulli fires this when Plex starts playing
+  - alias: "Chimera: Dim lights on Plex play"
+    id: chimera_plex_play_lights
+    trigger:
+      - platform: webhook
+        webhook_id: plex_playing
+        allowed_methods: [POST]
+    condition:
+      - condition: template
+        value_template: "{{ trigger.json.event == 'media.play' }}"
+      - condition: state
+        entity_id: sun.sun
+        state: "below_horizon"
+    action:
+      - service: scene.turn_on
+        target:
+          entity_id: scene.movie_night
+    mode: single
+
+  # Restore lights when Plex pauses or stops
+  - alias: "Chimera: Restore lights on Plex pause/stop"
+    id: chimera_plex_stop_lights
+    trigger:
+      - platform: webhook
+        webhook_id: plex_playing
+        allowed_methods: [POST]
+    condition:
+      - condition: template
+        value_template: "{{ trigger.json.event in ['media.pause', 'media.stop'] }}"
+    action:
+      - service: scene.turn_on
+        target:
+          entity_id: scene.normal_lighting
+    mode: single
+
+  # Daily 08:00 — n8n morning briefing trigger
+  - alias: "Chimera: Trigger morning briefing"
+    id: chimera_morning_briefing
+    trigger:
+      - platform: time
+        at: "08:00:00"
+    condition:
+      - condition: time
+        weekday: [mon, tue, wed, thu, fri]
+    action:
+      - service: rest_command.n8n_trigger
+        data:
+          workflow_id: morning-briefing
+          trigger_name: scheduled_morning
+    mode: single

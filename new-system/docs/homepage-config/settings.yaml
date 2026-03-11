@@ -1,0 +1,63 @@
+# Homepage — settings.yaml for Project Chimera
+# Live path: /mnt/user/appdata/DUMB/homepage/config/settings.yaml
+
+title: Project Chimera
+description: Node B — Unraid AI Media Lab
+
+background:
+  image: https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?w=1920&auto=format&fit=crop
+  blur: sm
+  saturate: 50
+  brightness: 50
+  opacity: 20
+
+color: slate
+theme: dark
+headerStyle: clean
+statusStyle: dot
+
+quicklaunch:
+  searchDescriptions: true
+  hideInternetSearch: false
+  showSearchSuggestions: true
+  hideVisitURL: false
+
+layout:
+  AI & Voice:
+    style: row
+    columns: 6
+    icon: cpu.png
+  DUMB Core:
+    style: row
+    columns: 3
+    icon: cloud.png
+  Requests:
+    style: row
+    columns: 6
+    icon: download.png
+  Media Servers:
+    style: row
+    columns: 6
+    icon: film.png
+  Books & Games:
+    style: row
+    columns: 5
+    icon: book.png
+  Library Intelligence:
+    style: row
+    columns: 6
+    icon: settings.png
+  Infrastructure:
+    style: row
+    columns: 4
+    icon: server.png
+  Nodes:
+    style: row
+    columns: 4
+    icon: network.png
+
+providers:
+  openweathermap: openweathermap
+  weatherapi: weatherapi
+
+instanceName: Node B Chimera

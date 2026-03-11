@@ -1,0 +1,318 @@
+# new-system — Stack 02: AI Core
+# Node B · Unraid · 192.168.1.222 · RTX 4070 (12 GB VRAM)
+#
+# The conversational AI backbone for Project Chimera.
+# Everything voice, chat, and AI-driven automation lives here.
+#
+# Services:
+#   ollama          — NVIDIA CUDA LLM inference (OpenAI-compatible :11434)
+#   n8n             — Workflow automation hub:
+#                       receives voice/chat commands → Ollama classify intent
+#                       → dispatches to *arr / Overseerr / Riven API
+#                       → sends TTS confirmation back through Home Assistant
+#   whisper-api     — OpenAI-compatible GPU Whisper STT
+#                     Used by: Bazarr subtitles, n8n audio transcription,
+#                     Open WebUI voice input
+#   wyoming-whisper — Wyoming protocol STT for HA voice satellite pipeline
+#   wyoming-piper   — Wyoming protocol TTS for HA spoken responses
+#   searxng         — Private meta-search (Ollama RAG + Open WebUI web search)
+#   open-webui      — Chat UI for direct AI conversation + media requests by text
+#
+# Voice command full pipeline:
+#   Alexa → HA intent → n8n webhook → Ollama classify →
+#   {Overseerr | Sonarr | Radarr | Readarr | Riven} API →
+#   n8n calls HA notify → Piper TTS speaks confirmation
+#
+# PUID=99 PGID=100  |  Appdata: /mnt/user/appdata/DUMB/<service>
+#
+# Deploy:
+#   cp .env.example .env
+#   docker compose -f stacks/02-ai.yml up -d
+#
+# Pull models after first start (takes 5-10 min on first run):
+#   docker exec ollama ollama pull llama3.1:8b
+#   docker exec ollama ollama pull qwen2.5:7b
+#   docker exec ollama ollama pull nomic-embed-text
+#   docker exec ollama ollama pull llava:13b
+
+services:
+
+  # ─── Ollama — NVIDIA CUDA LLM inference ─────────────────────────────────────
+  # Primary local AI. Consumed by: n8n (intent classification), HA (Extended OpenAI
+  # Conversation integration), Open WebUI (chat), Bazarr (fallback transcription).
+  # RTX 4070 12 GB VRAM can run: llama3.1:8b, qwen2.5:7b, mistral:7b concurrently.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ${APPDATA_PATH}/ollama:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_NUM_PARALLEL=2
+      - OLLAMA_MAX_LOADED_MODELS=2
+      - TZ=${TZ}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/11434' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ai
+
+  # ─── LiteLLM — unified multi-node AI gateway ─────────────────────────────────
+  # Single OpenAI-compatible endpoint at :4000 routing to all three nodes.
+  # Clients (Open WebUI, n8n, HA) use http://192.168.1.222:4000/v1
+  # Auth header: Authorization: Bearer sk-chimera-master-2026
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: litellm
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+      - STORE_MODEL_IN_DB=false
+    volumes:
+      - /home/jb/dev/onemoreytry/new-system/litellm-config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "4"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.create_connection(('127.0.0.1',4000),2); s.close()\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ai
+      - media
+
+  # ─── n8n — AI workflow automation hub ───────────────────────────────────────
+  # The dispatcher that connects voice commands to media services.
+  #
+  # SETUP STEPS after first deploy:
+  #   1. Open http://192.168.1.222:5678  → create admin account
+  #   2. Add credential: "Ollama" → base URL http://ollama:11434
+  #   3. Import all workflows from new-system/n8n-workflows/
+  #   4. Activate the "Media Voice Request" workflow
+  #
+  # Webhook URL for Home Assistant rest_command:
+  #   POST http://192.168.1.222:5678/webhook/media-request
+  #   Body: { "command": "<user speech text>", "source": "alexa" }
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - TZ=${TZ}
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD}
+      - N8N_HOST=${NODE_B_IP}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://${NODE_B_IP}:5678/
+      - GENERIC_TIMEZONE=${TZ}
+      # LiteLLM gateway — all models from all nodes
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - LITELLM_BASE_URL=http://litellm:4000/v1
+      - LITELLM_API_KEY=${LITELLM_MASTER_KEY}
+      # Open WebUI instances
+      - NODE_A_OPENWEBUI_URL=${NODE_A_OPENWEBUI_URL}
+      - NODE_A_OPENWEBUI_API_KEY=${NODE_A_OPENWEBUI_API_KEY}
+      - NODE_B_OPENWEBUI_URL=${NODE_B_OPENWEBUI_URL}
+      - NODE_B_OPENWEBUI_API_KEY=${NODE_B_OPENWEBUI_API_KEY}
+      # Media service endpoints — used by n8n HTTP Request nodes
+      - OVERSEERR_URL=http://overseerr:5055
+      - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
+      - RADARR_URL=http://radarr:7878
+      - RADARR_API_KEY=${RADARR_API_KEY}
+      - SONARR_URL=http://sonarr:8989
+      - SONARR_API_KEY=${SONARR_API_KEY}
+      - READARR_URL=http://readarr:8787
+      - READARR_API_KEY=${READARR_API_KEY}
+      - LIDARR_URL=http://lidarr:8686
+      - LIDARR_API_KEY=${LIDARR_API_KEY}
+      - RIVEN_URL=http://riven:8080
+      - RIVEN_API_KEY=${RIVEN_API_KEY}
+      # Home Assistant — for sending spoken responses and push notifications
+      - HA_URL=http://${HA_IP}:8123
+      - HA_TOKEN=${HA_TOKEN}
+    volumes:
+      - ${APPDATA_PATH}/n8n:/home/node/.n8n
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          node -e 'require("http").get("http://127.0.0.1:5678/healthz",r=>process.exit(r.statusCode===200?0:1)).on("error",()=>process.exit(1))'
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    networks:
+      - ai
+      # n8n must reach media services to call their APIs
+      - media
+
+  # ─── Faster-Whisper API — OpenAI-compatible GPU STT ──────────────────────────
+  # GPU-accelerated Whisper. Exposes POST /v1/audio/transcriptions (same as OpenAI).
+  # Bazarr uses this endpoint for AI subtitle generation from audio.
+  # n8n uses it to transcribe audio files / voice memos.
+  # Open WebUI uses it for in-browser voice input.
+  whisper-api:
+    image: fedirz/faster-whisper-server:latest-cuda
+    container_name: whisper-api
+    restart: unless-stopped
+    ports:
+      - "9191:8000"
+    environment:
+      - WHISPER__MODEL=${WHISPER_MODEL}
+      - WHISPER__INFERENCE_DEVICE=cuda
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/whisper:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8000' || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 90s
+    networks:
+      - ai
+
+  # ─── Wyoming Whisper — HA Voice Satellite STT ────────────────────────────────
+  # Wyoming protocol STT for Home Assistant's local voice pipeline.
+  # HA config: Settings → Voice Assistants → Speech-to-text:
+  #   Provider: Wyoming  |  Host: 192.168.1.222  |  Port: 10300
+  wyoming-whisper:
+    image: rhasspy/wyoming-whisper:latest
+    container_name: wyoming-whisper
+    restart: unless-stopped
+    ports:
+      - "10300:10300"
+    volumes:
+      - ${APPDATA_PATH}/wyoming-whisper:/data
+    # Use large-v3-int8 for best accuracy with GPU; small-int8 for CPU-only speed
+    command: --model ${WYOMING_WHISPER_MODEL} --language en
+    environment:
+      - TZ=${TZ}
+    networks:
+      - ai
+
+  # ─── Wyoming Piper — HA Voice Satellite TTS ──────────────────────────────────
+  # Wyoming protocol TTS: converts AI text to natural speech audio.
+  # HA plays it back through configured speakers.
+  # HA config: Settings → Voice Assistants → Text-to-speech:
+  #   Provider: Wyoming  |  Host: 192.168.1.222  |  Port: 10200
+  wyoming-piper:
+    image: rhasspy/wyoming-piper:latest
+    container_name: wyoming-piper
+    restart: unless-stopped
+    ports:
+      - "10200:10200"
+    volumes:
+      - ${APPDATA_PATH}/wyoming-piper:/data
+    command: --voice ${PIPER_VOICE}
+    environment:
+      - TZ=${TZ}
+    networks:
+      - ai
+
+  # ─── SearXNG — private meta-search engine ────────────────────────────────────
+  # Used by: n8n (ground Ollama with live web data), Open WebUI RAG (document search).
+  # No tracking, no logging, completely private.
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    restart: unless-stopped
+    ports:
+      - "8082:8080"
+    environment:
+      - SEARXNG_BASE_URL=http://${NODE_B_IP}:8082/
+      - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY}
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/searxng:/etc/searxng
+    networks:
+      - ai
+
+  # ─── Open WebUI — Node B GPU chat interface ───────────────────────────────────
+  # Direct AI conversation, document Q&A, and media requests via chat.
+  # Send voice input via browser mic → transcribed by whisper-api automatically.
+  # Also try: "Add Dune 2 to my movies" — it can be wired to n8n via function calls.
+  open-webui:
+    image: openwebui/open-webui:latest
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "3002:8080"
+    environment:
+      # LiteLLM gateway — all models from all nodes via one endpoint
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OPENAI_API_BASE_URL=http://litellm:4000/v1
+      - OPENAI_API_KEY=${LITELLM_MASTER_KEY}
+      - WEBUI_SECRET_KEY=${OPENWEBUI_SECRET_KEY}
+      # RAG — web search via SearXNG
+      - ENABLE_RAG_WEB_SEARCH=true
+      - RAG_WEB_SEARCH_ENGINE=searxng
+      - SEARXNG_QUERY_URL=http://searxng:8080/search?q=<query>&format=json
+      - RAG_EMBEDDING_ENGINE=ollama
+      - RAG_EMBEDDING_MODEL=nomic-embed-text
+      - RAG_OLLAMA_BASE_URL=http://ollama:11434
+      # Whisper STT for browser voice input
+      - AUDIO_STT_ENGINE=openai
+      - AUDIO_STT_OPENAI_API_BASE_URL=http://whisper-api:8000/v1
+      - AUDIO_STT_OPENAI_API_KEY=sk-none
+      # Piper TTS for browser audio output
+      - AUDIO_TTS_ENGINE=openai
+      - AUDIO_TTS_OPENAI_API_BASE_URL=http://wyoming-piper:5200/v1
+      - AUDIO_TTS_OPENAI_API_KEY=sk-none
+      - AUDIO_TTS_VOICE=en_US-lessac-medium
+      # MCP / Tools
+      - ENABLE_TOOLS=true
+      - ENABLE_IMAGE_GENERATION=false
+      # Custom default system prompt
+      - DEFAULT_MODELS=brawn-fast
+      - DEFAULT_PROMPT_SUGGESTIONS=true
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/open-webui:/app/backend/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - ai
+
+networks:
+  ai:
+    name: ai
+    driver: bridge
+  # n8n connects to media services on the media network
+  media:
+    external: true
+    name: media

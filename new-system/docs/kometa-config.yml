@@ -1,0 +1,255 @@
+# Kometa (formerly Plex Meta Manager) — Project Chimera
+# Place at: /mnt/user/appdata/DUMB/kometa/config.yml
+#
+# Runs daily at 04:00 (controlled by KOMETA_TIME env var in Stack 07).
+# Manual run: docker exec kometa python3 kometa.py --run
+# Dry run:    docker exec kometa python3 kometa.py --run --dry-run
+#
+# What this config does:
+#   OVERLAYS:  Resolution badge (4K/1080p/720p), Audio codec, HDR type,
+#              Edition (Director's Cut, Extended, etc.), Content ratings
+#   COLLECTIONS: Genre, Decade, IMDb Top 250, Trakt Popular/Trending,
+#                Studio, Director, Streaming service, New releases
+#
+# Image: kometateam/kometa:latest
+# Docs:  https://kometa.wiki
+
+libraries:
+  Movies:
+    # ── Overlay files (applied to every movie poster) ──────────────────────
+    overlay_files:
+      # Resolution badge: "4K", "1080p", "720p", "SD"
+      - default: resolution
+        template_variables:
+          back_color: "#00000099"
+          font_size: 55
+
+      # Audio codec: "Atmos", "DTS-X", "DTS-HD", "TrueHD", "DD+", "DD", "AAC"
+      - default: audio_codec
+        template_variables:
+          back_color: "#00000099"
+
+      # HDR type: "HDR", "HDR10+", "DV", "DV HDR10"
+      - default: video_format
+        template_variables:
+          back_color: "#00000099"
+
+      # Edition: "Director's Cut", "Extended", "Theatrical", "Unrated"
+      - default: edition
+        template_variables:
+          back_color: "#00000099"
+
+      # Streaming service badge: Netflix, Disney+, HBO, Amazon, Apple TV
+      - default: streaming
+        template_variables:
+          back_color: "#00000099"
+          # Only badge items if they are on these services:
+          netflix: true
+          disney: true
+          hbo: true
+          amazon: true
+          apple: true
+          hulu: true
+          peacock: true
+          paramount: true
+
+      # Ratings overlay: IMDb + Rotten Tomatoes + Audience score
+      - default: ratings
+        template_variables:
+          rating1: critic
+          rating1_image: rt_tomatometre
+          rating2: audience
+          rating2_image: rt_popcornmetre
+          rating3: user
+          rating3_image: imdb
+
+    # ── Collection files (auto-maintained by Kometa) ────────────────────────
+    collection_files:
+      # Basic genre collections (Action, Comedy, Drama, Horror, etc.)
+      - default: basic
+
+      # IMDb Top 250 — updates automatically
+      - default: imdb
+        template_variables:
+          use_top_250: true
+          use_lowest_rated_100: false
+
+      # Trakt popular and trending
+      - default: trakt
+
+      # Decade collections (1980s Movies, 1990s Movies, etc.)
+      - default: decade
+        template_variables:
+          starting_decade: 1970
+
+      # Genre collections (from TMDb genre tags)
+      - default: genre
+
+      # Major studio collections (Warner Bros., Universal, Disney, etc.)
+      - default: studio
+
+      # Streaming service collections (Netflix Originals, Disney+ Originals, etc.)
+      - default: streaming
+
+      # Award season collections (Oscar Winners, Golden Globe Winners, etc.)
+      - default: award/oscars
+      - default: award/golden_globes
+
+      # Content rating collections (G, PG, PG-13, R, NC-17)
+      - default: content_rating_us
+
+      # Director spotlight collections (Christopher Nolan, Denis Villeneuve, etc.)
+      - default: director
+        template_variables:
+          # Minimum movies by a director to create a collection
+          minimum_items: 3
+
+      # Actor spotlight collections
+      - default: actor
+        template_variables:
+          minimum_items: 4
+
+      # AI-curated custom collections via MDbList
+      # Sign up at mdblist.com for access to AI-powered recommendation lists
+      - file: config/custom-collections-movies.yml
+
+    # ── Batch operations ────────────────────────────────────────────────────
+    operations:
+      split_duplicates: false
+      # Pull ratings from these sources and write to Plex
+      mass_critic_rating_update: mdb_metacritic
+      mass_audience_rating_update: mdb_tomatoesaudience
+      mass_user_rating_update: tmdb
+      # Update content ratings from MDbList
+      mass_content_rating_update: mdb
+      # Delete collections that Kometa no longer manages (keeps things clean)
+      delete_unmanaged_collections: false
+      # Ensure collection art is applied to all items in the collection
+      assets_for_all: false
+
+  TV Shows:
+    overlay_files:
+      # Same overlays as movies
+      - default: resolution
+        template_variables:
+          back_color: "#00000099"
+          font_size: 55
+      - default: audio_codec
+        template_variables:
+          back_color: "#00000099"
+      - default: video_format
+        template_variables:
+          back_color: "#00000099"
+      - default: streaming
+        template_variables:
+          back_color: "#00000099"
+          netflix: true
+          disney: true
+          hbo: true
+          amazon: true
+          apple: true
+          hulu: true
+      # Episode count overlay for show posters
+      - default: episode_info
+        template_variables:
+          back_color: "#00000099"
+      # Show status: "Returning Series", "Ended", "Cancelled"
+      - default: status
+        template_variables:
+          back_color: "#00000099"
+
+    collection_files:
+      - default: basic
+      - default: imdb
+        template_variables:
+          use_top_250_shows: true
+      - default: trakt
+      - default: genre
+      - default: network
+        template_variables:
+          # Minimum shows per network to create a collection
+          minimum_items: 3
+      - default: streaming
+      - default: decade
+      - default: content_rating_us
+      - file: config/custom-collections-tv.yml
+
+    operations:
+      mass_critic_rating_update: mdb_metacritic
+      mass_audience_rating_update: mdb_tomatoesaudience
+      mass_user_rating_update: tmdb
+
+# ─── Plex connection ──────────────────────────────────────────────────────────
+plex:
+  url: http://192.168.1.222:32400
+  token: <<PLEX_TOKEN>>          # replaced by PLEX_TOKEN env var at runtime
+  timeout: 60
+  clean_bundles: true            # remove orphaned bundles on each run
+  empty_trash: true              # clear Plex trash after deletions
+  optimize: false                # skip optimization (takes too long)
+
+# ─── TMDb connection ──────────────────────────────────────────────────────────
+# Get a free API key at: https://www.themoviedb.org/settings/api
+tmdb:
+  apikey: <<TMDB_API_KEY>>
+  language: en
+  region: US
+  expiration: 60                 # cache TMDb data for 60 days
+
+# ─── Trakt connection (optional) ──────────────────────────────────────────────
+# Enables Trakt watchlist and list integrations.
+# Generate client_id and client_secret at: https://trakt.tv/oauth/applications
+# Then run: docker exec kometa python3 kometa.py --run --trakt-db
+#trakt:
+#  client_id: your_trakt_client_id
+#  client_secret: your_trakt_client_secret
+#  pin:            # leave blank — kometa will print an auth URL on first run
+
+# ─── MDbList connection (optional but recommended) ────────────────────────────
+# Free tier available at mdblist.com
+# Provides AI-curated lists, aggregated ratings, and streaming availability
+#mdblist:
+#  apikey: your_mdblist_api_key
+#  cache_expiration: 60
+
+# ─── Tautulli connection (enables watch-count-aware sorting) ──────────────────
+#tautulli:
+#  url: http://192.168.1.222:8181
+#  apikey: <<TAUTULLI_API_KEY>>
+
+# ─── Logging ──────────────────────────────────────────────────────────────────
+settings:
+  cache: true
+  cache_expiration: 60
+  asset_directory: config/assets
+  asset_folders: true
+  asset_depth: 0
+  create_asset_folders: false
+  prioritize_assets: false
+  dimensional_asset_rename: false
+  show_missing_season_assets: false
+  show_missing_episode_assets: false
+  show_asset_not_needed: true
+  sync_mode: append               # append: only add; sync: also remove unmatched
+  default_collection_order:
+  minimum_items: 2
+  delete_below_minimum: true
+  delete_not_scheduled: false
+  run_again_delay: 2
+  missing_only_released: false
+  only_filter_missing: false
+  show_unmanaged_collections: true
+  show_unconfigured_collections: true
+  playlist_sync_to_user: all
+  playlist_report: false
+  custom_repo:
+  verify_ssl: true
+  check_nightly: false
+  show_filtered: false
+  save_report: false
+  tvdb_language: eng
+  ignore_ids:
+  ignore_imdb_ids:
+  item_refresh_delay: 0
+  collection_minimum: 2
+  error_notification: false

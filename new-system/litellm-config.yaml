@@ -1,0 +1,140 @@
+# =============================================================================
+# LiteLLM Proxy — Project Chimera new-system
+# Node B · 192.168.1.222 · RTX 4070 12GB
+#
+# Single OpenAI-compatible endpoint: http://192.168.1.222:4000/v1
+# Used by: Open WebUI, n8n, Home Assistant, external apps
+#
+# Model aliases:
+#   Node B (RTX 4070):   brawn-*
+#   Node A (RX 7900 XT): brain-*
+#   Node C (Arc A770):   intel-*
+# =============================================================================
+
+model_list:
+
+  # ── Node B — RTX 4070 12GB ──────────────────────────────────────────────────
+
+  - model_name: brawn-fast
+    litellm_params:
+      model: ollama/llama3.1:8b
+      api_base: http://ollama:11434
+      timeout: 120
+      rpm: 60
+
+  - model_name: brawn-mini
+    litellm_params:
+      model: ollama/phi4-mini
+      api_base: http://ollama:11434
+      timeout: 60
+      rpm: 120
+
+  - model_name: brawn-code
+    litellm_params:
+      model: ollama/qwen2.5-coder:14b
+      api_base: http://ollama:11434
+      timeout: 180
+      rpm: 30
+
+  - model_name: brawn-reason
+    litellm_params:
+      model: ollama/deepseek-r1:7b
+      api_base: http://ollama:11434
+      timeout: 180
+      rpm: 30
+
+  - model_name: brawn-uncensored
+    litellm_params:
+      model: ollama/dolphin-mistral:7b
+      api_base: http://ollama:11434
+      timeout: 120
+      rpm: 40
+
+  - model_name: brawn-vision
+    litellm_params:
+      model: ollama/llava:7b
+      api_base: http://ollama:11434
+      timeout: 180
+      rpm: 20
+    model_info:
+      supports_vision: true
+
+  - model_name: brawn-embed
+    litellm_params:
+      model: ollama/nomic-embed-text
+      api_base: http://ollama:11434
+      timeout: 30
+      rpm: 200
+
+  # Convenience alias — default model for most clients
+  - model_name: default
+    litellm_params:
+      model: ollama/llama3.1:8b
+      api_base: http://ollama:11434
+      timeout: 120
+      rpm: 60
+
+  # ── Node A — RX 7900 XT 20GB (ROCm) ─────────────────────────────────────────
+
+  - model_name: brain-heavy
+    litellm_params:
+      model: ollama/qwen2.5:32b
+      api_base: http://192.168.1.9:11435
+      timeout: 300
+      rpm: 15
+
+  - model_name: brain-vision
+    litellm_params:
+      model: ollama/llava:13b
+      api_base: http://192.168.1.9:11435
+      timeout: 180
+      rpm: 10
+    model_info:
+      supports_vision: true
+
+  - model_name: brain-code
+    litellm_params:
+      model: ollama/qwen2.5-coder:32b
+      api_base: http://192.168.1.9:11435
+      timeout: 300
+      rpm: 10
+
+  # ── Node C — Intel Arc A770 16GB ─────────────────────────────────────────────
+
+  - model_name: intel-fast
+    litellm_params:
+      model: ollama/phi4:latest
+      api_base: http://192.168.1.6:11434
+      timeout: 120
+      rpm: 40
+
+  - model_name: intel-uncensored
+    litellm_params:
+      model: ollama/dolphin3:8b
+      api_base: http://192.168.1.6:11434
+      timeout: 120
+      rpm: 40
+
+  - model_name: intel-vision
+    litellm_params:
+      model: ollama/llava:13b
+      api_base: http://192.168.1.6:11434
+      timeout: 180
+      rpm: 20
+    model_info:
+      supports_vision: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  proxy_batch_write_at: 60
+  disable_telemetry: true
+  json_logs: true
+  # Store spend/key data in Redis for persistence
+  store_model_in_db: false
+
+router_settings:
+  routing_strategy: simple-shuffle
+  num_retries: 2
+  retry_after: 5
+  allowed_fails: 3
+  cooldown_time: 60

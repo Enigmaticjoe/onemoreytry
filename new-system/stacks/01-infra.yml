@@ -1,0 +1,149 @@
+# new-system — Stack 01: Infrastructure
+# Node B · Unraid · 192.168.1.222 · RTX 4070 · 96 GB DDR5
+#
+# Services:
+#   portainer    — Docker management UI (CE) + Edge Agent tunnel server
+#   homepage     — Unified service dashboard
+#   uptime-kuma  — Health monitoring + alerting
+#   dozzle       — Real-time container log viewer
+#   watchtower   — Automatic weekly image updates (Sunday 03:00)
+#   tailscale    — WireGuard mesh VPN for remote access from anywhere
+#   cloudflared  — Cloudflare Zero Trust tunnel (no port forwarding needed)
+#   wizarr       — Time-limited Plex/Jellyfin invitation portal
+#
+# Unraid conventions:
+#   PUID=99  PGID=100  (nobody:users)
+#   Appdata: /mnt/user/appdata/DUMB/<service>
+#
+# Deploy:
+#   cp .env.example .env
+#   docker compose -f stacks/01-infra.yml up -d
+#
+# Verify:
+#   curl http://192.168.1.222:8010/api/healthcheck   # homepage
+#   curl http://192.168.1.222:3010                   # uptime-kuma
+#   curl http://192.168.1.222:9000/api/status        # portainer
+
+services:
+
+  # Portainer CE removed — Portainer BE (with license) already running on :8000/:9000.
+  # Manage at: http://192.168.1.222:9000
+
+  # ─── Homepage — unified service dashboard ────────────────────────────────────
+  # Central control panel. Configure services in ${APPDATA_PATH}/homepage/config/
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    restart: unless-stopped
+    ports:
+      - "8010:3000"
+    environment:
+      - HOMEPAGE_ALLOWED_HOSTS=*
+      - HOMEPAGE_VAR_HA_TOKEN=${HA_TOKEN}
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/homepage/config:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/healthcheck || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - infra
+
+  # ─── Uptime Kuma — monitoring + alerting ────────────────────────────────────
+  # Checks every service is reachable. Alerts via Discord, Telegram, email, etc.
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    restart: unless-stopped
+    ports:
+      - "3010:3001"
+    volumes:
+      - ${APPDATA_PATH}/uptime-kuma:/app/data
+    environment:
+      - TZ=${TZ}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3001 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - infra
+
+  # ─── Dozzle — real-time container log viewer ─────────────────────────────────
+  # View any container's logs in a browser — no terminal needed.
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle
+    restart: unless-stopped
+    ports:
+      - "8888:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - TZ=${TZ}
+    # dozzle has no curl/wget in its minimal container — omit healthcheck
+    networks:
+      - infra
+
+  # ─── Watchtower — automatic image updates (Sunday 03:00) ────────────────────
+  # Pulls new image versions weekly. Sends Discord notification if WATCHTOWER_DISCORD_URL is set.
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+      - WATCHTOWER_CLEANUP=true
+      # sec min hour day month weekday — Sunday at 03:00
+      - WATCHTOWER_SCHEDULE=0 0 3 * * 0
+      - WATCHTOWER_NOTIFICATIONS=shoutrrr
+      - WATCHTOWER_NOTIFICATION_URL=${WATCHTOWER_DISCORD_URL}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - infra
+
+  # ─── Tailscale — WireGuard mesh VPN ─────────────────────────────────────────
+  # Gives secure remote access from phone / laptop / anywhere without open ports.
+  # Uses host network so it can advertise the whole 192.168.1.0/24 subnet.
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: tailscale
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TS_AUTHKEY=${TAILSCALE_AUTHKEY}
+      - TS_HOSTNAME=node-b-chimera
+      - TS_EXTRA_ARGS=--advertise-exit-node --advertise-routes=192.168.1.0/24
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/tailscale:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+
+  # ─── Cloudflared — Zero Trust tunnel ─────────────────────────────────────────
+  # Exposes services (Overseerr, Open WebUI, etc.) under your Cloudflare domain.
+  # No router port forwarding required. Configure public hostnames in the CF dashboard.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+      - TZ=${TZ}
+    networks:
+      - infra
+
+  # Wizarr removed — project shut down, image no longer available on ghcr.io.
+  # Use Overseerr's built-in invitation system instead.
+
+networks:
+  infra:
+    name: infra
+    driver: bridge

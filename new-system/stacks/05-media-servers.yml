@@ -1,0 +1,199 @@
+# new-system — Stack 05: Media Servers
+# Node B · Unraid · 192.168.1.222 · RTX 4070 (NVENC/NVDEC hardware transcoding)
+#
+# All media servers point at /mnt/debrid/riven_symlinks (RIVEN_SYMLINKS).
+# They do NOT store media locally — they read the Riven symlink library,
+# which in turn points to the Real-Debrid FUSE mount via rclone/Zurg.
+# This gives instant access to all content without any local storage cost.
+#
+# Services:
+#   plex        — Primary media server (host network for GDM/DLNA discovery)
+#   jellyfin    — Alternative/companion server (better for HDR metadata)
+#   navidrome   — Subsonic-compatible music streaming server
+#   audiobookshelf — Audiobook + podcast server with progress sync
+#   stremio-server — Stremio streaming server (works with Torrentio + RD addons)
+#
+# PUID=99 PGID=100  |  Appdata: /mnt/user/appdata/DUMB/<service>
+#
+# All servers share the riven_symlinks library via read-only mounts.
+# Navidrome reads from MEDIA_PATH/music (managed by Lidarr, not Riven).
+# Audiobookshelf reads from MEDIA_PATH/audiobooks.
+#
+# Deploy:
+#   docker compose -f stacks/05-media-servers.yml up -d
+#
+# Verify:
+#   curl http://192.168.1.222:32400/identity    # Plex
+#   curl http://192.168.1.222:8096/health       # Jellyfin
+#   curl http://192.168.1.222:4533/ping         # Navidrome
+#   curl http://192.168.1.222:13378/ping        # Audiobookshelf
+
+services:
+
+  # ─── Plex — primary media server ────────────────────────────────────────────
+  # host network_mode is REQUIRED for:
+  #   - GDM broadcast (UDP 32412-32414): Plex clients auto-discover on LAN
+  #   - DLNA/UPnP multicast (UDP 1900): smart TV / DLNA discovery
+  # Without host networking, LAN discovery breaks and clients need manual IP entry.
+  #
+  # GPU transcoding: NVIDIA NVENC/NVDEC via NVIDIA_VISIBLE_DEVICES=all
+  # For hardware transcoding you need a Plex Pass subscription.
+  #
+  # First-time setup: set PLEX_CLAIM_TOKEN (claim-XXXX from plex.tv/claim),
+  # start container, then remove PLEX_CLAIM_TOKEN from .env and restart.
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - VERSION=docker
+      - PLEX_CLAIM=${PLEX_CLAIM_TOKEN}
+      # NVIDIA GPU hardware transcoding
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
+    volumes:
+      - ${APPDATA_PATH}/plex:/config
+      # Riven symlink library — all content via Real-Debrid
+      - ${RIVEN_SYMLINKS}:/data:rslave
+      # FUSE mount must be visible so Plex can follow symlinks that point into /mnt/debrid
+      - ${DEBRID_MOUNT}:/mnt/debrid:rslave
+      # RAM-based transcode buffer (uses /dev/shm — fast, no disk wear)
+      - /dev/shm:/transcode
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/32400' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ─── Jellyfin — companion/alternative media server ───────────────────────────
+  # Excellent for: HDR metadata, chapter thumbnails, better subtitle rendering.
+  # Plex and Jellyfin can coexist — they read the same symlink library.
+  # GPU transcoding via NVIDIA NVENC (free, no subscription required).
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    ports:
+      - "8096:8096"
+      - "8920:8920"    # HTTPS
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
+    volumes:
+      - ${APPDATA_PATH}/jellyfin:/config
+      - ${RIVEN_SYMLINKS}:/data:rslave
+      # FUSE mount must be visible so Jellyfin can follow symlinks that point into /mnt/debrid
+      - ${DEBRID_MOUNT}:/mnt/debrid:rslave
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8096' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - media
+
+  # ─── Navidrome — Subsonic-compatible music server ────────────────────────────
+  # Works with: Feishin (desktop), Symfonium (Android), Ultrasonic, DSub, Finamp.
+  # Lidarr downloads music to MEDIA_PATH/music; Navidrome streams it from there.
+  # Last.fm + Spotify integration adds artist bio, album art, and scrobbling.
+  navidrome:
+    image: deluan/navidrome:latest
+    container_name: navidrome
+    restart: unless-stopped
+    ports:
+      - "4533:4533"
+    environment:
+      - TZ=${TZ}
+      - ND_SCANSCHEDULE=1h
+      - ND_LOGLEVEL=info
+      - ND_SESSIONTIMEOUT=24h
+      - ND_BASEURL=
+      # Last.fm scrobbling + artist bios (optional)
+      - ND_LASTFM_ENABLED=${LASTFM_API_KEY:+true}
+      - ND_LASTFM_APIKEY=${LASTFM_API_KEY}
+      - ND_LASTFM_SECRET=${LASTFM_SECRET}
+      # Spotify album art (optional)
+      - ND_SPOTIFY_ID=${SPOTIFY_CLIENT_ID}
+      - ND_SPOTIFY_SECRET=${SPOTIFY_CLIENT_SECRET}
+    volumes:
+      - ${APPDATA_PATH}/navidrome:/data
+      - ${MEDIA_PATH}/music:/music:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4533/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - media
+
+  # ─── Audiobookshelf — audiobook + podcast server ─────────────────────────────
+  # Tracks listening progress, syncs across devices, manages podcast feeds.
+  # Supports: mp3, m4b, opus, flac, and most audiobook formats.
+  # Access: http://192.168.1.222:13378
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    restart: unless-stopped
+    ports:
+      - "13378:80"
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ${MEDIA_PATH}/audiobooks:/audiobooks
+      - ${MEDIA_PATH}/podcasts:/podcasts
+      - ${APPDATA_PATH}/audiobookshelf:/config
+      - ${APPDATA_PATH}/audiobookshelf/metadata:/metadata
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - media
+
+  # ─── Stremio Server — streaming server for Stremio apps ──────────────────────
+  # Your Stremio phone/TV apps can connect to this for local streaming.
+  # Works seamlessly with Torrentio + Real-Debrid addons for instant playback
+  # without any download queue — ideal for casual browsing.
+  stremio-server:
+    image: stremio/server:latest
+    container_name: stremio-server
+    restart: unless-stopped
+    ports:
+      - "11470:11470"
+      - "12470:12470"
+    environment:
+      - TZ=${TZ}
+      - NO_CORS=1
+    volumes:
+      - ${APPDATA_PATH}/stremio:/root/.stremio-server
+    networks:
+      - media
+
+networks:
+  media:
+    external: true
+    name: media

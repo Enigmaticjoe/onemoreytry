@@ -1,0 +1,178 @@
+# =============================================================================
+# Cloudflare Tunnel — Project Chimera
+# Tunnel ID: 8515c824-f5f4-41af-9cff-4d89b75ba1b8
+# Domain: happystrugglebus.us
+#
+# Applied via: docker exec cloudflared cloudflared tunnel ingress validate
+# To reload: docker restart cloudflared
+#
+# NOTE: This config is for documentation/reference.
+# Active config is managed via Cloudflare Zero Trust dashboard:
+#   https://one.dash.cloudflare.com → Networks → Tunnels → Configure
+#
+# PENDING DASHBOARD CHANGES NEEDED:
+#   1. dashboard-main.happystrugglebus.us → http://192.168.1.6:3000  (was :80)
+#   2. searxng.happystrugglebus.us       → http://192.168.1.222:8082 (was :8080)
+#   3. ADD: riven.happystrugglebus.us    → http://192.168.1.222:3001
+#   4. ADD: litellm.happystrugglebus.us  → http://192.168.1.222:4000
+#   5. ADD: komga.happystrugglebus.us    → http://192.168.1.222:25600
+#   6. ADD: kavita.happystrugglebus.us   → http://192.168.1.222:5000
+#   7. ADD: navidrome.happystrugglebus.us → http://192.168.1.222:4533
+#   8. ADD: docs.happystrugglebus.us     → https://enigmaticjoe.github.io/onemoreytry/
+#   9. ADD: riven-api.happystrugglebus.us → http://192.168.1.222:8080
+#  10. ADD: whisper.happystrugglebus.us  → http://192.168.1.222:9191
+#  11. ADD: gamevault.happystrugglebus.us → http://192.168.1.222:8998
+#  12. ADD: romm.happystrugglebus.us     → http://192.168.1.222:9083
+#  13. REMOVE: rdt.happystrugglebus.us   (RDT-Client not running)
+#  14. REMOVE: firefox.happystrugglebus.us (container not deployed)
+#  15. REMOVE: krusader.happystrugglebus.us (container not deployed)
+# =============================================================================
+
+# Current confirmed active ingress rules (from tunnel logs 2026-03-10):
+ingress:
+  # ── External / other nodes ──────────────────────────────────────────────────
+  - hostname: cams.happystrugglebus.us
+    service: http://192.168.1.116:8350
+
+  - hostname: home.happystrugglebus.us
+    service: http://100.110.38.37:8123
+    originRequest:
+      noTLSVerify: true
+
+  # Node C — FIXED: was port 80, chimera_face runs on 3000
+  - hostname: dashboard-main.happystrugglebus.us
+    service: http://192.168.1.6:3000
+
+  - hostname: chimera.happystrugglebus.us
+    service: http://192.168.1.9
+
+  - hostname: brain.happystrugglebus.us
+    service: http://192.168.1.9:3000
+
+  # ── Node B — Media servers ───────────────────────────────────────────────────
+  - hostname: plex.happystrugglebus.us
+    service: http://192.168.1.222:32400
+
+  - hostname: jellyfin.happystrugglebus.us
+    service: http://192.168.1.222:8096
+
+  - hostname: overseerr.happystrugglebus.us
+    service: http://192.168.1.222:5055
+
+  - hostname: stremio.happystrugglebus.us
+    service: http://192.168.1.222:11470
+
+  - hostname: audio.happystrugglebus.us
+    service: http://192.168.1.222:13378
+
+  - hostname: tautulli.happystrugglebus.us
+    service: http://192.168.1.222:8181
+
+  # ── Node B — *arr suite ──────────────────────────────────────────────────────
+  - hostname: sonarr.happystrugglebus.us
+    service: http://192.168.1.222:8989
+
+  - hostname: radarr.happystrugglebus.us
+    service: http://192.168.1.222:7878
+
+  - hostname: lidarr.happystrugglebus.us
+    service: http://192.168.1.222:8686
+
+  - hostname: prowlarr.happystrugglebus.us
+    service: http://192.168.1.222:9696
+
+  - hostname: bazarr.happystrugglebus.us
+    service: http://192.168.1.222:6767
+
+  # ── Node B — Real-Debrid core ────────────────────────────────────────────────
+  - hostname: zurg.happystrugglebus.us
+    service: http://192.168.1.222:9999
+
+  - hostname: riven.happystrugglebus.us
+    service: http://192.168.1.222:3001
+
+  - hostname: riven-api.happystrugglebus.us
+    service: http://192.168.1.222:8080
+
+  # ── Node B — AI services ─────────────────────────────────────────────────────
+  - hostname: openwebui.happystrugglebus.us
+    service: http://192.168.1.222:3002
+
+  - hostname: litellm.happystrugglebus.us
+    service: http://192.168.1.222:4000
+
+  - hostname: ollama.happystrugglebus.us
+    service: http://192.168.1.222:11434
+
+  - hostname: n8n.happystrugglebus.us
+    service: http://192.168.1.222:5678
+
+  - hostname: searxng.happystrugglebus.us
+    service: http://192.168.1.222:8082
+
+  - hostname: whisper.happystrugglebus.us
+    service: http://192.168.1.222:9191
+
+  # ── Node B — Books & Games ───────────────────────────────────────────────────
+  - hostname: navidrome.happystrugglebus.us
+    service: http://192.168.1.222:4533
+
+  - hostname: komga.happystrugglebus.us
+    service: http://192.168.1.222:25600
+
+  - hostname: kavita.happystrugglebus.us
+    service: http://192.168.1.222:5000
+
+  - hostname: gamevault.happystrugglebus.us
+    service: http://192.168.1.222:8998
+
+  - hostname: romm.happystrugglebus.us
+    service: http://192.168.1.222:9083
+
+  # ── Node B — Infrastructure ──────────────────────────────────────────────────
+  - hostname: openclaw.happystrugglebus.us
+    service: http://192.168.1.222:18789
+
+  - hostname: searxng.happystrugglebus.us
+    service: http://192.168.1.222:8082
+
+  - hostname: browserless.happystrugglebus.us
+    service: http://192.168.1.222:3005
+
+  - hostname: flaresolverr.happystrugglebus.us
+    service: http://192.168.1.222:8191
+
+  - hostname: unraid.happystrugglebus.us
+    service: https://192.168.1.222:4443
+    originRequest:
+      noTLSVerify: true
+
+  - hostname: homepage.happystrugglebus.us
+    service: http://192.168.1.222:8010
+
+  - hostname: portainer.happystrugglebus.us
+    service: http://192.168.1.222:9000
+
+  - hostname: uptime.happystrugglebus.us
+    service: http://192.168.1.222:3010
+
+  - hostname: dozzle.happystrugglebus.us
+    service: http://192.168.1.222:8888
+
+  - hostname: prox.happystrugglebus.us
+    service: https://192.168.1.174:8006
+    originRequest:
+      noTLSVerify: true
+
+  - hostname: router.happystrugglebus.us
+    service: https://192.168.1.1:8443
+    originRequest:
+      noTLSVerify: true
+
+  # ── Docs — GitHub Pages ──────────────────────────────────────────────────────
+  # Note: Cloudflare redirect rule needed for this (HTTP redirect, not tunnel proxy)
+  # Set up at: Cloudflare Dashboard → Rules → Redirect Rules
+  # Rule: hostname = docs.happystrugglebus.us → redirect to https://enigmaticjoe.github.io/onemoreytry/
+
+  # ── Default — catch-all 404 ──────────────────────────────────────────────────
+  - service: http_status:404

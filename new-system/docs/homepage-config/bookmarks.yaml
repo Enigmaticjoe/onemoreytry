@@ -1,0 +1,69 @@
+# Homepage — bookmarks.yaml for Project Chimera
+# Live path: /mnt/user/appdata/DUMB/homepage/config/bookmarks.yaml
+
+- Project Chimera Docs:
+    - Documentation Site:
+        - abbr: DC
+          href: https://enigmaticjoe.github.io/onemoreytry/
+          icon: https://github.githubassets.com/favicons/favicon.png
+    - GitHub Repo:
+        - abbr: GH
+          href: https://github.com/Enigmaticjoe/onemoreytry
+          icon: github.png
+    - Deployment Guide:
+        - abbr: DG
+          href: https://github.com/Enigmaticjoe/onemoreytry/blob/main/DEPLOYMENT_GUIDE.md
+          icon: file.png
+    - Quick Reference:
+        - abbr: QR
+          href: https://github.com/Enigmaticjoe/onemoreytry/blob/main/QUICK_REFERENCE.md
+          icon: file.png
+    - Unified Guidebook:
+        - abbr: UG
+          href: https://github.com/Enigmaticjoe/onemoreytry/blob/main/UNIFIED_GUIDEBOOK.md
+          icon: file.png
+
+- AI Tools:
+    - Open WebUI (B):
+        - abbr: AI
+          href: http://192.168.1.222:3002
+    - Open WebUI (C):
+        - abbr: AC
+          href: http://192.168.1.6:3000
+    - LiteLLM Docs:
+        - abbr: LL
+          href: https://docs.litellm.ai/docs/
+    - Ollama Models:
+        - abbr: OM
+          href: https://ollama.com/library
+    - Open WebUI Docs:
+        - abbr: OW
+          href: https://docs.openwebui.com/
+
+- Media:
+    - Overseerr:
+        - abbr: OR
+          href: http://192.168.1.222:5055
+    - Plex Web:
+        - abbr: PX
+          href: https://app.plex.tv/desktop
+    - Real-Debrid:
+        - abbr: RD
+          href: https://real-debrid.com/
+    - TRaSH Guides:
+        - abbr: TG
+          href: https://trash-guides.info/
+
+- Infrastructure:
+    - Portainer (B):
+        - abbr: PT
+          href: https://192.168.1.222:9443
+    - Unraid (B):
+        - abbr: UR
+          href: http://192.168.1.222
+    - Cloudflare:
+        - abbr: CF
+          href: https://dash.cloudflare.com/
+    - Tailscale:
+        - abbr: TS
+          href: https://login.tailscale.com/admin/machines

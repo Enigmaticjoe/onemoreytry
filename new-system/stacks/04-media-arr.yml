@@ -1,0 +1,308 @@
+# new-system — Stack 04: Media *arr Suite
+# Node B · Unraid · 192.168.1.222
+#
+# Traditional *arr automation stack. In DUMB AIO mode:
+#   - Prowlarr finds torrents via indexers
+#   - Sonarr/Radarr/Lidarr/Readarr manage your library wishlist
+#   - Decypharr acts as the "download client" — it sends the magnet to
+#     Real-Debrid instead of actually downloading anything
+#   - Bazarr uses the local Whisper API for AI subtitle generation
+#   - Decluttarr auto-clears stalled RD items so Sonarr/Radarr retry cleanly
+#   - FlareSolverr bypasses Cloudflare on torrent indexer sites
+#
+# Why keep *arr with Riven?
+#   Riven handles fully-automated RD acquisition.
+#   *arr gives you fine-grained control: quality profiles, release groups,
+#   upgrade logic, and manual library management — especially for music/books.
+#
+# PUID=99 PGID=100  |  Appdata: /mnt/user/appdata/DUMB/<service>
+# Symlinks: /mnt/debrid/riven_symlinks (mapped as /data inside containers)
+#
+# Deploy order:
+#   gluetun → prowlarr → flaresolverr
+#   → sonarr → radarr → lidarr → readarr → bazarr
+#   → decluttarr
+#
+# Deploy:
+#   docker compose -f stacks/04-media-arr.yml up -d
+#
+# First-time configuration order:
+#   1. Prowlarr (9696)  — add indexers, connect to Sonarr/Radarr/Lidarr/Readarr
+#   2. Radarr (7878)    — set root /data/movies, download client = Decypharr
+#   3. Sonarr (8989)    — set root /data/tv, download client = Decypharr
+#   4. Lidarr (8686)    — set root /data/music, download client = Decypharr
+#   5. Readarr (8787)   — set root /data/books, download client = Decypharr
+#   6. Bazarr (6767)    — connect Sonarr + Radarr, enable Whisper provider
+
+services:
+
+  # ─── Gluetun + qBittorrent — VPN fallback (DISABLED — 100% Real-Debrid) ───────
+  # Commented out: Mullvad credentials not yet configured (VPN_USER is placeholder).
+  # Riven handles all Real-Debrid acquisition — qBittorrent is not needed.
+  # To re-enable: set VPN_USER (Mullvad account number) in .env and uncomment.
+  # NOTE: Gluetun requires VPN_TYPE=wireguard for Mullvad in recent versions.
+  #
+  # gluetun:
+  #   image: qmcgaw/gluetun:latest
+  #   container_name: gluetun
+  #   restart: unless-stopped
+  #   cap_add:
+  #     - NET_ADMIN
+  #   devices:
+  #     - /dev/net/tun:/dev/net/tun
+  #   environment:
+  #     - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
+  #     - VPN_TYPE=wireguard
+  #     - WIREGUARD_PRIVATE_KEY=${VPN_WIREGUARD_PRIVATE_KEY}
+  #     - SERVER_CITIES=New York NY
+  #     - TZ=${TZ}
+  #   ports:
+  #     - "8090:8090"
+  #     - "8091:8080"
+  #   volumes:
+  #     - ${APPDATA_PATH}/gluetun:/gluetun
+  #   networks:
+  #     - media
+  #
+  # qbittorrent:
+  #   image: lscr.io/linuxserver/qbittorrent:latest
+  #   container_name: qbittorrent
+  #   restart: unless-stopped
+  #   network_mode: service:gluetun
+  #   environment:
+  #     - PUID=${PUID}
+  #     - PGID=${PGID}
+  #     - TZ=${TZ}
+  #     - WEBUI_PORT=8080
+  #   volumes:
+  #     - ${APPDATA_PATH}/qbittorrent:/config
+  #     - ${MEDIA_PATH}/downloads:/downloads
+  #   depends_on:
+  #     gluetun:
+  #       condition: service_healthy
+
+  # Decypharr removed — image no longer available on any public registry.
+  # Real-Debrid integration is handled natively by Riven (Stack 03).
+
+  # ─── FlareSolverr — Cloudflare bypass for torrent indexers ───────────────────
+  # Many private tracker sites use Cloudflare protection. FlareSolverr solves
+  # the challenge automatically so Prowlarr can still read them.
+  # Add in Prowlarr: Settings → Indexers → Add Proxy → FlareSolverr
+  #   URL: http://flaresolverr:8191
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    restart: unless-stopped
+    ports:
+      - "8191:8191"
+    environment:
+      - LOG_LEVEL=info
+      - TZ=${TZ}
+    healthcheck:
+      # /v1 only accepts POST; grep for any JSON response to confirm service is up
+      test: ["CMD-SHELL", "curl -s http://localhost:8191/v1 | grep -q 'status_code' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - media
+
+  # ─── Prowlarr — unified indexer manager ─────────────────────────────────────
+  # Connects to all your torrent/usenet indexers once and syncs them to all
+  # *arr apps automatically. Single place to add/manage indexers.
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    restart: unless-stopped
+    ports:
+      - "9696:9696"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/prowlarr:/config
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9696' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - media
+
+  # ─── Sonarr — TV show automation ────────────────────────────────────────────
+  # Monitors for new episodes, grabs via Prowlarr, sends to Decypharr → RD.
+  # Root folder: /data/tv  (maps to /mnt/debrid/riven_symlinks/shows on host)
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    restart: unless-stopped
+    ports:
+      - "8989:8989"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/sonarr:/config
+      - ${RIVEN_SYMLINKS}:/data
+      - ${DEBRID_MOUNT}:/mnt/debrid:rslave
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8989' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - prowlarr
+    networks:
+      - media
+
+  # ─── Radarr — movie automation ──────────────────────────────────────────────
+  # Root folder: /data/movies
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    restart: unless-stopped
+    ports:
+      - "7878:7878"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/radarr:/config
+      - ${RIVEN_SYMLINKS}:/data
+      - ${DEBRID_MOUNT}:/mnt/debrid:rslave
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/7878' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - prowlarr
+    networks:
+      - media
+
+  # ─── Lidarr — music automation ──────────────────────────────────────────────
+  # Root folder: /data/music  (feeds Navidrome)
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    restart: unless-stopped
+    ports:
+      - "8686:8686"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/lidarr:/config
+      - ${MEDIA_PATH}/music:/data/music
+      - ${MEDIA_PATH}/downloads:/downloads
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8686' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - prowlarr
+    networks:
+      - media
+
+  # ─── Readarr — book / ebook automation ──────────────────────────────────────
+  # NOTE: linuxserver/readarr:develop and :nightly tags currently have empty
+  # manifest lists (no amd64 support). Commented out until linuxserver fixes it.
+  # Restore once the image is available again:
+  #   image: lscr.io/linuxserver/readarr:develop
+  # readarr:
+  #   image: lscr.io/linuxserver/readarr:develop
+  #   container_name: readarr
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8787:8787"
+  #   environment:
+  #     - PUID=${PUID}
+  #     - PGID=${PGID}
+  #     - TZ=${TZ}
+  #   volumes:
+  #     - ${APPDATA_PATH}/readarr:/config
+  #     - ${MEDIA_PATH}/books:/data/books
+  #     - ${MEDIA_PATH}/downloads:/downloads
+  #   depends_on:
+  #     - prowlarr
+  #   networks:
+  #     - media
+
+  # ─── Bazarr — subtitle automation with AI Whisper ────────────────────────────
+  # Automatically fetches subtitles for all Sonarr and Radarr content.
+  # When subtitles don't exist anywhere, it uses the local Whisper API
+  # (Stack 02, port 9191) to transcribe audio directly from the video file.
+  #
+  # Whisper setup: Bazarr → Settings → Providers → Add → Whisper
+  #   URL: http://whisper-api:8000
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    restart: unless-stopped
+    ports:
+      - "6767:6767"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/bazarr:/config
+      - ${RIVEN_SYMLINKS}:/data
+      - ${DEBRID_MOUNT}:/mnt/debrid:rslave
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6767' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - sonarr
+      - radarr
+    networks:
+      - media
+      # Bazarr calls whisper-api on the ai network for subtitle generation
+      - ai
+
+  # ─── Decluttarr — stalled download cleaner ───────────────────────────────────
+  # Monitors Sonarr/Radarr download queues and automatically removes stalled,
+  # failed, or stuck items. Critical for Real-Debrid: RD items sometimes
+  # appear as stalled even when the content is available — Decluttarr clears
+  # them so *arr retries and finds the correct cached version.
+  #
+  # GitHub: https://github.com/ManiMatter/decluttarr
+  decluttarr:
+    image: ghcr.io/manimatter/decluttarr:latest
+    container_name: decluttarr
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+      - LOG_LEVEL=INFO
+      - RADARR_URL=http://radarr:7878
+      - RADARR_KEY=${RADARR_API_KEY}
+      - SONARR_URL=http://sonarr:8989
+      - SONARR_KEY=${SONARR_API_KEY}
+      - LIDARR_URL=http://lidarr:8686
+      - LIDARR_KEY=${LIDARR_API_KEY}
+      # READARR disabled — image unavailable
+      # - READARR_URL=http://readarr:8787
+      # - READARR_KEY=${READARR_API_KEY}
+      # Check queue every 60 minutes
+      - QUEUE_CLEANING_TIMER=60
+      - STUCK_ITEM_HANDLING=true
+      - REMOVE_FAILED=true
+      - REMOVE_STALLED=true
+      - REMOVE_METADATA_MISSING=false
+    networks:
+      - media
+
+networks:
+  media:
+    external: true
+    name: media
+  ai:
+    external: true
+    name: ai

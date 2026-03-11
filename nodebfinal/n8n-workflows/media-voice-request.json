@@ -1,0 +1,464 @@
+{
+  "name": "Chimera — Media Voice Request",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "media-request",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook — Media Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "chimera-media-request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ollama:11434/api/chat",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"llama3.1:8b\",\n  \"stream\": false,\n  \"options\": { \"temperature\": 0.1 },\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a media request parser for a home media server. Extract the intent from the user's request and return ONLY valid JSON with these fields:\\n- action: one of [add, search, status, unknown]\\n- media_type: one of [movie, tv, music, book, audiobook, game, unknown]\\n- title: the title they mentioned (string or null)\\n- year: release year if mentioned (number or null)\\nExample: {\\\"action\\\":\\\"add\\\",\\\"media_type\\\":\\\"movie\\\",\\\"title\\\":\\\"Dune\\\",\\\"year\\\":2021}\\nReturn only JSON. No markdown, no explanation.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"{{ $json.body.command }}\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "ollama-classify",
+      "name": "Ollama — Classify Intent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.message?.content || '';\n// Strip markdown code fences if present\nconst cleaned = raw.replace(/```(?:json)?\\n?/g, '').replace(/```/g, '').trim();\ntry {\n  const intent = JSON.parse(cleaned);\n  return [{ json: { ...intent, original_command: $('Webhook — Media Request').first().json.body.command, source: $('Webhook — Media Request').first().json.body.source || 'webhook', user: $('Webhook — Media Request').first().json.body.user || 'unknown' } }];\n} catch (e) {\n  return [{ json: { action: 'unknown', media_type: 'unknown', title: null, year: null, original_command: $('Webhook — Media Request').first().json.body.command, parse_error: e.message } }];\n}"
+      },
+      "id": "parse-intent",
+      "name": "Parse Intent JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "id": "action-add",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "add"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "id": "action-search",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "search",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "search"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "id": "action-status",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "status",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "status"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "switch-action",
+      "name": "Switch — Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "id": "type-movie",
+                    "leftValue": "={{ $json.media_type }}",
+                    "rightValue": "movie",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "movie"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "id": "type-tv",
+                    "leftValue": "={{ $json.media_type }}",
+                    "rightValue": "tv",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "tv"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "switch-media-type",
+      "name": "Switch — Media Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1120, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.OVERSEERR_URL }}/api/v1/request",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Key",
+              "value": "={{ $env.OVERSEERR_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"mediaType\": \"movie\",\n  \"mediaId\": {{ $json.tmdbId || 0 }},\n  \"title\": \"{{ $json.title }}\"\n}",
+        "options": {}
+      },
+      "id": "overseerr-add-movie",
+      "name": "Overseerr — Request Movie",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.OVERSEERR_URL }}/api/v1/request",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Key",
+              "value": "={{ $env.OVERSEERR_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"mediaType\": \"tv\",\n  \"mediaId\": {{ $json.tvdbId || 0 }},\n  \"title\": \"{{ $json.title }}\",\n  \"seasons\": \"all\"\n}",
+        "options": {}
+      },
+      "id": "overseerr-add-tv",
+      "name": "Overseerr — Request TV Show",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 240]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.OVERSEERR_URL }}/api/v1/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Key",
+              "value": "={{ $env.OVERSEERR_API_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.title }}"
+            },
+            {
+              "name": "page",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "overseerr-search",
+      "name": "Overseerr — Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = $input.first().json.results?.slice(0, 5) || [];\nconst formatted = results.map(r => `• ${r.title || r.name} (${r.releaseDate?.slice(0,4) || r.firstAirDate?.slice(0,4) || '?'}) — ${r.mediaType}`).join('\\n');\nreturn [{ json: { search_results: formatted, count: results.length } }];"
+      },
+      "id": "format-search-results",
+      "name": "Format Search Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 420]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.RIVEN_URL }}/api/v1/items",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.RIVEN_API_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "5"
+            },
+            {
+              "name": "sort",
+              "value": "date_desc"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "riven-status",
+      "name": "Riven — Recent Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gather context from all possible upstream nodes\nconst action = $('Parse Intent JSON').first().json.action;\nconst mediaType = $('Parse Intent JSON').first().json.media_type;\nconst title = $('Parse Intent JSON').first().json.title;\nconst source = $('Parse Intent JSON').first().json.source;\n\nlet spoken = '';\n\nif (action === 'add') {\n  // Check if Overseerr request succeeded\n  let requestOk = false;\n  try {\n    const movieResult = $('Overseerr — Request Movie').first();\n    if (movieResult?.json?.id) requestOk = true;\n  } catch(e) {}\n  try {\n    const tvResult = $('Overseerr — Request TV Show').first();\n    if (tvResult?.json?.id) requestOk = true;\n  } catch(e) {}\n\n  if (requestOk) {\n    spoken = `Got it! I've submitted a request for ${title}. It should appear in your library within a few minutes once Real-Debrid sources it.`;\n  } else {\n    spoken = `I understood you wanted to add ${title}, but I couldn't complete the request. You can add it manually through Overseerr.`;\n  }\n} else if (action === 'search') {\n  try {\n    const results = $('Format Search Results').first().json;\n    if (results.count > 0) {\n      spoken = `I found ${results.count} results for ${title}:\\n${results.search_results}`;\n    } else {\n      spoken = `I didn't find anything for ${title} in the catalog.`;\n    }\n  } catch(e) {\n    spoken = `Search for ${title} returned no results.`;\n  }\n} else if (action === 'status') {\n  try {\n    const items = $('Riven — Recent Items').first().json;\n    const list = (items.items || []).slice(0,3).map(i => `${i.title} — ${i.state}`).join(', ');\n    spoken = list ? `Recent Riven activity: ${list}.` : 'No recent Riven activity found.';\n  } catch(e) {\n    spoken = 'Could not retrieve Riven status right now.';\n  }\n} else {\n  spoken = `I'm not sure what you meant by \"${$('Parse Intent JSON').first().json.original_command}\". Try asking me to add or search for a movie or show.`;\n}\n\nreturn [{ json: { spoken_response: spoken, action, media_type: mediaType, title, source } }];"
+      },
+      "id": "compose-response",
+      "name": "Compose Spoken Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://192.168.1.149:8123/api/webhook/chimera_media_ready",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.HA_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"spoken_response\": \"{{ $json.spoken_response }}\",\n  \"action\": \"{{ $json.action }}\",\n  \"title\": \"{{ $json.title }}\",\n  \"source\": \"{{ $json.source }}\"\n}",
+        "options": {}
+      },
+      "id": "ha-notify",
+      "name": "HA — Notify Media Ready",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, response: $('Compose Spoken Response').first().json.spoken_response, action: $('Compose Spoken Response').first().json.action }) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 300]
+    }
+  ],
+  "connections": {
+    "Webhook — Media Request": {
+      "main": [
+        [
+          { "node": "Ollama — Classify Intent", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Ollama — Classify Intent": {
+      "main": [
+        [
+          { "node": "Parse Intent JSON", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Parse Intent JSON": {
+      "main": [
+        [
+          { "node": "Switch — Action", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Switch — Action": {
+      "add": [
+        [
+          { "node": "Switch — Media Type", "type": "main", "index": 0 }
+        ]
+      ],
+      "search": [
+        [
+          { "node": "Overseerr — Search", "type": "main", "index": 0 }
+        ]
+      ],
+      "status": [
+        [
+          { "node": "Riven — Recent Items", "type": "main", "index": 0 }
+        ]
+      ],
+      "extra": [
+        [
+          { "node": "Compose Spoken Response", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Switch — Media Type": {
+      "movie": [
+        [
+          { "node": "Overseerr — Request Movie", "type": "main", "index": 0 }
+        ]
+      ],
+      "tv": [
+        [
+          { "node": "Overseerr — Request TV Show", "type": "main", "index": 0 }
+        ]
+      ],
+      "extra": [
+        [
+          { "node": "Compose Spoken Response", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Overseerr — Request Movie": {
+      "main": [
+        [
+          { "node": "Compose Spoken Response", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Overseerr — Request TV Show": {
+      "main": [
+        [
+          { "node": "Compose Spoken Response", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Overseerr — Search": {
+      "main": [
+        [
+          { "node": "Format Search Results", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Format Search Results": {
+      "main": [
+        [
+          { "node": "Compose Spoken Response", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Riven — Recent Items": {
+      "main": [
+        [
+          { "node": "Compose Spoken Response", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Compose Spoken Response": {
+      "main": [
+        [
+          { "node": "HA — Notify Media Ready", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "HA — Notify Media Ready": {
+      "main": [
+        [
+          { "node": "Respond to Webhook", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": ["chimera", "media", "voice"],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

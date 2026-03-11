@@ -1,0 +1,45 @@
+# Homepage — widgets.yaml for Project Chimera
+# Place at: /mnt/user/appdata/DUMB/homepage/config/widgets.yaml
+#
+# Top-of-page information widgets: date/time, search, system resources, HA.
+
+- logo:
+    icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/plex.png
+
+- datetime:
+    text_size: xl
+    format:
+      dateStyle: long
+      timeStyle: short
+      hourCycle: h12
+
+- search:
+    provider: [google, duckduckgo]
+    target: _blank
+    focus: false
+
+- openmeteo:
+    label: Home
+    latitude: "{{HOMEPAGE_VAR_LAT}}"
+    longitude: "{{HOMEPAGE_VAR_LON}}"
+    timezone: America/New_York
+    units: imperial
+    cache: 15
+
+- homeassistant:
+    url: http://192.168.1.149:8123
+    key: "{{HOMEPAGE_VAR_HA_TOKEN}}"
+
+- resources:
+    cpu: true
+    memory: true
+    disk: /
+    cputemp: true
+    uptime: true
+    units: imperial
+    refresh: 3000
+
+- unifi_console:
+    url: https://192.168.1.1
+    username: "{{HOMEPAGE_VAR_UNIFI_USER}}"
+    password: "{{HOMEPAGE_VAR_UNIFI_PASSWORD}}"

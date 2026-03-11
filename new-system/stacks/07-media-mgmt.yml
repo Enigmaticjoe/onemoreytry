@@ -1,0 +1,199 @@
+# new-system — Stack 07: Media Management & Intelligence
+# Node B · Unraid · 192.168.1.222
+#
+# Everything that manages, curates, and enriches your library after content arrives.
+#
+# Services:
+#   overseerr    — Media request portal (voice/chat integration via n8n)
+#   tautulli     — Plex/Jellyfin watch analytics + HA webhook triggers
+#   maintainerr  — Automated library cleanup (delete watched content after rules)
+#   recyclarr    — Syncs TRaSH Guides quality profiles to Sonarr/Radarr
+#   huntarr      — Auto-finds missing/upgradeable items in Sonarr/Radarr
+#   notifiarr    — Rich Discord/Slack notifications with poster art
+#   kometa       — Plex collection manager + AI-curated artwork overlays
+#
+# PUID=99 PGID=100  |  Appdata: /mnt/user/appdata/DUMB/<service>
+#
+# Deploy:
+#   docker compose -f stacks/07-media-mgmt.yml up -d
+#
+# Setup order:
+#   1. Overseerr (5055) — connect Plex + Jellyfin, then Radarr + Sonarr
+#   2. Tautulli (8181)  — connect to Plex, configure HA webhook
+#   3. Huntarr (9705)   — connect Sonarr + Radarr APIs
+#   4. Notifiarr        — configure via notifiarr.com dashboard
+#   5. Recyclarr        — edit recyclarr.yml in appdata, then: docker exec recyclarr recyclarr sync
+#   6. Kometa           — edit config.yml in appdata, runs daily at 04:00
+
+services:
+
+  # ─── Overseerr — media request portal ───────────────────────────────────────
+  # The gateway for media requests from voice, chat, and family members.
+  # n8n's "Media Voice Request" workflow sends classified requests here via API.
+  # Family/friends can request via the web UI at http://192.168.1.222:5055
+  # or via the Overseerr iOS/Android apps.
+  #
+  # Voice request flow:
+  #   "Alexa, add Dune 3" → HA → n8n → POST /api/v1/request (Overseerr)
+  #   → Riven or Radarr picks it up → Plex library updated
+  overseerr:
+    image: sctx/overseerr:latest
+    container_name: overseerr
+    restart: unless-stopped
+    ports:
+      - "5055:5055"
+    environment:
+      - TZ=${TZ}
+      - LOG_LEVEL=info
+    volumes:
+      - ${APPDATA_PATH}/overseerr:/app/config
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5055',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - media
+
+  # ─── Tautulli — Plex watch analytics + HA webhook trigger ────────────────────
+  # Tracks what's watched, when, by whom. Enables powerful HA automations:
+  #   - "Dim living room lights when Plex starts playing"
+  #   - "Show 'Now Playing' on kitchen display"
+  #   - Weekly AI digest of watch habits (via n8n workflow)
+  #
+  # HA webhook setup: Tautulli → Settings → Notification Agents → Webhook
+  #   URL: http://192.168.1.149:8123/api/webhook/plex_playing
+  #   Events: Playback Start, Playback Stop, Playback Pause
+  tautulli:
+    image: lscr.io/linuxserver/tautulli:latest
+    container_name: tautulli
+    restart: unless-stopped
+    ports:
+      - "8181:8181"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/tautulli:/config
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8181' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - media
+
+  # ─── Maintainerr — automated library cleanup ─────────────────────────────────
+  # Removes media automatically based on watch rules you define in the UI:
+  #   - Delete watched movies older than 90 days (fewer than 3 plays)
+  #   - Remove finished TV seasons after 30 days
+  #   - Keep anything on wishlists from Overseerr
+  # All configuration is done through the web UI — no config files.
+  # Access: http://192.168.1.222:6246
+  maintainerr:
+    image: ghcr.io/maintainerr/maintainerr:latest
+    container_name: maintainerr
+    restart: unless-stopped
+    ports:
+      - "6246:6246"
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/maintainerr:/opt/data
+    networks:
+      - media
+
+  # ─── Recyclarr — TRaSH Guides quality profile sync ───────────────────────────
+  # Syncs optimal quality profiles and custom formats from the community-maintained
+  # TRaSH Guides (trash-guides.info) to your Sonarr and Radarr automatically.
+  # Run once manually after deploy, then on a schedule.
+  #
+  # Configuration: edit ${APPDATA_PATH}/recyclarr/recyclarr.yml
+  # See docs/DUMB_STACK_GUIDE.md for a ready-made recyclarr.yml template.
+  #
+  # Manual sync: docker exec recyclarr recyclarr sync
+  recyclarr:
+    image: ghcr.io/recyclarr/recyclarr:latest
+    container_name: recyclarr
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+      # API keys injected so recyclarr.yml can use !env_var references
+      - SONARR_API_KEY=${SONARR_API_KEY}
+      - RADARR_API_KEY=${RADARR_API_KEY}
+    volumes:
+      - ${APPDATA_PATH}/recyclarr:/config
+    networks:
+      - media
+
+  # ─── Huntarr — missing content finder ───────────────────────────────────────
+  # ghcr.io/plexguide/huntarr:latest has "manifest unknown" — image unavailable.
+  # Huntarr has reorganized into per-app images (huntarr/4sonarr, huntarr/4radarr).
+  # The unified image has not yet been republished. Commented out until available.
+  # huntarr:
+  #   image: ghcr.io/plexguide/huntarr:latest
+  #   container_name: huntarr
+  #   restart: unless-stopped
+  #   ports:
+  #     - "9705:9705"
+  #   environment:
+  #     - TZ=${TZ}
+  #   volumes:
+  #     - ${APPDATA_PATH}/huntarr:/config
+  #   networks:
+  #     - media
+
+  # ─── Notifiarr — rich notifications hub ──────────────────────────────────────
+  # Sends beautiful Discord/Slack/Pushover notifications for:
+  #   - New Plex additions (with poster art)
+  #   - *arr health alerts and download completions
+  #   - Tautulli "Now Playing" updates
+  #   - Container health from Uptime Kuma
+  # Requires a free account at notifiarr.com for the Discord bot token.
+  notifiarr:
+    image: golift/notifiarr:latest
+    container_name: notifiarr
+    restart: unless-stopped
+    ports:
+      - "5454:5454"
+    environment:
+      - TZ=${TZ}
+      - DN_API_KEY=${NOTIFIARR_API_KEY}
+    volumes:
+      - ${APPDATA_PATH}/notifiarr:/config
+    networks:
+      - media
+
+  # ─── Kometa — Plex collection & overlay manager ───────────────────────────────
+  # Formerly Plex Meta Manager. Automatically:
+  #   - Creates and updates collections (Genre, Decade, Studio, IMDb Top 250...)
+  #   - Applies visual overlays: resolution badge (4K/1080p), audio codec, HDR, edition
+  #   - Pulls ratings from MDbList, Rotten Tomatoes, Metacritic
+  #   - Syncs from Trakt, IMDb, and MDbList lists
+  # Runs daily at 04:00 (set by KOMETA_TIME). No UI — configure via config.yml.
+  #
+  # Configuration: ${APPDATA_PATH}/kometa/config.yml
+  # See docs/DUMB_STACK_GUIDE.md for a ready-made config.yml template.
+  # Image: kometateam/kometa:latest (NOT meisnate12/plexmetamanager — deprecated)
+  kometa:
+    image: kometateam/kometa:latest
+    container_name: kometa
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+      # Run at 4am daily; use KOMETA_RUN=true to run immediately on start
+      - KOMETA_TIME=04:00
+      - KOMETA_RUN=false
+      - KOMETA_IGNORE_SCHEDULES=false
+      # Connect to Plex (token from PLEX_TOKEN in .env)
+      - PLEX_TOKEN=${PLEX_TOKEN}
+    volumes:
+      - ${APPDATA_PATH}/kometa:/config
+    networks:
+      - media
+
+networks:
+  media:
+    external: true
+    name: media

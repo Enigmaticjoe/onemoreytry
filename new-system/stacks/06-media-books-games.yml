@@ -1,0 +1,214 @@
+# new-system — Stack 06: Books, Comics & Games
+# Node B · Unraid · 192.168.1.222
+#
+# Full digital library for every non-video media type.
+#
+# Services:
+#   calibre-web  — Web ebook reader + Kindle send-to-device + format conversion
+#                  DOCKER_MODS: linuxserver/mods:universal-calibre adds full
+#                  Calibre binary for epub→mobi/azw3 conversion in-container
+#   kavita       — Unified ebook + comics + manga reading server (OPDS + Kobo sync)
+#   komga        — Comics/manga server (stronger CBZ/CBR support than Kavita)
+#   gamevault    — PC game installer library server (Windows client for launching)
+#   gamevault-db — PostgreSQL for GameVault metadata
+#   romm         — Retro ROM manager with web emulator (EmulatorJS built-in)
+#   romm-db      — MariaDB for Romm metadata
+#
+# Readarr (Stack 04) feeds books to MEDIA_PATH/books.
+# Kavita and Calibre-Web both read from that path.
+#
+# PUID=99 PGID=100  |  Appdata: /mnt/user/appdata/DUMB/<service>
+#
+# Deploy:
+#   docker compose -f stacks/06-media-books-games.yml up -d
+
+services:
+
+  # ─── Calibre-Web — ebook library + send-to-Kindle ────────────────────────────
+  # Reads from the same Calibre library that Readarr writes to.
+  # DOCKER_MODS adds the full Calibre binary for format conversion:
+  #   epub → mobi, epub → azw3, pdf → epub, etc.
+  # Kobo sync is built-in — pair your Kobo to get your full library on device.
+  calibre-web:
+    image: lscr.io/linuxserver/calibre-web:latest
+    container_name: calibre-web
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      # Adds full Calibre binary — required for format conversion
+      - DOCKER_MODS=linuxserver/mods:universal-calibre
+    volumes:
+      - ${APPDATA_PATH}/calibre-web:/config
+      # Calibre library directory (Readarr writes here)
+      - ${MEDIA_PATH}/books:/books
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - media
+
+  # ─── Kavita — unified ebook + comics + manga reader ──────────────────────────
+  # Best single app if you have a mix of ebooks AND comics/manga.
+  # Supports: EPUB, PDF, CBZ, CBR, CBT, CB7, EPUB3
+  # OPDS feed for e-reader apps; native Kobo sync support.
+  # Access: http://192.168.1.222:5000
+  kavita:
+    image: jvmilazz0/kavita:latest
+    container_name: kavita
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ${MEDIA_PATH}/books:/books
+      - ${MEDIA_PATH}/comics:/comics
+      - ${MEDIA_PATH}/manga:/manga
+      - ${APPDATA_PATH}/kavita:/kavita/config
+    environment:
+      - TZ=${TZ}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - media
+
+  # ─── Komga — comics & manga server ───────────────────────────────────────────
+  # Stronger CBZ/CBR support than Kavita. Better for large manga collections.
+  # If you only have ebooks (no comics), use Kavita and skip Komga.
+  # OPDS + streaming API for apps like Tachiyomi, Paperback, Panels.
+  # Access: http://192.168.1.222:25600
+  komga:
+    image: gotson/komga:latest
+    container_name: komga
+    restart: unless-stopped
+    ports:
+      - "25600:25600"
+    volumes:
+      - ${MEDIA_PATH}/comics:/data/comics
+      - ${MEDIA_PATH}/manga:/data/manga
+      - ${APPDATA_PATH}/komga:/config
+    environment:
+      - TZ=${TZ}
+    networks:
+      - media
+
+  # ─── GameVault — PC game installer library ───────────────────────────────────
+  # Serves PC game installers (ISOs, exe, zip) to Windows users via the
+  # GameVault desktop client. Think of it as a self-hosted GOG client.
+  # RAWG.io API provides metadata + cover art.
+  #
+  # Client download: https://phalco.de/products/gamevault/
+  # Access: http://192.168.1.222:8998
+  gamevault:
+    image: phalcode/gamevault-backend:latest
+    container_name: gamevault
+    restart: unless-stopped
+    ports:
+      - "8998:8080"
+    environment:
+      - TZ=${TZ}
+      - DB_SYSTEM=POSTGRESQL
+      - DB_HOST=gamevault-db
+      - DB_PORT=5432
+      - DB_USERNAME=gamevault
+      - DB_PASSWORD=${GAMEVAULT_DB_PASSWORD}
+      - DB_DATABASE=gamevault
+      # RAWG.io metadata API key — https://rawg.io/apidocs
+      - RAWG_API_KEY=${RAWG_API_KEY}
+      - SERVER_ADMIN_USERNAME=${GAMEVAULT_ADMIN_USER}
+      - SERVER_ADMIN_PASSWORD=${GAMEVAULT_ADMIN_PASSWORD}
+    volumes:
+      - ${MEDIA_PATH}/games:/files
+      - ${APPDATA_PATH}/gamevault/images:/images
+    depends_on:
+      gamevault-db:
+        condition: service_healthy
+    networks:
+      - media
+
+  gamevault-db:
+    image: postgres:16-alpine
+    container_name: gamevault-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=gamevault
+      - POSTGRES_PASSWORD=${GAMEVAULT_DB_PASSWORD}
+      - POSTGRES_DB=gamevault
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/gamevault/db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gamevault"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - media
+
+  # ─── Romm — retro ROM manager with web emulator ──────────────────────────────
+  # Web-based ROM library manager. IGDB metadata + cover art. EmulatorJS built-in
+  # for in-browser play. Supports every major retro platform.
+  # Best for: NES, SNES, N64, GBA, PS1, PS2, and anything MAME/FBNeo.
+  #
+  # IGDB API credentials: create a Twitch developer app at dev.twitch.tv
+  # SteamGridDB API: steamgriddb.com for extra cover art
+  # Access: http://192.168.1.222:9083
+  romm:
+    image: rommapp/romm:latest
+    container_name: romm
+    restart: unless-stopped
+    ports:
+      - "9083:8080"
+    environment:
+      - TZ=${TZ}
+      - DB_HOST=romm-db
+      - DB_PORT=3306
+      - DB_USER=romm
+      - DB_PASSWD=${ROMM_DB_PASSWORD}
+      - DB_NAME=romm
+      - ROMM_AUTH_SECRET_KEY=${ROMM_SECRET_KEY}
+      - IGDB_CLIENT_ID=${IGDB_CLIENT_ID}
+      - IGDB_CLIENT_SECRET=${IGDB_CLIENT_SECRET}
+      - STEAMGRIDDB_API_KEY=${STEAMGRIDDB_API_KEY}
+    volumes:
+      - ${APPDATA_PATH}/romm:/romm/data
+      - ${MEDIA_PATH}/roms:/romm/library/roms
+      - ${MEDIA_PATH}/bios:/romm/library/bios:ro
+    depends_on:
+      romm-db:
+        condition: service_healthy
+    networks:
+      - media
+
+  romm-db:
+    image: mariadb:10
+    container_name: romm-db
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${ROMM_DB_PASSWORD}
+      - MYSQL_DATABASE=romm
+      - MYSQL_USER=romm
+      - MYSQL_PASSWORD=${ROMM_DB_PASSWORD}
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/romm/db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - media
+
+networks:
+  media:
+    external: true
+    name: media

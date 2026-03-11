@@ -1,0 +1,319 @@
+# new-system — Stack 03: DUMB AIO Core
+# Node B · Unraid · 192.168.1.222
+#
+# DUMB = Debrid · Unraid · Mount · Based
+#
+# This stack is the Real-Debrid acquisition engine.
+# It replaces the traditional "download → store → serve" pipeline with
+# instant cloud-cached streaming via symlinks:
+#
+#   Real-Debrid cloud ← Zurg WebDAV daemon
+#           ↓
+#   rclone FUSE mount at /mnt/debrid/
+#           ↓
+#   Riven engine: scrapes → resolves via RD → creates symlinks
+#           ↓
+#   /mnt/debrid/riven_symlinks/  ← Plex and Jellyfin point ONLY here
+#
+# Services:
+#   zurg            — Wraps Real-Debrid API as a WebDAV filesystem
+#   rclone          — FUSE-mounts Zurg at /mnt/debrid/ (rshared propagation)
+#   riven-db        — PostgreSQL 17 state for Riven backend
+#   riven           — Intelligent engine: scrapes, resolves RD, creates symlinks,
+#                     notifies Plex/Jellyfin to scan. Replaces *arr for RD content.
+#   riven-frontend  — SvelteKit dashboard for Riven monitoring and configuration
+#   zilean          — IMDb-based timestamp scraper cache (speeds up Riven scraping)
+#
+# Prerequisites — run ONCE on the Unraid host before first deploy:
+#   mkdir -p /mnt/debrid /mnt/debrid/riven_symlinks
+#   mount --bind /mnt/debrid /mnt/debrid
+#   mount --make-rshared /mnt/debrid
+#   (Add these to /etc/rc.local or an Unraid user script for persistence)
+#
+# Also create /mnt/user/appdata/DUMB/zurg/config.yaml — see docs/DUMB_STACK_GUIDE.md
+#
+# PUID=99 PGID=100  |  Appdata: /mnt/user/appdata/DUMB/<service>
+#
+# Deploy order: zurg → rclone → riven-db → riven → riven-frontend → zilean
+#
+# Deploy:
+#   docker compose -f stacks/03-dumb-core.yml up -d
+#
+# Verify:
+#   curl http://192.168.1.222:9999/dav/         # Zurg WebDAV listing
+#   ls /mnt/debrid/                              # rclone FUSE mount
+#   curl http://192.168.1.222:8080/health        # Riven backend
+#   curl http://192.168.1.222:3001/              # Riven frontend
+
+volumes:
+  riven-pg-data:
+    driver: local
+
+services:
+
+  # ─── Zurg — Real-Debrid WebDAV daemon ───────────────────────────────────────
+  # Presents your Real-Debrid account as a WebDAV filesystem.
+  # rclone mounts this via the zurg: remote defined in rclone.conf.
+  #
+  # REQUIRED: Create /mnt/user/appdata/DUMB/zurg/config.yaml
+  # See docs/DUMB_STACK_GUIDE.md for the full config.yaml template.
+  #
+  # Key config.yaml fields:
+  #   token: YOUR_REAL_DEBRID_API_KEY
+  #   concurrent_workers: 20
+  #   retain_folder_name_extension: true
+  zurg:
+    image: ghcr.io/debridmediamanager/zurg-testing:latest
+    container_name: zurg
+    restart: unless-stopped
+    ports:
+      - "9999:9999"
+    environment:
+      - TZ=${TZ}
+    volumes:
+      # config.yaml MUST exist before starting — contains your RD API token
+      - ${APPDATA_PATH}/zurg/config.yml:/app/config.yml:ro
+      - ${APPDATA_PATH}/zurg/data:/app/data
+    healthcheck:
+      # WebDAV returns 207 Multi-Status; curl without -f accepts any response
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://localhost:9999/dav/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - media
+
+  # ─── rclone — FUSE mount of Zurg WebDAV ─────────────────────────────────────
+  # Mounts the Zurg WebDAV at /mnt/debrid/ on the Unraid host.
+  # Uses rshared propagation so that Plex, Riven, and other containers
+  # that bind-mount /mnt/debrid/ all see the same live filesystem.
+  #
+  # REQUIRED: Create /mnt/user/appdata/DUMB/rclone/rclone.conf with:
+  #   [zurg]
+  #   type = webdav
+  #   url = http://zurg:9999/dav
+  #   vendor = other
+  #   pacer_min_sleep = 0
+  #
+  # The --vfs-cache-mode full flag is MANDATORY for Plex direct play of 4K content.
+  rclone:
+    image: rclone/rclone:latest
+    container_name: rclone-zurg
+    restart: unless-stopped
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse:/dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ${APPDATA_PATH}/rclone:/config/rclone
+      # rshared propagation: host sees the mount, other containers bind-mount it too
+      - ${DEBRID_MOUNT}:/mnt/debrid:rshared
+    command: >
+      mount zurg: /mnt/debrid
+      --allow-other
+      --allow-non-empty
+      --poll-interval 15s
+      --dir-cache-time 1000h
+      --vfs-read-chunk-size 128M
+      --vfs-read-chunk-size-limit off
+      --buffer-size 256M
+      --vfs-cache-mode full
+      --vfs-cache-max-size 20G
+      --transfers 8
+      --log-level INFO
+    depends_on:
+      zurg:
+        condition: service_healthy
+    networks:
+      - media
+
+  # ─── Riven PostgreSQL — backend database ─────────────────────────────────────
+  riven-db:
+    image: postgres:17-alpine
+    container_name: riven-db
+    restart: unless-stopped
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - POSTGRES_USER=${RIVEN_DB_USER}
+      - POSTGRES_PASSWORD=${RIVEN_DB_PASSWORD}
+      - POSTGRES_DB=${RIVEN_DB_NAME}
+      - TZ=${TZ}
+    volumes:
+      - riven-pg-data:/var/lib/postgresql/data/pgdata
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${RIVEN_DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - media
+
+  # ─── Riven — intelligent RD acquisition engine ───────────────────────────────
+  # The heart of DUMB AIO. Riven:
+  #   1. Accepts requests from Overseerr (or its own UI / Pulsarr / watchlists)
+  #   2. Scrapes Torrentio / Zilean for matching torrents
+  #   3. Resolves via Real-Debrid API (cached-only by default)
+  #   4. Creates symlinks in /mnt/debrid/riven_symlinks/
+  #   5. Notifies Plex / Jellyfin to scan the new symlink
+  #
+  # Result: new content appears in Plex within ~30 seconds of request.
+  #
+  # Image: ghcr.io/rivenmedia/riven:latest
+  # GitHub: https://github.com/rivenmedia/riven
+  riven:
+    image: ghcr.io/rivenmedia/riven:latest
+    container_name: riven
+    restart: unless-stopped
+    shm_size: ${RIVEN_SHM_SIZE}
+    ports:
+      - "8080:8080"
+    tty: true
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      # Database
+      - RIVEN_FORCE_ENV=true
+      - RIVEN_DATABASE_HOST=postgresql+psycopg2://${RIVEN_DB_USER}:${RIVEN_DB_PASSWORD}@riven-db:5432/${RIVEN_DB_NAME}
+      # Real-Debrid — CACHED ONLY is the DUMB default
+      - RIVEN_DOWNLOADERS_REAL_DEBRID_ENABLED=true
+      - RIVEN_DOWNLOADERS_REAL_DEBRID_API_KEY=${REAL_DEBRID_API_KEY}
+      # Symlink paths — /data = where riven writes symlinks; /mnt/debrid = RD FUSE content
+      - RIVEN_SYMLINK_LIBRARY_PATH=/data
+      - RIVEN_SYMLINK_RCLONE_PATH=/mnt/debrid
+      # Plex updater
+      - RIVEN_UPDATERS_PLEX_ENABLED=true
+      - RIVEN_UPDATERS_PLEX_URL=http://${NODE_B_IP}:32400
+      - RIVEN_UPDATERS_PLEX_TOKEN=${PLEX_TOKEN}
+      # Jellyfin updater — enable once JELLYFIN_API_KEY is set
+      - RIVEN_UPDATERS_JELLYFIN_ENABLED=false
+      - RIVEN_UPDATERS_JELLYFIN_URL=http://jellyfin:8096
+      - RIVEN_UPDATERS_JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
+      # Scrapers — Torrentio is the primary; Zilean provides speed
+      - RIVEN_SCRAPERS_TORRENTIO_ENABLED=true
+      - RIVEN_SCRAPERS_TORRENTIO_URL=https://torrentio.strem.fun
+      - RIVEN_SCRAPERS_ZILEAN_ENABLED=true
+      - RIVEN_SCRAPERS_ZILEAN_URL=http://zilean:8181
+      # Overseerr integration
+      - RIVEN_CONTENT_OVERSEERR_ENABLED=true
+      - RIVEN_CONTENT_OVERSEERR_URL=http://overseerr:5055
+      - RIVEN_CONTENT_OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
+      # API key for external access (n8n, frontend)
+      - RIVEN_API_KEY=${RIVEN_API_KEY}
+    volumes:
+      - ${APPDATA_PATH}/riven:/riven/data
+      # rshared: Riven reads the mounted RD content AND writes symlinks here
+      - ${DEBRID_MOUNT}:/mnt/debrid:rshared
+      - ${RIVEN_SYMLINKS}:/data:rshared
+    depends_on:
+      riven-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/v1/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    networks:
+      - media
+
+  # ─── Riven Frontend — SvelteKit dashboard ────────────────────────────────────
+  # Monitor what Riven is doing, configure scrapers, view request queue.
+  # Access: http://192.168.1.222:3001
+  riven-frontend:
+    image: ghcr.io/rivenmedia/riven-frontend:latest
+    container_name: riven-frontend
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - TZ=${TZ}
+      - BACKEND_URL=http://riven:8080
+      - BACKEND_API_KEY=${RIVEN_API_KEY}
+      - AUTH_SECRET=${RIVEN_AUTH_SECRET}
+      - ORIGIN=http://${NODE_B_IP}:3001
+    volumes:
+      - ${APPDATA_PATH}/riven-frontend:/riven/data
+    depends_on:
+      riven:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - media
+
+  # ─── Zilean DB — PostgreSQL for Zilean ───────────────────────────────────────
+  zilean-db:
+    image: postgres:16-alpine
+    container_name: zilean-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=zilean
+      - POSTGRES_DB=zilean
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - ${APPDATA_PATH}/zilean/db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d zilean"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      media:
+        aliases:
+          - postgres
+
+  # ─── Zilean — IMDb timestamp scraper cache ───────────────────────────────────
+  # Caches scraper results by IMDb ID and timestamp. Dramatically speeds up
+  # Riven's ability to find and match content — especially for TV episodes.
+  # Riven points its Zilean scraper at http://zilean:8181
+  zilean:
+    image: ipromknight/zilean:latest
+    container_name: zilean
+    restart: unless-stopped
+    depends_on:
+      zilean-db:
+        condition: service_healthy
+    extra_hosts:
+      - "postgres:172.28.0.6"
+    ports:
+      - "8280:8181"
+    environment:
+      - TZ=${TZ}
+      - ZILEAN__APIKEY=${ZILEAN_API_KEY}
+      - ZILEAN__DB__CONNECTIONSTRING=Host=postgres;Port=5432;Database=zilean;Username=postgres;Password=zilean
+      - POSTGRES_PASSWORD=zilean
+    volumes:
+      - ${APPDATA_PATH}/zilean:/app/data
+    healthcheck:
+      # API routes are available after initial DMM sync completes (can take 1–2h first run)
+      # Use TCP port check so healthcheck passes as soon as the service is listening
+      # curl without -f: succeeds on any HTTP response (even 404) — fails only if no connection
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://localhost:8181/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - media
+
+networks:
+  media:
+    name: media
+    driver: bridge

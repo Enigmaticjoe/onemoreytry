@@ -1,0 +1,351 @@
+# Homepage — services.yaml for Project Chimera
+# Live path: /mnt/user/appdata/DUMB/homepage/config/services.yaml
+# Homepage reloads automatically — no restart needed after edits.
+# Docs: https://gethomepage.dev/configs/services/
+
+# ─── AI & Voice ───────────────────────────────────────────────────────────────
+- AI & Voice:
+    - Open WebUI (B):
+        href: http://192.168.1.222:3002
+        description: AI chat · RTX 4070 · brawn-* models
+        icon: open-webui.png
+        widget:
+          type: customapi
+          url: http://192.168.1.222:3002/api/health
+          method: GET
+          mappings:
+            - field: status
+              label: Status
+
+    - LiteLLM:
+        href: http://192.168.1.222:4000
+        description: Unified AI gateway · 13 model routes
+        icon: ollama.png
+        widget:
+          type: customapi
+          url: http://192.168.1.222:4000/health/readiness
+          method: GET
+          headers:
+            Authorization: Bearer sk-chimera-master-2026
+          mappings:
+            - field: status
+              label: Gateway
+
+    - Ollama (B):
+        href: http://192.168.1.222:11434
+        description: GPU inference · RTX 4070 12GB VRAM
+        icon: ollama.png
+        widget:
+          type: customapi
+          url: http://192.168.1.222:11434/api/version
+          method: GET
+          mappings:
+            - field: version
+              label: Version
+
+    - n8n:
+        href: http://192.168.1.222:5678
+        description: Workflow automation · voice → media
+        icon: n8n.png
+        widget:
+          type: n8n
+          url: http://192.168.1.222:5678
+          username: "{{HOMEPAGE_VAR_N8N_USER}}"
+          password: "{{HOMEPAGE_VAR_N8N_PASSWORD}}"
+
+    - Whisper API:
+        href: http://192.168.1.222:9191
+        description: GPU speech-to-text · OpenAI-compatible
+        icon: microphone.png
+        widget:
+          type: customapi
+          url: http://192.168.1.222:9191/health
+          method: GET
+          mappings:
+            - field: status
+              label: STT
+
+    - SearXNG:
+        href: http://192.168.1.222:8082
+        description: Private meta-search · AI RAG web source
+        icon: searxng.png
+
+# ─── Real-Debrid / DUMB Core ──────────────────────────────────────────────────
+- DUMB Core:
+    - Riven:
+        href: http://192.168.1.222:3001
+        description: Real-Debrid scrape + symlink engine
+        icon: riven.png
+        widget:
+          type: customapi
+          url: http://192.168.1.222:8080/api/v1/
+          method: GET
+          mappings:
+            - field: status
+              label: Status
+
+    - Zurg:
+        href: http://192.168.1.222:9999/dav/
+        description: Real-Debrid WebDAV daemon
+        icon: cloud.png
+
+    - Zilean:
+        href: http://192.168.1.222:8280
+        description: DMM hash cache · scraper acceleration
+        icon: database.png
+
+# ─── Media Requests ───────────────────────────────────────────────────────────
+- Requests:
+    - Overseerr:
+        href: http://192.168.1.222:5055
+        description: Media request portal
+        icon: overseerr.png
+        widget:
+          type: overseerr
+          url: http://192.168.1.222:5055
+          key: "{{HOMEPAGE_VAR_OVERSEERR_API_KEY}}"
+
+    - Radarr:
+        href: http://192.168.1.222:7878
+        description: Movie automation
+        icon: radarr.png
+        widget:
+          type: radarr
+          url: http://192.168.1.222:7878
+          key: "{{HOMEPAGE_VAR_RADARR_API_KEY}}"
+
+    - Sonarr:
+        href: http://192.168.1.222:8989
+        description: TV show automation
+        icon: sonarr.png
+        widget:
+          type: sonarr
+          url: http://192.168.1.222:8989
+          key: "{{HOMEPAGE_VAR_SONARR_API_KEY}}"
+
+    - Lidarr:
+        href: http://192.168.1.222:8686
+        description: Music automation
+        icon: lidarr.png
+        widget:
+          type: lidarr
+          url: http://192.168.1.222:8686
+          key: "{{HOMEPAGE_VAR_LIDARR_API_KEY}}"
+
+    - Prowlarr:
+        href: http://192.168.1.222:9696
+        description: Indexer manager
+        icon: prowlarr.png
+        widget:
+          type: prowlarr
+          url: http://192.168.1.222:9696
+          key: "{{HOMEPAGE_VAR_PROWLARR_API_KEY}}"
+
+    - Bazarr:
+        href: http://192.168.1.222:6767
+        description: AI subtitle generation · Whisper GPU
+        icon: bazarr.png
+        widget:
+          type: bazarr
+          url: http://192.168.1.222:6767
+          key: "{{HOMEPAGE_VAR_BAZARR_API_KEY}}"
+
+# ─── Media Servers ────────────────────────────────────────────────────────────
+- Media Servers:
+    - Plex:
+        href: http://192.168.1.222:32400/web
+        description: Primary media server
+        icon: plex.png
+        widget:
+          type: plex
+          url: http://192.168.1.222:32400
+          key: "{{HOMEPAGE_VAR_PLEX_TOKEN}}"
+
+    - Jellyfin:
+        href: http://192.168.1.222:8096
+        description: Open-source media server
+        icon: jellyfin.png
+        widget:
+          type: jellyfin
+          url: http://192.168.1.222:8096
+          key: "{{HOMEPAGE_VAR_JELLYFIN_API_KEY}}"
+          enableBlocks: true
+          enableNowPlaying: true
+
+    - Tautulli:
+        href: http://192.168.1.222:8181
+        description: Plex analytics & statistics
+        icon: tautulli.png
+        widget:
+          type: tautulli
+          url: http://192.168.1.222:8181
+          key: "{{HOMEPAGE_VAR_TAUTULLI_API_KEY}}"
+
+    - Navidrome:
+        href: http://192.168.1.222:4533
+        description: Music streaming · SubSonic API
+        icon: navidrome.png
+        widget:
+          type: navidrome
+          url: http://192.168.1.222:4533
+          user: "{{HOMEPAGE_VAR_NAVIDROME_USER}}"
+          token: "{{HOMEPAGE_VAR_NAVIDROME_TOKEN}}"
+          salt: "{{HOMEPAGE_VAR_NAVIDROME_SALT}}"
+
+    - Audiobookshelf:
+        href: http://192.168.1.222:13378
+        description: Audiobooks & podcasts
+        icon: audiobookshelf.png
+        widget:
+          type: audiobookshelf
+          url: http://192.168.1.222:13378
+          key: "{{HOMEPAGE_VAR_ABS_API_KEY}}"
+
+    - Stremio:
+        href: http://192.168.1.222:11470
+        description: Streaming via Real-Debrid addons
+        icon: stremio.png
+
+# ─── Books & Games ────────────────────────────────────────────────────────────
+- Books & Games:
+    - Kavita:
+        href: http://192.168.1.222:5000
+        description: Ebooks, comics & manga
+        icon: kavita.png
+        widget:
+          type: kavita
+          url: http://192.168.1.222:5000
+          username: "{{HOMEPAGE_VAR_KAVITA_USER}}"
+          password: "{{HOMEPAGE_VAR_KAVITA_PASSWORD}}"
+
+    - Komga:
+        href: http://192.168.1.222:25600
+        description: Comics & manga server
+        icon: komga.png
+        widget:
+          type: komga
+          url: http://192.168.1.222:25600
+          username: "{{HOMEPAGE_VAR_KOMGA_USER}}"
+          password: "{{HOMEPAGE_VAR_KOMGA_PASSWORD}}"
+
+    - Calibre-Web:
+        href: http://192.168.1.222:8083
+        description: Ebook library + Kindle sync
+        icon: calibre-web.png
+
+    - GameVault:
+        href: http://192.168.1.222:8998
+        description: PC game installer library
+        icon: game-controller.png
+
+    - Romm:
+        href: http://192.168.1.222:9083
+        description: Retro ROM manager + web emulator
+        icon: retro-game.png
+
+# ─── Library Intelligence ─────────────────────────────────────────────────────
+- Library Intelligence:
+    - Maintainerr:
+        href: http://192.168.1.222:6246
+        description: Automated library cleanup
+        icon: maintainerr.png
+
+    - Notifiarr:
+        href: http://192.168.1.222:5454
+        description: Rich Discord notifications
+        icon: notifiarr.png
+
+    - Flaresolverr:
+        href: http://192.168.1.222:8191
+        description: Cloudflare bypass for indexers
+        icon: flaresolverr.png
+
+    - Kometa:
+        description: Plex collections & overlays · runs 04:00 daily
+        icon: kometa.png
+
+    - Recyclarr:
+        description: TRaSH quality profile sync · cron
+        icon: recyclarr.png
+
+    - Decluttarr:
+        description: Stalled download cleaner · background
+        icon: trash.png
+
+# ─── Infrastructure ───────────────────────────────────────────────────────────
+- Infrastructure:
+    - Portainer:
+        href: https://192.168.1.222:9443
+        description: Docker management · Node B
+        icon: portainer.png
+        widget:
+          type: portainer
+          url: https://192.168.1.222:9443
+          env: 1
+          key: "{{HOMEPAGE_VAR_PORTAINER_API_KEY}}"
+
+    - Uptime Kuma:
+        href: http://192.168.1.222:3010
+        description: Service health monitor
+        icon: uptime-kuma.png
+        widget:
+          type: uptimekuma
+          url: http://192.168.1.222:3010
+          slug: chimera
+
+    - Dozzle:
+        href: http://192.168.1.222:8888
+        description: Container log viewer · real-time
+        icon: dozzle.png
+
+    - Browserless:
+        href: http://192.168.1.222:3005
+        description: Headless Chrome · n8n browser automation
+        icon: chrome.png
+
+# ─── Nodes & Network ──────────────────────────────────────────────────────────
+- Nodes:
+    - Home Assistant:
+        href: http://192.168.1.149:8123
+        description: Node D · home automation hub
+        icon: home-assistant.png
+        widget:
+          type: homeassistant
+          url: http://192.168.1.149:8123
+          key: "{{HOMEPAGE_VAR_HA_TOKEN}}"
+
+    - Node A — Brain:
+        href: http://192.168.1.9:3000
+        description: RX 7900 XT 20GB · brain-* models
+        icon: server.png
+        widget:
+          type: customapi
+          url: http://192.168.1.9:11435/api/version
+          method: GET
+          mappings:
+            - field: version
+              label: Ollama
+
+    - Node C — Face:
+        href: http://192.168.1.6:3000
+        description: Intel Arc A770 16GB · intel-* models
+        icon: open-webui.png
+        widget:
+          type: customapi
+          url: http://192.168.1.6:3000/api/health
+          method: GET
+          mappings:
+            - field: status
+              label: Status
+
+    - Node C Ollama:
+        href: http://192.168.1.6:11434
+        description: Intel Arc A770 inference
+        icon: ollama.png
+        widget:
+          type: customapi
+          url: http://192.168.1.6:11434/api/version
+          method: GET
+          mappings:
+            - field: version
+              label: Version

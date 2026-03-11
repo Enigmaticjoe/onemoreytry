@@ -1,0 +1,224 @@
+# Home Assistant — Project Chimera Voice & AI Integration
+# Node D at 192.168.1.149:8123
+#
+# Add this snippet to your Home Assistant configuration.yaml
+# (or split into separate files if using packages).
+#
+# What this wires up:
+#   1. Extended OpenAI Conversation → Ollama on Node B (the AI brain)
+#   2. rest_command to POST media requests to n8n (the dispatcher)
+#   3. intent_script to handle voice media commands from Alexa / voice pipelines
+#   4. notify service to speak AI responses back through TTS
+#
+# ─── Prerequisites ────────────────────────────────────────────────────────────
+# HACS integrations to install first:
+#   1. Extended OpenAI Conversation
+#      HACS → Integrations → Search "Extended OpenAI Conversation"
+#      GitHub: https://github.com/jekalmin/extended_openai_conversation
+#
+# HA built-in integrations to configure:
+#   2. Wyoming STT: Settings → Voice Assistants → Speech-to-text
+#      Provider: Wyoming | Host: 192.168.1.222 | Port: 10300
+#   3. Wyoming TTS: Settings → Voice Assistants → Text-to-speech
+#      Provider: Wyoming | Host: 192.168.1.222 | Port: 10200
+#
+# Alexa integration: use Nabu Casa (cloud, easiest) or the Alexa Smart Home skill.
+# Alexa routines can trigger HA script.chimera_media_request with the spoken phrase.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ─── Extended OpenAI Conversation ─────────────────────────────────────────────
+# Points to Ollama on Node B via the OpenAI-compatible endpoint.
+# This lets the AI control HA directly (lights, switches, scenes, media)
+# AND respond to natural language queries about your home.
+#
+# After adding this config, go to:
+#   Settings → Integrations → Add Integration → Extended OpenAI Conversation
+#   API Key: sk-none       (Ollama doesn't require a real key)
+#   Base URL: http://192.168.1.222:11434/v1
+#   Model: llama3.1:8b    (or qwen2.5:7b — both support tool calling)
+openai_conversation:
+  - id: chimera_ai
+    name: Chimera AI
+    api_key: !secret ollama_api_key
+    base_url: http://192.168.1.222:11434/v1
+    model: llama3.1:8b
+    prompt: >
+      You are Chimera, the home AI assistant for this household.
+      You have access to Home Assistant controls for lights, climate, media, and security.
+      You can also add media content to the library when asked.
+      When a user asks to add, download, or request media (movies, TV shows, music, books, games),
+      call the chimera_media_request service with the exact user request as the command.
+      Be conversational, friendly, and concise. Always confirm what action you took.
+      Current date: {{ now().strftime('%A, %B %d %Y') }}
+
+# ─── rest_command — n8n media request webhook ─────────────────────────────────
+# Used by intent_script and Extended OpenAI Conversation to dispatch requests to n8n.
+# n8n receives the command, classifies it with Ollama, and calls the right API.
+rest_command:
+  chimera_media_request:
+    url: "http://192.168.1.222:5678/webhook/media-request"
+    method: POST
+    content_type: application/json
+    verify_ssl: false
+    payload: >
+      {
+        "command": "{{ command }}",
+        "source": "{{ source | default('home_assistant') }}",
+        "user": "{{ user | default('unknown') }}"
+      }
+
+  # Direct n8n webhook for arbitrary automation triggers
+  n8n_trigger:
+    url: "http://192.168.1.222:5678/webhook/{{ workflow_id }}"
+    method: POST
+    content_type: application/json
+    verify_ssl: false
+    payload: >
+      {
+        "trigger": "{{ trigger_name }}",
+        "data": {{ data | default('{}') }}
+      }
+
+# ─── intent_script — voice command handlers ───────────────────────────────────
+# These intents are triggered by:
+#   1. Alexa routines (via HA Alexa integration) speaking custom phrases
+#   2. Home Assistant voice pipeline (Wyoming Whisper STT → intent matching)
+#   3. Any HA conversation agent that detects a media-related intent
+intent_script:
+
+  # "Alexa, tell home assistant to add [movie/show/book]"
+  # "Hey Jarvis, add Dune 3 to my movies"
+  ChimeraAddMedia:
+    speech:
+      text: >
+        {% if response_text is defined %}
+          {{ response_text }}
+        {% else %}
+          Got it. I'm adding {{ media_title | default('that') }} to the queue now.
+        {% endif %}
+    action:
+      - service: rest_command.chimera_media_request
+        data:
+          command: "add {{ media_title }}"
+          source: "alexa_intent"
+          user: "{{ user }}"
+        response_variable: n8n_response
+      - variables:
+          response_text: >
+            {{ n8n_response.content.message | default('Request sent to the media queue.') }}
+
+  # "What's playing?" / "What's on Plex?"
+  ChimeraWhatsPlaying:
+    speech:
+      text: >
+        {% set states = states.media_player | selectattr('state', 'eq', 'playing') | list %}
+        {% if states | length > 0 %}
+          Currently playing: {{ states[0].attributes.media_title | default('something') }}
+          on {{ states[0].attributes.friendly_name | default('a device') }}.
+        {% else %}
+          Nothing is playing right now.
+        {% endif %}
+
+  # "Search for [title]" — returns availability info
+  ChimeraSearchMedia:
+    speech:
+      text: >
+        Searching for {{ media_title }}. I'll let you know what I find.
+    action:
+      - service: rest_command.chimera_media_request
+        data:
+          command: "search {{ media_title }}"
+          source: "alexa_intent"
+
+  # "Movie night" — scene: dim lights, turn on TV, start Plex screensaver
+  ChimeraMovieNight:
+    speech:
+      text: "Setting up movie night. Enjoy the show!"
+    action:
+      - service: scene.turn_on
+        target:
+          entity_id: scene.movie_night
+      - service: media_player.turn_on
+        target:
+          entity_id: media_player.living_room_tv
+
+# ─── automation — Plex/Tautulli playing webhook ───────────────────────────────
+# Tautulli sends a webhook to HA when playback starts/stops.
+# HA then triggers automations (lights, displays, etc.)
+automation chimera_plex_webhooks:
+  - alias: "Chimera: Dim lights on Plex playback start"
+    trigger:
+      - platform: webhook
+        webhook_id: plex_playing
+        allowed_methods:
+          - POST
+    condition:
+      - condition: template
+        value_template: "{{ trigger.json.event == 'media.play' }}"
+    action:
+      - service: scene.turn_on
+        target:
+          entity_id: scene.movie_night
+    mode: single
+
+  - alias: "Chimera: Restore lights on Plex pause/stop"
+    trigger:
+      - platform: webhook
+        webhook_id: plex_playing
+        allowed_methods:
+          - POST
+    condition:
+      - condition: template
+        value_template: "{{ trigger.json.event in ['media.pause', 'media.stop'] }}"
+    action:
+      - service: scene.turn_on
+        target:
+          entity_id: scene.normal_lighting
+    mode: single
+
+  # n8n calls this when a media request is fulfilled
+  - alias: "Chimera: Announce new media ready"
+    trigger:
+      - platform: webhook
+        webhook_id: chimera_media_ready
+        allowed_methods:
+          - POST
+    action:
+      - service: tts.speak
+        target:
+          entity_id: tts.piper
+        data:
+          message: "{{ trigger.json.message }}"
+          media_player_entity_id: media_player.living_room_speaker
+    mode: queued
+
+# ─── script — reusable script for n8n to call back ────────────────────────────
+script:
+  chimera_speak:
+    alias: "Chimera: Speak a message via TTS"
+    fields:
+      message:
+        description: "The text to speak"
+        example: "Dune 3 has been added to your library."
+    sequence:
+      - service: tts.speak
+        target:
+          entity_id: tts.piper
+        data:
+          message: "{{ message }}"
+          media_player_entity_id: media_player.living_room_speaker
+
+  chimera_media_request:
+    alias: "Chimera: Send media request to n8n"
+    fields:
+      command:
+        description: "Natural language media request"
+        example: "add Breaking Bad season 1"
+      source:
+        description: "Request source (alexa, chat, voice)"
+        example: "alexa"
+    sequence:
+      - service: rest_command.chimera_media_request
+        data:
+          command: "{{ command }}"
+          source: "{{ source | default('script') }}"

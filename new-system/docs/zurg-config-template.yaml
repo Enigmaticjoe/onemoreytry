@@ -1,0 +1,58 @@
+# Zurg configuration — Project Chimera
+# Place at: /mnt/user/appdata/DUMB/zurg/config.yaml
+#
+# !! REQUIRED before starting Stack 03 !!
+# Replace YOUR_REAL_DEBRID_API_KEY with your token from:
+#   https://real-debrid.com/apitoken
+#
+# After editing, start Stack 03:
+#   docker compose -f stacks/03-dumb-core.yml up -d
+#
+# Verify Zurg is working:
+#   curl http://192.168.1.222:9999/dav/
+#   (should return a directory listing of your RD content)
+
+zurg: v1
+token: YOUR_REAL_DEBRID_API_KEY
+
+host: "[::]"
+port: 9999
+concurrent_workers: 20
+check_for_changes_every_secs: 10
+
+# Keep the original torrent name in the folder (important for *arr matching)
+retain_folder_name_extension: true
+retain_rd_torrent_name: true
+
+# Auto-remove RAR torrents from RD (they can't be FUSE-streamed)
+auto_delete_rar_torrents: false
+
+# Organize RD content into logical directories
+# Riven and Plex use these categories for library organization
+directories:
+  # TV shows — detected by episode naming patterns
+  shows:
+    group: media
+    group_order: 1
+    filters:
+      - regex: "(?i)(s\\d{2}e\\d{2}|season\\s*\\d|series\\s*\\d|complete.series|episode)"
+
+  # Movies — detected by quality markers in filename
+  movies:
+    group: media
+    group_order: 2
+    filters:
+      - regex: "(?i)(1080p|2160p|720p|4k|uhd|bluray|bdrip|webrip|hdtv|hdrip|dvdrip)"
+
+  # Anime — detected by common release group tags
+  anime:
+    group: media
+    group_order: 3
+    filters:
+      - regex: "(?i)(\\[subsplease\\]|\\[erai-raws\\]|\\[nyaa\\]|\\[judas\\]|\\[ember\\])"
+
+  # Everything else — uncategorized or mixed content
+  other:
+    group: media
+    group_order: 99
+    only_show_the_biggest_file: false

@@ -1,0 +1,349 @@
+{
+  "name": "Chimera — Media Voice Request",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "media-request",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook: Media Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "notes": "Home Assistant POSTs here when voice/Alexa media command is received.\nBody: { command: string, source: string, user: string }"
+    },
+    {
+      "parameters": {
+        "model": "llama3.1:8b",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a media request classifier for a home media server. Extract the intent from the user's request.\n\nRespond with ONLY a JSON object (no markdown, no explanation):\n{\n  \"action\": \"add\" | \"search\" | \"remove\" | \"play\" | \"status\" | \"unknown\",\n  \"media_type\": \"movie\" | \"tv\" | \"music\" | \"audiobook\" | \"book\" | \"game\" | \"podcast\" | \"unknown\",\n  \"title\": \"<extracted title or null>\",\n  \"year\": <year as integer or null>,\n  \"season\": <season number as integer or null>,\n  \"episode\": <episode number as integer or null>,\n  \"confidence\": <0.0-1.0>,\n  \"response_text\": \"<friendly one-sentence confirmation to speak back to user>\"\n}"
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.body.command }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "id": "ollama-classify",
+      "name": "Ollama: Classify Intent",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "notes": "Uses local Ollama (RTX 4070) to extract structured intent from the voice command.\nLow temperature (0.1) for deterministic JSON output."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Ollama JSON response\nconst raw = $input.first().json.message?.content || $input.first().json.text || '';\nlet parsed;\ntry {\n  // Strip markdown code fences if present\n  const cleaned = raw.replace(/```json?/g, '').replace(/```/g, '').trim();\n  parsed = JSON.parse(cleaned);\n} catch (e) {\n  parsed = {\n    action: 'unknown',\n    media_type: 'unknown',\n    title: null,\n    confidence: 0,\n    response_text: 'Sorry, I could not understand that request.'\n  };\n}\n\n// Pass through original webhook data alongside parsed intent\nreturn {\n  ...parsed,\n  original_command: $('Webhook: Media Request').first().json.body.command,\n  source: $('Webhook: Media Request').first().json.body.source || 'unknown',\n  user: $('Webhook: Media Request').first().json.body.user || 'unknown'\n};"
+      },
+      "id": "parse-intent",
+      "name": "Parse Intent JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {"caseSensitive": false, "leftValue": "", "typeValidation": "strict"},
+                "conditions": [
+                  {"leftValue": "={{ $json.action }}", "rightValue": "add", "operator": {"type": "string", "operation": "equals"}},
+                  {"leftValue": "={{ $json.confidence }}", "rightValue": 0.5, "operator": {"type": "number", "operation": "gte"}}
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "add"
+            },
+            {
+              "conditions": {
+                "options": {"caseSensitive": false, "leftValue": "", "typeValidation": "strict"},
+                "conditions": [
+                  {"leftValue": "={{ $json.action }}", "rightValue": "search", "operator": {"type": "string", "operation": "equals"}}
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "search"
+            },
+            {
+              "conditions": {
+                "options": {"caseSensitive": false, "leftValue": "", "typeValidation": "strict"},
+                "conditions": [
+                  {"leftValue": "={{ $json.action }}", "rightValue": "status", "operator": {"type": "string", "operation": "equals"}}
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "status"
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "route-action",
+      "name": "Route: Action Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {"leftValue": "={{ $json.media_type }}", "rightValue": "movie", "operator": {"type": "string", "operation": "equals"}}
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "movie"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {"leftValue": "={{ $json.media_type }}", "rightValue": "tv", "operator": {"type": "string", "operation": "equals"}}
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "tv"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {"leftValue": "={{ $json.media_type }}", "rightValue": "music", "operator": {"type": "string", "operation": "equals"}}
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "music"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {"leftValue": "={{ $json.media_type }}", "rightValue": "book", "operator": {"type": "string", "operation": "equals"}}
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "book"
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "route-media-type",
+      "name": "Route: Media Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.OVERSEERR_URL }}/api/v1/request",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {"response": {"response": {"responseFormat": "json"}}},
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {"name": "mediaType", "value": "movie"},
+            {"name": "mediaId", "value": "={{ $json.tmdb_id }}"}
+          ]
+        }
+      },
+      "id": "overseerr-movie",
+      "name": "Overseerr: Request Movie",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1340, 100],
+      "notes": "First searches TMDB via Overseerr, then creates the request.\nIn production, add a TMDB search node before this to resolve title → tmdb_id."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.OVERSEERR_URL }}/api/v1/request",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {"response": {"response": {"responseFormat": "json"}}},
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {"name": "mediaType", "value": "tv"},
+            {"name": "mediaId", "value": "={{ $json.tmdb_id }}"},
+            {"name": "seasons", "value": "all"}
+          ]
+        }
+      },
+      "id": "overseerr-tv",
+      "name": "Overseerr: Request TV Show",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1340, 220]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.OVERSEERR_URL }}/api/v1/search?query={{ encodeURIComponent($json.title) }}&page=1",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {"response": {"response": {"responseFormat": "json"}}}
+      },
+      "id": "overseerr-search",
+      "name": "Overseerr: Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build a human-readable response from the Overseerr search results\nconst results = $input.first().json.results || [];\nif (results.length === 0) {\n  return { message: `I searched for \"${$('Parse Intent JSON').first().json.title}\" but found nothing. You might want to check the spelling.` };\n}\nconst top = results.slice(0, 3).map(r => {\n  const type = r.mediaType === 'movie' ? 'Movie' : 'TV Show';\n  const year = r.releaseDate ? new Date(r.releaseDate).getFullYear() : (r.firstAirDate ? new Date(r.firstAirDate).getFullYear() : '');\n  return `${r.title || r.name}${year ? ` (${year})` : ''} [${type}]`;\n}).join(', ');\nreturn { message: `Found these matches: ${top}. Say 'add' followed by the title to request one.` };"
+      },
+      "id": "format-search-results",
+      "name": "Format Search Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.RIVEN_URL }}/api/v1/request/status",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "x-api-key", "value": "={{ $env.RIVEN_API_KEY }}"}
+          ]
+        },
+        "options": {"response": {"response": {"responseFormat": "json"}}}
+      },
+      "id": "riven-status",
+      "name": "Riven: Queue Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1340, 560]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compose the final spoken response\nconst intent = $('Parse Intent JSON').first().json;\nconst action = intent.action;\nconst title = intent.title || 'that';\nconst mediaType = intent.media_type || 'content';\n\nlet message;\nif (action === 'add') {\n  message = `Got it! I've sent a request for ${title} to the ${mediaType} library. It should appear in Plex within a minute if it's available on Real-Debrid.`;\n} else if (action === 'search') {\n  message = $('Format Search Results').first()?.json?.message || intent.response_text;\n} else if (action === 'status') {\n  const q = $('Riven: Queue Status').first()?.json;\n  const count = q?.active_requests || 0;\n  message = `Riven is processing ${count} active request${count !== 1 ? 's' : ''} right now.`;\n} else {\n  message = intent.response_text || \"I'm not sure how to handle that request. Try saying 'add' followed by the title.\";\n}\n\nreturn { message, action, title, media_type: mediaType };"
+      },
+      "id": "compose-response",
+      "name": "Compose Spoken Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.HA_URL }}/api/webhook/chimera_media_ready",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "Authorization", "value": "Bearer {{ $env.HA_TOKEN }}"},
+            {"name": "Content-Type", "value": "application/json"}
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {"name": "message", "value": "={{ $json.message }}"},
+            {"name": "action", "value": "={{ $json.action }}"},
+            {"name": "title", "value": "={{ $json.title }}"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "ha-notify",
+      "name": "HA: Speak Response via TTS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1780, 300],
+      "notes": "Sends the composed message back to HA, which speaks it via Piper TTS.\nHA automation 'Chimera: Announce new media ready' receives this webhook."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'ok', message: $('Compose Spoken Response').first().json.message }) }}"
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 300]
+    }
+  ],
+  "connections": {
+    "Webhook: Media Request": {
+      "main": [[{"node": "Ollama: Classify Intent", "type": "main", "index": 0}]]
+    },
+    "Ollama: Classify Intent": {
+      "main": [[{"node": "Parse Intent JSON", "type": "main", "index": 0}]]
+    },
+    "Parse Intent JSON": {
+      "main": [[{"node": "Route: Action Type", "type": "main", "index": 0}]]
+    },
+    "Route: Action Type": {
+      "main": [
+        [{"node": "Route: Media Type", "type": "main", "index": 0}],
+        [{"node": "Overseerr: Search", "type": "main", "index": 0}],
+        [{"node": "Riven: Queue Status", "type": "main", "index": 0}],
+        [{"node": "Compose Spoken Response", "type": "main", "index": 0}]
+      ]
+    },
+    "Route: Media Type": {
+      "main": [
+        [{"node": "Overseerr: Request Movie", "type": "main", "index": 0}],
+        [{"node": "Overseerr: Request TV Show", "type": "main", "index": 0}],
+        [{"node": "Compose Spoken Response", "type": "main", "index": 0}],
+        [{"node": "Compose Spoken Response", "type": "main", "index": 0}],
+        [{"node": "Compose Spoken Response", "type": "main", "index": 0}]
+      ]
+    },
+    "Overseerr: Request Movie": {
+      "main": [[{"node": "Compose Spoken Response", "type": "main", "index": 0}]]
+    },
+    "Overseerr: Request TV Show": {
+      "main": [[{"node": "Compose Spoken Response", "type": "main", "index": 0}]]
+    },
+    "Overseerr: Search": {
+      "main": [[{"node": "Format Search Results", "type": "main", "index": 0}]]
+    },
+    "Format Search Results": {
+      "main": [[{"node": "Compose Spoken Response", "type": "main", "index": 0}]]
+    },
+    "Riven: Queue Status": {
+      "main": [[{"node": "Compose Spoken Response", "type": "main", "index": 0}]]
+    },
+    "Compose Spoken Response": {
+      "main": [[{"node": "HA: Speak Response via TTS", "type": "main", "index": 0}]]
+    },
+    "HA: Speak Response via TTS": {
+      "main": [[{"node": "Webhook Response", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromAList",
+    "errorWorkflow": ""
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "chimera-node-b"
+  },
+  "tags": ["chimera", "media", "voice"],
+  "notes": "Project Chimera — Media Voice Request workflow.\n\nImport this into n8n via: Workflows → Import from file.\n\nAfter importing:\n1. Add Ollama credential: http://ollama:11434\n2. Add HTTP Header Auth credential for Overseerr: x-api-key → your OVERSEERR_API_KEY\n3. Activate the workflow\n4. Configure HA rest_command to POST to http://192.168.1.222:5678/webhook/media-request\n\nTest from terminal:\n  curl -X POST http://192.168.1.222:5678/webhook/media-request \\\n    -H 'Content-Type: application/json' \\\n    -d '{\"command\": \"add Dune 3 movie\", \"source\": \"test\"}'"
+}
