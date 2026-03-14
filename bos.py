@@ -68,14 +68,17 @@ import platform
 from pathlib import Path
 from typing import Callable, Dict, Any, Optional, List, Tuple
 
-try:
-    import urllib.parse as urlparse
-    import urllib.request as urlrequest
-    from html import unescape
-except ImportError:
-    # Python 2 fallback (unlikely on Fedora 44)
-    import urllib as urlparse  # type: ignore
-    import urllib2 as urlrequest  # type: ignore
+import urllib.parse as urlparse
+import urllib.request as urlrequest
+from html import unescape
+
+from common_utils import (
+    prompt_input,
+    search_web,
+    fetch_first_paragraph,
+    answer_query,
+)
+
 
 
 def timestamp() -> str:
@@ -507,23 +510,6 @@ def clone_repository(boss: BossAI, repo_url: str, dest: Path) -> None:
         raise RuntimeError(f"git clone failed:\n{out}")
     boss.log("Repository cloned successfully.")
 
-
-def prompt_input(text: str, default: Optional[str] = None, secret: bool = False) -> str:
-    """Prompt the user for input, with an optional default and secret flag."""
-    prompt_text = text
-    if default:
-        prompt_text += f" [default: {default}]"
-    prompt_text += ": "
-    try:
-        if secret:
-            val = getpass.getpass(prompt_text)
-        else:
-            val = input(prompt_text)
-    except EOFError:
-        val = ""
-    if not val and default is not None:
-        return default
-    return val.strip()
 
 
 def collect_configuration(boss: BossAI) -> Dict[str, Any]:
@@ -1022,73 +1008,6 @@ def start_chat_server(
     except Exception as e:
         raise RuntimeError(f"Failed to launch chat server: {e}")
 
-
-def search_web(query: str, max_results: int = 5) -> List[Dict[str, str]]:
-    """Return a list of titles and URLs from a DuckDuckGo search."""
-    encoded = urlparse.quote(query)
-    url = f"https://duckduckgo.com/html/?q={encoded}&ia=web"
-    try:
-        with urlrequest.urlopen(url, timeout=15) as resp:
-            html = resp.read().decode("utf-8", errors="ignore")
-    except Exception:
-        return []
-    results: List[Dict[str, str]] = []
-    for part in html.split('<a rel="nofollow" class="result__a"')[1:]:
-        href_start = part.find("href=\"")
-        if href_start == -1:
-            continue
-        href_start += len("href=\"")
-        href_end = part.find('"', href_start)
-        link = part[href_start:href_end]
-        if "uddg=" in link:
-            _, _, redirect = link.partition("uddg=")
-            link = urlparse.unquote(redirect)
-        title_start = part.find('>') + 1
-        title_end = part.find("</a>", title_start)
-        title = part[title_start:title_end]
-        title = title.replace("<b>", "").replace("</b>", "").strip()
-        results.append({"title": unescape(title), "url": link})
-        if len(results) >= max_results:
-            break
-    return results
-
-
-def fetch_first_paragraph(url: str) -> str:
-    """Fetch the first non‑empty paragraph of text from a web page."""
-    try:
-        from bs4 import BeautifulSoup  # type: ignore
-    except ImportError:
-        return ""
-    try:
-        req = urlrequest.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urlrequest.urlopen(req, timeout=15) as resp:
-            html = resp.read().decode("utf-8", errors="ignore")
-    except Exception:
-        return ""
-    soup = BeautifulSoup(html, "html.parser")
-    for p in soup.find_all('p'):
-        text = p.get_text().strip()
-        if text:
-            return text
-    return ""
-
-
-def answer_query(query: str) -> Dict[str, Any]:
-    """Provide an answer dictionary with results and a combined summary."""
-    results = search_web(query, max_results=3)
-    entries = []
-    summaries = []
-    for res in results:
-        summary = fetch_first_paragraph(res['url'])
-        entries.append({"title": res['title'], "url": res['url'], "summary": summary})
-        if summary:
-            summaries.append(summary)
-    combined = "\n\n".join(summaries)
-    # Prepend a persona intro if we have any summary content.  This helps
-    # maintain a conversational tone while presenting search results.
-    if combined:
-        combined = "Here’s what I found:\n\n" + combined
-    return {"query": query, "results": entries, "summary": combined}
 
 
 def ensure_root() -> None:

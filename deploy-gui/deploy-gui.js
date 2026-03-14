@@ -26,6 +26,7 @@ const { URL } = require('url');
 const fs = require('fs');
 const path = require('path');
 const { execFile, spawn } = require('child_process');
+const { escapeHtml, sendJson: _sendJson, readBody: _readBody } = require('../lib/http-utils');
 
 const PORT = Number(process.env.DEPLOY_GUI_PORT || 9999);
 const DATA_DIR = process.env.DATA_DIR || '/data';
@@ -111,37 +112,10 @@ function saveSettings(settings) {
 let settings = loadSettings();
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
-function escapeHtml(v) {
-  return String(v)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-function sendJson(res, status, payload) {
-  const body = JSON.stringify(payload);
-  res.writeHead(status, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(body),
-    'Cache-Control': 'no-store',
-    'Access-Control-Allow-Origin': '*',
-  });
-  res.end(body);
-}
-
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    let buf = Buffer.alloc(0);
-    req.on('data', chunk => {
-      buf = Buffer.concat([buf, chunk]);
-      if (buf.length > MAX_BODY_BYTES) reject(new Error('Body too large'));
-    });
-    req.on('end', () => resolve(buf.toString('utf8')));
-    req.on('error', reject);
-  });
-}
+// escapeHtml, sendJson, and readBody are provided by ../lib/http-utils.js.
+// sendJson is wrapped here to always include the CORS header required by this service.
+function sendJson(res, status, payload) { return _sendJson(res, status, payload, true); }
+function readBody(req) { return _readBody(req, MAX_BODY_BYTES); }
 
 async function fetchUrl(url, opts = {}) {
   return new Promise((resolve, reject) => {

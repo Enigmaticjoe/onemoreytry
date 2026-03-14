@@ -12,13 +12,13 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 source "${REPO_ROOT}/scripts/lib-inventory.sh"
 load_inventory "$REPO_ROOT"
+source "${REPO_ROOT}/scripts/lib-colors.sh"
 
 HEALTH_ONLY=false
 for arg in "$@"; do
   [[ "$arg" == "--health-only" ]] && HEALTH_ONLY=true
 done
 
-GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 PASS=0; FAIL=0; WARN=0
 
 pass() { echo -e "${GREEN}✓${NC} $1"; ((PASS++)); }

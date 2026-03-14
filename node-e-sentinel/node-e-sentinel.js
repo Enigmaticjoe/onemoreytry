@@ -28,6 +28,7 @@
 
 const http = require('http');
 const { URL } = require('url');
+const { escapeHtml, sendJson, readBody: _readBody, fetchWithTimeout, checkService: _checkService } = require('../lib/http-utils');
 
 // ── Configuration ────────────────────────────────────────────────────────────
 
@@ -50,69 +51,11 @@ const serviceChecks = [
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-async function fetchWithTimeout(url, options = {}) {
-  const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(tid);
-  }
-}
-
-async function checkService(service) {
-  const start = Date.now();
-  try {
-    const res = await fetchWithTimeout(service.url);
-    return { ...service, ok: res.ok, status: res.status, latencyMs: Date.now() - start };
-  } catch (err) {
-    return {
-      ...service,
-      ok: false,
-      status: 0,
-      latencyMs: Date.now() - start,
-      error: err.name === 'AbortError' ? 'timeout' : 'unreachable',
-    };
-  }
-}
-
-function sendJson(res, code, payload) {
-  const body = JSON.stringify(payload);
-  res.writeHead(code, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(body),
-    'Cache-Control': 'no-store',
-  });
-  res.end(body);
-}
-
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let total = 0;
-    req.on('data', (chunk) => {
-      total += chunk.length;
-      if (total > MAX_BODY_BYTES) {
-        reject(new Error('Payload too large'));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-    req.on('error', reject);
-  });
-}
+// escapeHtml, sendJson, readBody, fetchWithTimeout, and checkService are provided
+// by ../lib/http-utils.js. The service-specific wrappers below bind the local
+// configuration constants so call sites remain unchanged.
+function readBody(req) { return _readBody(req, MAX_BODY_BYTES); }
+function checkService(service) { return _checkService(service, REQUEST_TIMEOUT_MS); }
 
 /** Validate Bearer token for write routes. Returns true if auth is satisfied. */
 function checkAuth(req, res) {
@@ -157,7 +100,7 @@ async function analyzeImageDirect(imageB64, prompt, model = VISION_MODEL) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body,
-  });
+  }, REQUEST_TIMEOUT_MS);
 
   const data = await res.json().catch(() => ({}));
 
@@ -515,7 +458,7 @@ const server = http.createServer(async (req, res) => {
   if (method === 'GET' && path === '/api/status') {
     const [services, tagsRes] = await Promise.all([
       Promise.all(serviceChecks.map(checkService)),
-      fetchWithTimeout(`${NODE_C_OLLAMA_URL}/api/tags`).catch(() => null),
+      fetchWithTimeout(`${NODE_C_OLLAMA_URL}/api/tags`, {}, REQUEST_TIMEOUT_MS).catch(() => null),
     ]);
 
     let tags = [];

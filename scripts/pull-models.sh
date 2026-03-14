@@ -23,11 +23,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${REPO_ROOT}/scripts/lib-inventory.sh"
 load_inventory "$REPO_ROOT"
+source "${REPO_ROOT}/scripts/lib-colors.sh"
 
 # ── Colour helpers ─────────────────────────────────────────────────────────────
-GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'
-CYAN='\033[0;36m'; BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
-
 ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
 err()  { echo -e "  ${RED}✗${NC} $1" >&2; }
 warn() { echo -e "  ${YELLOW}!${NC} $1"; }

@@ -22,6 +22,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 source "${REPO_ROOT}/scripts/lib-inventory.sh"
 load_inventory "$REPO_ROOT"
+source "${REPO_ROOT}/scripts/lib-colors.sh"
 
 ACTION="${1:-deploy}"
 SKIP_REMOTE=false
@@ -34,7 +35,6 @@ done
 NODE_B_REMOTE_IP="$(resolve_node_ip "${NODE_B_TS_IP:-}" "$NODE_B_IP")"
 NODE_C_REMOTE_IP="$(resolve_node_ip "${NODE_C_TS_IP:-}" "$NODE_C_IP")"
 
-GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
 step()  { echo ""; echo -e "${CYAN}══════════════════════════════════${NC}"; echo -e "${CYAN}  $1${NC}"; echo -e "${CYAN}══════════════════════════════════${NC}"; }
 ok()    { echo -e "  ${GREEN}✓${NC} $1"; }

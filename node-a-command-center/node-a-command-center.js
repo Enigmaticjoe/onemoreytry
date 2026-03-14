@@ -2,6 +2,7 @@
 
 const http = require('http');
 const { URL } = require('url');
+const { escapeHtml, sendJson, fetchWithTimeout, checkService: _checkService } = require('../lib/http-utils');
 
 const PORT = Number(process.env.COMMAND_CENTER_PORT || 3099);
 const LITELLM_BASE_URL = process.env.LITELLM_BASE_URL || 'http://192.168.1.222:4000';
@@ -73,56 +74,9 @@ const dashboardLinks = [
   { name: 'Mobile Monitor (PWA)', href: '/mobile' },
 ];
 
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-async function fetchWithTimeout(url, options = {}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    return response;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function checkService(service) {
-  const start = Date.now();
-  try {
-    const response = await fetchWithTimeout(service.url);
-    return {
-      ...service,
-      ok: response.ok,
-      status: response.status,
-      latencyMs: Date.now() - start,
-    };
-  } catch (error) {
-    return {
-      ...service,
-      ok: false,
-      status: 0,
-      latencyMs: Date.now() - start,
-      error: error.name === 'AbortError' ? 'timeout' : 'unreachable',
-    };
-  }
-}
-
-function sendJson(res, statusCode, payload) {
-  const body = JSON.stringify(payload);
-  res.writeHead(statusCode, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(body),
-    'Cache-Control': 'no-store',
-  });
-  res.end(body);
-}
+// escapeHtml, sendJson, fetchWithTimeout, and checkService are provided by ../lib/http-utils.js.
+// checkService is wrapped here to bind REQUEST_TIMEOUT_MS.
+function checkService(service) { return _checkService(service, REQUEST_TIMEOUT_MS); }
 
 function getDocRedirectPath(pathname) {
   if (pathname === '/docs/DEPLOYMENT_GUIDE') return '/DEPLOYMENT_GUIDE.md';
@@ -1007,7 +961,7 @@ async function handleChat(req, res) {
         model,
         messages: [{ role: 'user', content: message }],
       }),
-    });
+    }, REQUEST_TIMEOUT_MS);
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -1056,7 +1010,7 @@ async function handleSherpaChat(req, res) {
           { role: 'user', content: message },
         ],
       }),
-    });
+    }, REQUEST_TIMEOUT_MS);
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
