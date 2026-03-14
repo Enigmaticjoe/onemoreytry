@@ -18,12 +18,9 @@ cd "$REPO_ROOT"
 
 source "${REPO_ROOT}/scripts/lib-inventory.sh"
 load_inventory "$REPO_ROOT"
+source "${REPO_ROOT}/scripts/lib-colors.sh"
 
 # ── Colors ────────────────────────────────────────────────────────────────────
-GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'
-CYAN='\033[0;36m'; BLUE='\033[0;34m'; MAGENTA='\033[0;35m'
-BOLD='\033[1m'; NC='\033[0m'
-
 pass()   { echo -e "  ${GREEN}✓${NC} $1"; }
 fail()   { echo -e "  ${RED}✗${NC} $1"; }
 warn()   { echo -e "  ${YELLOW}!${NC} $1"; }

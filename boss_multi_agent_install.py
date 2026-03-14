@@ -51,6 +51,13 @@ from html import unescape
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from common_utils import (
+    prompt_input,
+    search_web,
+    fetch_first_paragraph,
+    answer_query,
+)
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -134,19 +141,6 @@ def ensure_root() -> None:
         sys.exit("ERROR: This script must be run as root (sudo).")
 
 
-def prompt_input(
-    text: str, default: Optional[str] = None, secret: bool = False
-) -> str:
-    """Prompt user for input with optional default and secret masking."""
-    suffix = f" [{default}]" if default else ""
-    prompt_text = f"{text}{suffix}: "
-    try:
-        val = getpass.getpass(prompt_text) if secret else input(prompt_text)
-    except EOFError:
-        val = ""
-    return val.strip() or (default or "")
-
-
 def write_file(
     path: Path,
     content: str,
@@ -202,83 +196,6 @@ def dnf_install(packages: List[str]) -> None:
 # ---------------------------------------------------------------------------
 # Web search helpers (DuckDuckGo Lite — best-effort)
 # ---------------------------------------------------------------------------
-
-def search_web(query: str, max_results: int = 3) -> List[Dict[str, str]]:
-    """Scrape DuckDuckGo Lite for search results.
-
-    Returns a list of dicts with 'title' and 'url' keys.
-    This is best-effort; failures return an empty list.
-    """
-    encoded = urlparse.quote_plus(query)
-    url = f"https://lite.duckduckgo.com/lite/?q={encoded}"
-    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"}
-    req = urlrequest.Request(url, headers=headers)
-    try:
-        with urlrequest.urlopen(req, timeout=15) as resp:
-            html = resp.read().decode("utf-8", errors="ignore")
-    except Exception:
-        return []
-    results: List[Dict[str, str]] = []
-    # DuckDuckGo Lite uses <a class="result-link" href="...">
-    for marker in ('class="result-link"', 'class="result__a"'):
-        for part in html.split(marker)[1:]:
-            href_start = part.find('href="')
-            if href_start == -1:
-                continue
-            href_start += 6
-            href_end = part.find('"', href_start)
-            link = part[href_start:href_end]
-            if "uddg=" in link:
-                _, _, redirect = link.partition("uddg=")
-                link = urlparse.unquote(redirect.split("&")[0])
-            title_start = part.find(">") + 1
-            title_end = part.find("</a>", title_start)
-            if title_end == -1:
-                title_end = title_start + 80
-            title = part[title_start:title_end]
-            title = title.replace("<b>", "").replace("</b>", "").strip()
-            if link.startswith("http"):
-                results.append({"title": unescape(title), "url": link})
-            if len(results) >= max_results:
-                return results
-    return results
-
-
-def fetch_first_paragraph(url: str) -> str:
-    """Best-effort fetch of first <p> text from a URL."""
-    try:
-        from bs4 import BeautifulSoup  # type: ignore[import-untyped]
-    except ImportError:
-        return "(bs4 not available for preview)"
-    try:
-        req = urlrequest.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urlrequest.urlopen(req, timeout=10) as resp:
-            html = resp.read().decode("utf-8", errors="ignore")
-    except Exception:
-        return ""
-    soup = BeautifulSoup(html, "html.parser")
-    for p in soup.find_all("p"):
-        text = p.get_text(strip=True)
-        if len(text) > 40:
-            return text[:300]
-    return ""
-
-
-def answer_query(query: str) -> Dict[str, Any]:
-    """Web-search-backed Q&A for the chat endpoint."""
-    results = search_web(query, max_results=3)
-    entries = []
-    summaries = []
-    for res in results:
-        summary = fetch_first_paragraph(res["url"])
-        entries.append({"title": res["title"], "url": res["url"], "summary": summary})
-        if summary:
-            summaries.append(summary)
-    combined = "\n\n".join(summaries) if summaries else "No results found for that query."
-    if summaries:
-        combined = "Here's what I found:\n\n" + combined
-    return {"query": query, "results": entries, "summary": combined}
-
 
 # ---------------------------------------------------------------------------
 # Boss / Minion orchestration

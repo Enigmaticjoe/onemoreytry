@@ -45,12 +45,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Colors (suppressed in JSON mode) ─────────────────────────────────────────
-if $JSON_OUTPUT; then
-  GREEN=''; RED=''; YELLOW=''; CYAN=''; BOLD=''; NC=''
-else
-  GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'
-  CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
-fi
+source "${REPO_ROOT}/scripts/lib-colors.sh"
+$JSON_OUTPUT && disable_colors
 
 pass()  { $JSON_OUTPUT || echo -e "  ${GREEN}✓${NC} $1"; }
 fail()  { $JSON_OUTPUT || echo -e "  ${RED}✗${NC} $1"; }

@@ -25,8 +25,7 @@ for arg in "$@"; do
 done
 
 # ── Colours ───────────────────────────────────────────────────────────────────
-GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'
-CYAN='\033[0;36m'; BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
+source "${REPO_ROOT}/scripts/lib-colors.sh"
 
 ok()     { echo -e "  ${GREEN}✓${NC} $1"; }
 err()    { echo -e "  ${RED}✗${NC} $1"; }
