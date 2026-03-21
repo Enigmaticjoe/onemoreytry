@@ -1,0 +1,115 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schema/2025-03/mcp.json",
+  "servers": {
+    "unraidclaw": {
+      "transport": {
+        "type": "http",
+        "url": "https://192.168.1.222:9876",
+        "headers": {
+          "Authorization": "Bearer ${UNRAIDCLAW_API_KEY}"
+        },
+        "tlsSkipVerify": true
+      },
+      "description": "UnraidClaw API gateway for Docker/VM/array/disks/shares/system operations."
+    },
+    "filesystem": {
+      "transport": {
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "/opt/nanoclaw/workspace"
+        ]
+      },
+      "description": "Read/write access scoped to NanoClaw workspace."
+    },
+    "docker": {
+      "transport": {
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-docker"
+        ],
+        "env": {
+          "DOCKER_HOST": "unix:///var/run/docker.sock"
+        }
+      },
+      "description": "Direct Docker MCP server via host Docker socket."
+    },
+    "home-assistant": {
+      "transport": {
+        "type": "http",
+        "url": "${HOME_ASSISTANT_URL}",
+        "headers": {
+          "Authorization": "Bearer ${HOME_ASSISTANT_TOKEN}"
+        }
+      },
+      "description": "Home Assistant integration endpoint."
+    },
+    "brave-search": {
+      "transport": {
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-brave-search"
+        ],
+        "env": {
+          "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+        }
+      },
+      "description": "Web search MCP server (preferred)."
+    },
+    "github": {
+      "transport": {
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-github"
+        ],
+        "env": {
+          "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}",
+          "GITHUB_REPOSITORIES": "Enigmaticjoe/onemoreytry"
+        }
+      },
+      "description": "GitHub MCP scoped to Enigmaticjoe/onemoreytry."
+    },
+    "fetch": {
+      "transport": {
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-fetch"
+        ]
+      },
+      "description": "General web/http fetching."
+    },
+    "memory-sqlite": {
+      "transport": {
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-sqlite",
+          "--db-path",
+          "/opt/nanoclaw/data/memory.db"
+        ]
+      },
+      "description": "Persistent structured memory on local SQLite DB."
+    },
+    "qdrant": {
+      "transport": {
+        "type": "http",
+        "url": "${QDRANT_URL}",
+        "headers": {
+          "api-key": "${QDRANT_API_KEY}"
+        }
+      },
+      "description": "Vector search over Node A Qdrant corpus."
+    }
+  }
+}
