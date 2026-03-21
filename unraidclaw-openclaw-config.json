@@ -1,0 +1,31 @@
+{
+  "name": "nanoclaw-unraidclaw",
+  "description": "OpenClaw/NanoClaw integration profile for UnraidClaw on Node B.",
+  "server": {
+    "bindHost": "0.0.0.0",
+    "port": 9876,
+    "tls": {
+      "enabled": true,
+      "certPath": "/opt/unraidclaw/certs/tls.crt",
+      "keyPath": "/opt/unraidclaw/certs/tls.key"
+    }
+  },
+  "auth": {
+    "type": "apiKey",
+    "header": "Authorization",
+    "prefix": "Bearer ",
+    "apiKeyEnv": "UNRAIDCLAW_API_KEY"
+  },
+  "unraid": {
+    "graphqlUrl": "https://192.168.1.222/graphql",
+    "tlsSkipVerify": true
+  },
+  "permissions": {
+    "preset": "full-admin",
+    "note": "Start with full-admin for first validation only; reduce to least privilege once tool mapping is verified."
+  },
+  "audit": {
+    "enabled": true,
+    "logPath": "/opt/unraidclaw/logs/audit.log"
+  }
+}

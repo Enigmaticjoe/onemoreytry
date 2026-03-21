@@ -1,68 +1,108 @@
-version: "3.9"
+# Portainer stack for NanoClaw on Unraid Node B (192.168.1.222)
+# Compose Specification format (no `version` key).
+#
+# Security note:
+# - /var/run/docker.sock is mounted so NanoClaw can spawn isolated worker containers.
+# - Anyone with access to NanoClaw runtime effectively has Docker-level control of host.
+
+name: nanoclaw-stack
 
 services:
-  # Intel Arc inference runtime (IPEX-LLM + Ollama)
-  ollama-arc:
-    image: intelanalytics/ipex-llm-inference-cpp-xpu:latest
-    container_name: ollama_arc
+  nanoclaw:
+    # Build local image from Dockerfile.nanoclaw.
+    build:
+      context: .
+      dockerfile: Dockerfile.nanoclaw
+    image: local/nanoclaw:latest
+    container_name: nanoclaw
     restart: unless-stopped
-
-    # Hardened default: bridge network + explicit bind address.
-    ports:
-      - "${OLLAMA_BIND_IP:-127.0.0.1}:11434:11434"
-
-    # Kept because your blueprint describes Level Zero permission issues without privileged DRM access.
-    # Try removing later + use group_add/video/render if your host allows it.
-    privileged: true
-
-    devices:
-      - /dev/dri:/dev/dri
-
-    volumes:
-      - ${OLLAMA_MODELS_DIR:-/opt/ollama}:/root/.ollama
-      - /dev/shm:/dev/shm
-
+    network_mode: host
+    user: "99:100"
     environment:
-      OLLAMA_HOST: "0.0.0.0"
-
-      # Intel OneAPI / Level Zero + Arc hints
-      ZES_ENABLE_SYSMAN: "1"
-      ONEAPI_DEVICE_SELECTOR: "level_zero:0"
-      DEVICE: "Arc"
-      OLLAMA_INTEL_GPU: "true"
-      SYCL_CACHE_PERSISTENT: "1"
-
-      no_proxy: "localhost,127.0.0.1"
-      PATH: "/llm/ollama:${PATH}"
-
-    shm_size: "32gb"
-
-    # Healthcheck uses the Ollama CLI (avoids needing curl inside the image)
+      TZ: America/New_York
+      PUID: "99"
+      PGID: "100"
+      NODE_ENV: production
+      # Main provider routed to local Ollama OpenAI-compatible endpoint.
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-http://192.168.1.222:11434/v1}
+      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:-ollama}
+      # Default model routing hints for bootstrap scripts / wrappers.
+      DEFAULT_AGENT_MODEL: ${DEFAULT_AGENT_MODEL:-qwen3:14b-abliterated}
+      FAST_AGENT_MODEL: ${FAST_AGENT_MODEL:-glm4-flash-heretic}
+      COMPLEX_AGENT_BASE_URL: ${COMPLEX_AGENT_BASE_URL:-http://NODE_A_TAILSCALE:8000/v1}
+      COMPLEX_AGENT_MODEL: ${COMPLEX_AGENT_MODEL:-qwen3-14b-awq}
+      FALLBACK_AGENT_MODEL: ${FALLBACK_AGENT_MODEL:-josiefied-qwen3:8b}
+      # Messaging (fill in after deploy)
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-REPLACE_ME}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-REPLACE_ME}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-REPLACE_ME}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+    working_dir: /opt/nanoclaw
+    volumes:
+      - /mnt/user/appdata/nanoclaw:/opt/nanoclaw/data
+      - /mnt/user/appdata/nanoclaw/workspace:/opt/nanoclaw/workspace
+      - /mnt/user/appdata/nanoclaw/.env:/opt/nanoclaw/.env
+      - /mnt/user/appdata/nanoclaw/.mcp.json:/opt/nanoclaw/.mcp.json
+      - /mnt/user/appdata/nanoclaw/agents:/opt/nanoclaw/agents
+      - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
-      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${NANOCLAW_HEALTH_PORT:-3000}/health || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 10
+      retries: 5
+      start_period: 45s
 
-  # Optional: Open WebUI for local management on Node C
-  open-webui:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: open-webui
+  # Option B (containerized UnraidClaw): disabled by default.
+  # Enable in Portainer by setting COMPOSE_PROFILES=unraidclaw-container
+  unraidclaw:
+    profiles: ["unraidclaw-container"]
+    image: node:22-alpine
+    container_name: unraidclaw
     restart: unless-stopped
-    ports:
-      - "${OPEN_WEBUI_BIND_IP:-127.0.0.1}:3000:8080"
+    network_mode: host
+    user: "99:100"
+    working_dir: /opt/unraidclaw
     environment:
-      # IMPORTANT: if Ollama is on the host network, localhost inside the container is wrong.
-      # Use host.docker.internal with host-gateway mapping.
-      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      TZ: America/New_York
+      PUID: "99"
+      PGID: "100"
+      NODE_ENV: production
+      UNRAIDCLAW_BIND_HOST: 0.0.0.0
+      UNRAIDCLAW_PORT: "9876"
+      # Generate and populate via deploy.sh, never hardcode production key.
+      UNRAIDCLAW_API_KEY: ${UNRAIDCLAW_API_KEY:-GENERATE_ME}
+      UNRAIDCLAW_TLS_CERT_PATH: /opt/unraidclaw/certs/tls.crt
+      UNRAIDCLAW_TLS_KEY_PATH: /opt/unraidclaw/certs/tls.key
+      UNRAID_GRAPHQL_URL: ${UNRAID_GRAPHQL_URL:-https://192.168.1.222/graphql}
+    command: >
+      sh -c "npm install -g unraidclaw && unraidclaw --config /opt/unraidclaw/config/unraidclaw-openclaw-config.json"
     volumes:
-      - open-webui-data:/app/backend/data
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    depends_on:
-      ollama-arc:
-        condition: service_healthy
+      - /mnt/user/appdata/unraidclaw:/opt/unraidclaw
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Optional readonly mounts used by some Unraid/system tooling.
+      - /boot:/host/boot:ro
+      - /mnt:/host/mnt
 
-volumes:
-  open-webui-data:
-    name: open-webui
+  # Lightweight local model-router sidecar for complexity-aware endpoint selection.
+  model-router:
+    image: python:3.12-alpine
+    container_name: nanoclaw-model-router
+    restart: unless-stopped
+    network_mode: host
+    user: "99:100"
+    working_dir: /app
+    environment:
+      TZ: America/New_York
+      ROUTER_LISTEN: 0.0.0.0
+      ROUTER_PORT: "18080"
+      OLLAMA_BASE_URL: ${ANTHROPIC_BASE_URL:-http://192.168.1.222:11434/v1}
+      VLLM_BASE_URL: ${COMPLEX_AGENT_BASE_URL:-http://NODE_A_TAILSCALE:8000/v1}
+      DEFAULT_MODEL: ${DEFAULT_AGENT_MODEL:-qwen3:14b-abliterated}
+      FAST_MODEL: ${FAST_AGENT_MODEL:-glm4-flash-heretic}
+      COMPLEX_MODEL: ${COMPLEX_AGENT_MODEL:-qwen3-14b-awq}
+      FALLBACK_MODEL: ${FALLBACK_AGENT_MODEL:-josiefied-qwen3:8b}
+    volumes:
+      - /mnt/user/appdata/nanoclaw/router:/app
+    command: >
+      sh -c "python -m pip install --no-cache-dir fastapi uvicorn httpx &&
+      python /app/router.py"
