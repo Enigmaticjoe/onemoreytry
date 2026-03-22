@@ -10,7 +10,7 @@
         },
         "tlsSkipVerify": true
       },
-      "description": "UnraidClaw API gateway for Docker/VM/array/disks/shares/system operations."
+      "description": "UnraidClaw API gateway — 43 tools across 11 categories: Docker, VMs, Array, Disks, Shares, System, Notifications, Network, Users, Logs, Plugins. Full Unraid server management."
     },
     "filesystem": {
       "transport": {
@@ -22,7 +22,7 @@
           "/opt/nanoclaw/workspace"
         ]
       },
-      "description": "Read/write access scoped to NanoClaw workspace."
+      "description": "Read/write access scoped to NanoClaw workspace (/opt/nanoclaw/workspace -> /mnt/user/appdata/nanoclaw/workspace on host)."
     },
     "docker": {
       "transport": {
@@ -36,7 +36,7 @@
           "DOCKER_HOST": "unix:///var/run/docker.sock"
         }
       },
-      "description": "Direct Docker MCP server via host Docker socket."
+      "description": "Direct Docker container management via host socket. Complements UnraidClaw for low-level container ops (exec, logs, inspect)."
     },
     "home-assistant": {
       "transport": {
@@ -46,7 +46,7 @@
           "Authorization": "Bearer ${HOME_ASSISTANT_TOKEN}"
         }
       },
-      "description": "Home Assistant integration endpoint."
+      "description": "Home Assistant REST API on Node D (192.168.1.149:8123). Smart home control, automations, sensor data, voice pipeline triggers."
     },
     "brave-search": {
       "transport": {
@@ -60,7 +60,21 @@
           "BRAVE_API_KEY": "${BRAVE_API_KEY}"
         }
       },
-      "description": "Web search MCP server (preferred)."
+      "description": "Brave web search (primary). Used by ORACLE for research when Qdrant RAG corpus lacks coverage."
+    },
+    "tavily-search": {
+      "transport": {
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "tavily-mcp"
+        ],
+        "env": {
+          "TAVILY_API_KEY": "${TAVILY_API_KEY}"
+        }
+      },
+      "description": "Tavily web search (fallback). AI-optimized search with extract and context features. Activate if Brave is unavailable."
     },
     "github": {
       "transport": {
@@ -75,7 +89,7 @@
           "GITHUB_REPOSITORIES": "Enigmaticjoe/onemoreytry"
         }
       },
-      "description": "GitHub MCP scoped to Enigmaticjoe/onemoreytry."
+      "description": "GitHub MCP server scoped to Enigmaticjoe/onemoreytry. PRs, issues, commits, releases, code search."
     },
     "fetch": {
       "transport": {
@@ -86,7 +100,7 @@
           "@modelcontextprotocol/server-fetch"
         ]
       },
-      "description": "General web/http fetching."
+      "description": "General HTTP fetching for web pages, APIs, and documentation. No auth required."
     },
     "memory-sqlite": {
       "transport": {
@@ -99,7 +113,7 @@
           "/opt/nanoclaw/data/memory.db"
         ]
       },
-      "description": "Persistent structured memory on local SQLite DB."
+      "description": "Persistent structured memory via local SQLite DB. Used for operator preferences, incident history, scheduled task state."
     },
     "qdrant": {
       "transport": {
@@ -109,7 +123,7 @@
           "api-key": "${QDRANT_API_KEY}"
         }
       },
-      "description": "Vector search over Node A Qdrant corpus."
+      "description": "Qdrant vector search on Node A. RAG corpus containing homelab docs, config files, troubleshooting history, and runbooks."
     }
   }
 }
