@@ -1,15 +1,28 @@
-# Portainer stack for NanoClaw on Unraid Node B (192.168.1.222)
-# Compose Specification format (no `version` key).
+# =============================================================================
+# NanoClaw AI Agent Stack — Portainer-ready for Unraid Node B (192.168.1.222)
+# Compose Specification format (NO version: key).
 #
-# Security note:
-# - /var/run/docker.sock is mounted so NanoClaw can spawn isolated worker containers.
-# - Anyone with access to NanoClaw runtime effectively has Docker-level control of host.
+# Services:
+#   nanoclaw        — Core agent runtime (always on)
+#   model-router    — Complexity-aware LLM proxy sidecar (always on)
+#   unraidclaw      — Containerized UnraidClaw gateway (profile: unraidclaw-container)
+#
+# Security notes:
+#   - /var/run/docker.sock is mounted so NanoClaw can spawn isolated agent
+#     containers. Anyone with runtime access has Docker-level host control.
+#   - UnraidClaw API key MUST be generated (openssl rand -hex 32), never committed.
+#   - TLS certs for UnraidClaw Option B are self-signed by deploy.sh.
+# =============================================================================
 
 name: nanoclaw-stack
 
 services:
+  # ---------------------------------------------------------------------------
+  # NanoClaw — lightweight AI agent runtime (Claude Agent SDK)
+  # Spawns agent containers via Docker socket, supports multi-channel messaging,
+  # persistent memory (CLAUDE.md), scheduled tasks, and agent swarms.
+  # ---------------------------------------------------------------------------
   nanoclaw:
-    # Build local image from Dockerfile.nanoclaw.
     build:
       context: .
       dockerfile: Dockerfile.nanoclaw
@@ -18,32 +31,48 @@ services:
     restart: unless-stopped
     network_mode: host
     user: "99:100"
+    # Grant access to host Docker socket group (default GID 999).
+    # If host docker GID differs, override with: DOCKER_GID=<host_gid>
+    group_add:
+      - "${DOCKER_GID:-999}"
     environment:
       TZ: America/New_York
       PUID: "99"
       PGID: "100"
       NODE_ENV: production
-      # Main provider routed to local Ollama OpenAI-compatible endpoint.
+
+      # LLM provider — routed to local Ollama OpenAI-compatible endpoint.
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-http://192.168.1.222:11434/v1}
       ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:-ollama}
-      # Default model routing hints for bootstrap scripts / wrappers.
+
+      # Model routing hints consumed by NanoClaw config and wrapper scripts.
       DEFAULT_AGENT_MODEL: ${DEFAULT_AGENT_MODEL:-qwen3:14b-abliterated}
       FAST_AGENT_MODEL: ${FAST_AGENT_MODEL:-glm4-flash-heretic}
       COMPLEX_AGENT_BASE_URL: ${COMPLEX_AGENT_BASE_URL:-http://NODE_A_TAILSCALE:8000/v1}
       COMPLEX_AGENT_MODEL: ${COMPLEX_AGENT_MODEL:-qwen3-14b-awq}
       FALLBACK_AGENT_MODEL: ${FALLBACK_AGENT_MODEL:-josiefied-qwen3:8b}
-      # Messaging (fill in after deploy)
-      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-REPLACE_ME}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-REPLACE_ME}
-      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-REPLACE_ME}
+
+      # Model router sidecar endpoint for complexity-aware routing.
+      MODEL_ROUTER_URL: http://127.0.0.1:18080/v1
+
+      # Messaging integrations — fill after deploy, leave empty to disable.
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}
+
     working_dir: /opt/nanoclaw
     volumes:
-      - /mnt/user/appdata/nanoclaw:/opt/nanoclaw/data
+      # Persistent data — survives container recreation.
+      - /mnt/user/appdata/nanoclaw/data:/opt/nanoclaw/data
       - /mnt/user/appdata/nanoclaw/workspace:/opt/nanoclaw/workspace
-      - /mnt/user/appdata/nanoclaw/.env:/opt/nanoclaw/.env
-      - /mnt/user/appdata/nanoclaw/.mcp.json:/opt/nanoclaw/.mcp.json
+      - /mnt/user/appdata/nanoclaw/.env:/opt/nanoclaw/.env:ro
+      - /mnt/user/appdata/nanoclaw/.mcp.json:/opt/nanoclaw/.mcp.json:ro
       - /mnt/user/appdata/nanoclaw/agents:/opt/nanoclaw/agents
+      # Docker socket for container-in-container agent isolation.
+      # WARNING: This grants full Docker control to the NanoClaw process.
       - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${NANOCLAW_HEALTH_PORT:-3000}/health || exit 1"]
@@ -51,39 +80,23 @@ services:
       timeout: 10s
       retries: 5
       start_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+        tag: "nanoclaw"
+    labels:
+      homepage.group: AI Agents
+      homepage.name: NanoClaw
+      homepage.icon: robot
+      homepage.description: AI agent runtime (Claude Agent SDK)
 
-  # Option B (containerized UnraidClaw): disabled by default.
-  # Enable in Portainer by setting COMPOSE_PROFILES=unraidclaw-container
-  unraidclaw:
-    profiles: ["unraidclaw-container"]
-    image: node:22-alpine
-    container_name: unraidclaw
-    restart: unless-stopped
-    network_mode: host
-    user: "99:100"
-    working_dir: /opt/unraidclaw
-    environment:
-      TZ: America/New_York
-      PUID: "99"
-      PGID: "100"
-      NODE_ENV: production
-      UNRAIDCLAW_BIND_HOST: 0.0.0.0
-      UNRAIDCLAW_PORT: "9876"
-      # Generate and populate via deploy.sh, never hardcode production key.
-      UNRAIDCLAW_API_KEY: ${UNRAIDCLAW_API_KEY:-GENERATE_ME}
-      UNRAIDCLAW_TLS_CERT_PATH: /opt/unraidclaw/certs/tls.crt
-      UNRAIDCLAW_TLS_KEY_PATH: /opt/unraidclaw/certs/tls.key
-      UNRAID_GRAPHQL_URL: ${UNRAID_GRAPHQL_URL:-https://192.168.1.222/graphql}
-    command: >
-      sh -c "npm install -g unraidclaw && unraidclaw --config /opt/unraidclaw/config/unraidclaw-openclaw-config.json"
-    volumes:
-      - /mnt/user/appdata/unraidclaw:/opt/unraidclaw
-      - /var/run/docker.sock:/var/run/docker.sock
-      # Optional readonly mounts used by some Unraid/system tooling.
-      - /boot:/host/boot:ro
-      - /mnt:/host/mnt
-
-  # Lightweight local model-router sidecar for complexity-aware endpoint selection.
+  # ---------------------------------------------------------------------------
+  # Model Router — complexity-aware LLM endpoint selector
+  # Listens on :18080, proxies to Ollama (Node B) or vLLM (Node A) based on
+  # request hints: complexity=fast|complex|reasoning, fallback=true.
+  # ---------------------------------------------------------------------------
   model-router:
     image: python:3.12-alpine
     container_name: nanoclaw-model-router
@@ -104,5 +117,75 @@ services:
     volumes:
       - /mnt/user/appdata/nanoclaw/router:/app
     command: >
-      sh -c "python -m pip install --no-cache-dir fastapi uvicorn httpx &&
-      python /app/router.py"
+      sh -c "pip install --no-cache-dir fastapi uvicorn httpx 2>/dev/null &&
+      uvicorn router:app --host 0.0.0.0 --port 18080 --log-level warning"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:18080/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "model-router"
+    labels:
+      homepage.group: AI Agents
+      homepage.name: Model Router
+      homepage.icon: shuffle
+      homepage.description: Complexity-aware LLM proxy
+
+  # ---------------------------------------------------------------------------
+  # UnraidClaw (Option B) — containerized REST API gateway to Unraid
+  # 43 tools across 11 categories: Docker, VMs, Array, Disks, Shares, etc.
+  # Disabled by default. Enable via: COMPOSE_PROFILES=unraidclaw-container
+  # Option A (recommended): Install as Unraid plugin from Community Applications.
+  # ---------------------------------------------------------------------------
+  unraidclaw:
+    profiles: ["unraidclaw-container"]
+    image: node:22-alpine
+    container_name: unraidclaw
+    restart: unless-stopped
+    network_mode: host
+    user: "99:100"
+    working_dir: /opt/unraidclaw
+    environment:
+      TZ: America/New_York
+      PUID: "99"
+      PGID: "100"
+      NODE_ENV: production
+      UNRAIDCLAW_BIND_HOST: 0.0.0.0
+      UNRAIDCLAW_PORT: "9876"
+      # API key MUST be generated: openssl rand -hex 32
+      # Never hardcode — set in .env or Portainer stack environment.
+      UNRAIDCLAW_API_KEY: ${UNRAIDCLAW_API_KEY:-GENERATE_ME}
+      UNRAIDCLAW_TLS_CERT_PATH: /opt/unraidclaw/certs/tls.crt
+      UNRAIDCLAW_TLS_KEY_PATH: /opt/unraidclaw/certs/tls.key
+      UNRAID_GRAPHQL_URL: ${UNRAID_GRAPHQL_URL:-https://192.168.1.222/graphql}
+    command: >
+      sh -c "npm install -g unraidclaw && unraidclaw --config /opt/unraidclaw/config/unraidclaw-openclaw-config.json"
+    volumes:
+      - /mnt/user/appdata/unraidclaw:/opt/unraidclaw
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Read-only host mounts for Unraid system introspection.
+      - /boot:/host/boot:ro
+      - /mnt:/host/mnt:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://127.0.0.1:9876/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+        tag: "unraidclaw"
+    labels:
+      homepage.group: AI Agents
+      homepage.name: UnraidClaw
+      homepage.icon: server
+      homepage.description: Unraid management gateway (43 tools)
