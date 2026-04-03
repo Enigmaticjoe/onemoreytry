@@ -33,6 +33,28 @@ const AUTH_FILE = process.env.CHIMERA_HUB_AUTH_FILE || "/app/data/auth.json";
 
 const NODE_INVENTORY_FILE = process.env.CHIMERA_NODE_INVENTORY || path.resolve(__dirname, "../config/node-inventory.env");
 const DENYLIST_FILE = process.env.KVM_DENYLIST_PATH || path.resolve(__dirname, "../kvm-operator/policy_denylist.txt");
+const DEFAULT_KVM_DENYLIST = [
+  "rm -rf",
+  "mkfs",
+  "dd if=",
+  "shutdown -h",
+  "poweroff",
+  "halt",
+  "reboot",
+  "init 0",
+  "init 6",
+  "systemctl poweroff",
+  "systemctl reboot",
+  "chown -r /",
+  "chmod -r 777 /",
+  "chmod 777 /",
+  "curl | sh",
+  "curl|sh",
+  "wget | sh",
+  "wget|sh",
+  ":(){:|:&};:",
+  ">/dev/sda",
+];
 
 function resolveWritablePath(preferredPath, fallbackFileName) {
   const preferredDir = path.dirname(preferredPath);
@@ -92,7 +114,10 @@ function parseEnvFile(filePath) {
 }
 
 function loadDenylist() {
-  if (!fs.existsSync(DENYLIST_FILE)) return [];
+  if (!fs.existsSync(DENYLIST_FILE)) {
+    console.warn(`[chimera-hub] denylist file missing at ${DENYLIST_FILE}; using built-in fallback policy`);
+    return DEFAULT_KVM_DENYLIST;
+  }
   try {
     return fs
       .readFileSync(DENYLIST_FILE, "utf8")
@@ -100,7 +125,8 @@ function loadDenylist() {
       .map((line) => line.trim().toLowerCase())
       .filter((line) => line && !line.startsWith("#"));
   } catch (_error) {
-    return [];
+    console.warn(`[chimera-hub] failed to read denylist at ${DENYLIST_FILE}; using built-in fallback policy`);
+    return DEFAULT_KVM_DENYLIST;
   }
 }
 
@@ -664,7 +690,7 @@ app.get("/api/media/status", requireAuth, async (_req, res) => {
 
 app.post("/api/kvm/execute", requireAuth, async (req, res) => {
   const target = String(req.body?.target || "kvm-d829");
-  const content = String(req.body?.content || "");
+  const content = String(req.body?.content || req.body?.command || req.body?.instruction || "");
   if (!content) {
     errResponse(res, 400, "content is required");
     return;
@@ -672,7 +698,7 @@ app.post("/api/kvm/execute", requireAuth, async (req, res) => {
   const lowered = content.toLowerCase();
   const matched = denylist.find((entry) => lowered.includes(entry));
   if (matched) {
-    errResponse(res, 400, `Denied by policy (matched: ${matched})`);
+    errResponse(res, 403, `Denied by policy (matched: ${matched})`);
     return;
   }
 
