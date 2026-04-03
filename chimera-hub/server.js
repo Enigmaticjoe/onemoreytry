@@ -34,6 +34,24 @@ const AUTH_FILE = process.env.CHIMERA_HUB_AUTH_FILE || "/app/data/auth.json";
 const NODE_INVENTORY_FILE = process.env.CHIMERA_NODE_INVENTORY || path.resolve(__dirname, "../config/node-inventory.env");
 const DENYLIST_FILE = process.env.KVM_DENYLIST_PATH || path.resolve(__dirname, "../kvm-operator/policy_denylist.txt");
 
+function resolveWritablePath(preferredPath, fallbackFileName) {
+  const preferredDir = path.dirname(preferredPath);
+  try {
+    fs.mkdirSync(preferredDir, { recursive: true });
+    fs.accessSync(preferredDir, fs.constants.W_OK);
+    return preferredPath;
+  } catch (_error) {
+    const fallbackDir = path.join(os.tmpdir(), "chimera-hub");
+    fs.mkdirSync(fallbackDir, { recursive: true });
+    const fallbackPath = path.join(fallbackDir, fallbackFileName);
+    console.warn(`[chimera-hub] ${preferredPath} is not writable; using ${fallbackPath}`);
+    return fallbackPath;
+  }
+}
+
+const AUTH_STORE_FILE = resolveWritablePath(AUTH_FILE, "auth.json");
+const INVENTORY_STORE_FILE = resolveWritablePath(NODE_INVENTORY_FILE, "node-inventory.env");
+
 const LITELLM_ALIASES = [
   "brain-heavy",
   "brain-vision",
@@ -54,7 +72,12 @@ const WOL_TARGETS = {
 
 function parseEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return {};
-  const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
+  let lines = [];
+  try {
+    lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
+  } catch (_error) {
+    return {};
+  }
   const result = {};
   for (const line of lines) {
     const trimmed = line.trim();
@@ -70,11 +93,15 @@ function parseEnvFile(filePath) {
 
 function loadDenylist() {
   if (!fs.existsSync(DENYLIST_FILE)) return [];
-  return fs
-    .readFileSync(DENYLIST_FILE, "utf8")
-    .split(/\r?\n/)
-    .map((line) => line.trim().toLowerCase())
-    .filter((line) => line && !line.startsWith("#"));
+  try {
+    return fs
+      .readFileSync(DENYLIST_FILE, "utf8")
+      .split(/\r?\n/)
+      .map((line) => line.trim().toLowerCase())
+      .filter((line) => line && !line.startsWith("#"));
+  } catch (_error) {
+    return [];
+  }
 }
 
 const denylist = loadDenylist();
@@ -144,18 +171,18 @@ async function safeProbe(name, url, options = {}) {
 }
 
 async function ensureAuthFile() {
-  const dir = path.dirname(AUTH_FILE);
+  const dir = path.dirname(AUTH_STORE_FILE);
   fs.mkdirSync(dir, { recursive: true });
-  if (fs.existsSync(AUTH_FILE)) return;
+  if (fs.existsSync(AUTH_STORE_FILE)) return;
   const generated = ADMIN_PASSWORD || Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
   const passwordHash = await bcrypt.hash(generated, 12);
-  fs.writeFileSync(AUTH_FILE, JSON.stringify({ passwordHash }, null, 2), "utf8");
+  fs.writeFileSync(AUTH_STORE_FILE, JSON.stringify({ passwordHash }, null, 2), "utf8");
   console.log(`[chimera-hub] Initial admin password generated: ${generated}`);
 }
 
 async function readAuthHash() {
   await ensureAuthFile();
-  const data = JSON.parse(fs.readFileSync(AUTH_FILE, "utf8"));
+  const data = JSON.parse(fs.readFileSync(AUTH_STORE_FILE, "utf8"));
   return data.passwordHash || "";
 }
 
@@ -269,7 +296,7 @@ app.post("/api/auth/logout", (_req, res) => {
 });
 
 app.get("/api/health", async (_req, res) => {
-  const inventory = parseEnvFile(NODE_INVENTORY_FILE);
+  const inventory = parseEnvFile(INVENTORY_STORE_FILE);
   const checks = [
     safeProbe("node_a_kvm", `${KVM_OPERATOR_URL}/health`),
     safeProbe("node_a_brothers_keeper", `${BROTHERS_KEEPER_URL}/health`),
@@ -697,7 +724,7 @@ app.get("/api/logs/:container", requireAuth, async (req, res) => {
 });
 
 app.get("/api/settings", requireAuth, (_req, res) => {
-  const inventory = parseEnvFile(NODE_INVENTORY_FILE);
+  const inventory = parseEnvFile(INVENTORY_STORE_FILE);
   const masked = {};
   for (const [key, value] of Object.entries(inventory)) {
     if (/token|key|secret|password/i.test(key)) {
@@ -710,7 +737,7 @@ app.get("/api/settings", requireAuth, (_req, res) => {
 });
 
 app.put("/api/settings", requireAuth, (req, res) => {
-  const existing = parseEnvFile(NODE_INVENTORY_FILE);
+  const existing = parseEnvFile(INVENTORY_STORE_FILE);
   const incoming = req.body && typeof req.body === "object" ? req.body : {};
   const blocked = [];
   const normalized = {};
@@ -727,7 +754,7 @@ app.put("/api/settings", requireAuth, (req, res) => {
   }
   const merged = { ...existing, ...normalized };
   const lines = Object.entries(merged).map(([key, value]) => `${key}=${value}`);
-  atomicWriteFile(NODE_INVENTORY_FILE, `${lines.join("\n")}\n`);
+  atomicWriteFile(INVENTORY_STORE_FILE, `${lines.join("\n")}\n`);
   res.status(200).json({ ok: true, updated: Object.keys(normalized).length, blocked });
 });
 
