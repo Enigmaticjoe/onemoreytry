@@ -1,0 +1,47 @@
+services:
+  chimera-hub:
+    build:
+      context: ..
+      dockerfile: chimera-hub/Dockerfile
+    container_name: chimera-hub
+    restart: unless-stopped
+    user: "${PUID:-99}:${PGID:-100}"
+    environment:
+      TZ: "${TZ:-America/New_York}"
+      PORT: "${PORT:-3099}"
+      REQUEST_TIMEOUT_MS: "${REQUEST_TIMEOUT_MS:-5000}"
+      PORTAINER_ENDPOINT_ID: "${PORTAINER_ENDPOINT_ID:-3}"
+      JWT_SECRET: "${JWT_SECRET:-replace-me-now}"
+      CHIMERA_HUB_ADMIN_PASSWORD: "${CHIMERA_HUB_ADMIN_PASSWORD:-change-me-now}"
+      CHIMERA_HUB_AUTH_FILE: "${CHIMERA_HUB_AUTH_FILE:-/app/data/auth.json}"
+      PORTAINER_URL: "${PORTAINER_URL:-http://192.168.1.222:9000}"
+      PORTAINER_TOKEN: "${PORTAINER_TOKEN:-}"
+      LITELLM_BASE_URL: "${LITELLM_BASE_URL:-http://192.168.1.222:4000}"
+      LITELLM_API_KEY: "${LITELLM_API_KEY:-}"
+      OPENCLAW_RELAY_URL: "${OPENCLAW_RELAY_URL:-http://192.168.1.222:18790}"
+      KVM_OPERATOR_URL: "${KVM_OPERATOR_URL:-http://192.168.1.9:5000}"
+      KVM_OPERATOR_TOKEN: "${KVM_OPERATOR_TOKEN:-}"
+      HOME_ASSISTANT_URL: "${HOME_ASSISTANT_URL:-http://192.168.1.149:8123}"
+      HOME_ASSISTANT_TOKEN: "${HOME_ASSISTANT_TOKEN:-}"
+      BROTHERS_KEEPER_URL: "${BROTHERS_KEEPER_URL:-http://192.168.1.9:7070}"
+      UPTIME_KUMA_URL: "${UPTIME_KUMA_URL:-http://192.168.1.222:3010}"
+      DOZZLE_URL: "${DOZZLE_URL:-http://192.168.1.222:8888}"
+      QDRANT_URL: "${QDRANT_URL:-http://192.168.1.9:6333}"
+      CHIMERA_NODE_INVENTORY: "${CHIMERA_NODE_INVENTORY:-/app/data/node-inventory.env}"
+      KVM_DENYLIST_PATH: "${KVM_DENYLIST_PATH:-/app/data/policy_denylist.txt}"
+    ports:
+      - "3099:3099"
+    healthcheck:
+      test: ["CMD-SHELL", "/app/healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    volumes:
+      - /mnt/user/appdata/chimera-hub:/app/data
+    networks:
+      - chimera-hub-net
+
+networks:
+  chimera-hub-net:
+    driver: bridge
