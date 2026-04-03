@@ -1,0 +1,17 @@
+{
+  "name": "chimera-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Project Chimera unified interactive dashboard and control plane",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "ws": "^8.18.3"
+  }
+}
